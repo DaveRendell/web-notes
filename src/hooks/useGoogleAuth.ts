@@ -3,14 +3,26 @@ import { GoogleTokenClient } from '../types/google';
 
 const GOOGLE_IDENTITY_SCRIPT = 'https://accounts.google.com/gsi/client';
 const DRIVE_READONLY_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+const STORED_TOKEN_KEY = 'vault-web-viewer:google-access-token';
+const AUTO_RECONNECT_KEY = 'vault-web-viewer:auto-reconnect-google';
+const TOKEN_EXPIRY_BUFFER_MS = 60_000;
+const DEFAULT_TOKEN_LIFETIME_MS = 55 * 60 * 1000;
 
 type AuthStatus = 'idle' | 'loading' | 'authenticated' | 'error';
+type AuthRequestType = 'interactive' | 'silent';
+
+type StoredToken = {
+  accessToken: string;
+  expiresAt: number;
+};
 
 export function useGoogleAuth() {
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [status, setStatus] = useState<AuthStatus>('idle');
+  const initialToken = readStoredToken();
+  const [accessToken, setAccessToken] = useState<string | null>(initialToken);
+  const [status, setStatus] = useState<AuthStatus>(initialToken ? 'authenticated' : 'loading');
   const [error, setError] = useState<string | null>(null);
   const tokenClientRef = useRef<GoogleTokenClient | null>(null);
+  const pendingRequestRef = useRef<AuthRequestType>('interactive');
 
   useEffect(() => {
     let mounted = true;
@@ -31,22 +43,42 @@ export function useGoogleAuth() {
           scope: DRIVE_READONLY_SCOPE,
           callback: (response) => {
             if (response.error) {
-              setStatus('error');
-              setError(response.error_description ?? response.error);
+              if (pendingRequestRef.current === 'silent') {
+                setStatus('idle');
+                setError(null);
+              } else {
+                setStatus('error');
+                setError(response.error_description ?? response.error);
+              }
               return;
             }
 
             if (response.access_token) {
               setAccessToken(response.access_token);
+              storeToken(response.access_token, response.expires_in);
+              localStorage.setItem(AUTO_RECONNECT_KEY, 'true');
               setStatus('authenticated');
               setError(null);
             }
           },
           error_callback: (authError) => {
-            setStatus('error');
-            setError(authError.message ?? authError.type ?? 'Google authentication failed.');
+            if (pendingRequestRef.current === 'silent') {
+              setStatus('idle');
+              setError(null);
+            } else {
+              setStatus('error');
+              setError(authError.message ?? authError.type ?? 'Google authentication failed.');
+            }
           },
         });
+
+        if (!accessToken && shouldAutoReconnect()) {
+          pendingRequestRef.current = 'silent';
+          setStatus('loading');
+          tokenClientRef.current.requestAccessToken({ prompt: '' });
+        } else if (!accessToken) {
+          setStatus('idle');
+        }
       })
       .catch((scriptError: unknown) => {
         if (!mounted) return;
@@ -57,9 +89,16 @@ export function useGoogleAuth() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [accessToken]);
 
   const signIn = useCallback(() => {
+    if (!tokenClientRef.current) {
+      setStatus('error');
+      setError('Google authentication is still loading. Try again in a moment.');
+      return;
+    }
+
+    pendingRequestRef.current = 'interactive';
     setStatus('loading');
     setError(null);
     tokenClientRef.current?.requestAccessToken({ prompt: accessToken ? '' : 'consent' });
@@ -71,6 +110,7 @@ export function useGoogleAuth() {
     }
 
     setAccessToken(null);
+    clearStoredAuth();
     setStatus('idle');
     setError(null);
   }, [accessToken]);
@@ -83,6 +123,47 @@ export function useGoogleAuth() {
     signOut,
     status,
   };
+}
+
+function readStoredToken() {
+  const storedValue = sessionStorage.getItem(STORED_TOKEN_KEY);
+
+  if (!storedValue) {
+    return null;
+  }
+
+  try {
+    const storedToken = JSON.parse(storedValue) as StoredToken;
+
+    if (storedToken.expiresAt <= Date.now() + TOKEN_EXPIRY_BUFFER_MS) {
+      sessionStorage.removeItem(STORED_TOKEN_KEY);
+      return null;
+    }
+
+    return storedToken.accessToken;
+  } catch {
+    sessionStorage.removeItem(STORED_TOKEN_KEY);
+    return null;
+  }
+}
+
+function storeToken(accessToken: string, expiresInSeconds?: number) {
+  const lifetimeMs = expiresInSeconds ? expiresInSeconds * 1000 : DEFAULT_TOKEN_LIFETIME_MS;
+  const storedToken: StoredToken = {
+    accessToken,
+    expiresAt: Date.now() + lifetimeMs - TOKEN_EXPIRY_BUFFER_MS,
+  };
+
+  sessionStorage.setItem(STORED_TOKEN_KEY, JSON.stringify(storedToken));
+}
+
+function clearStoredAuth() {
+  sessionStorage.removeItem(STORED_TOKEN_KEY);
+  localStorage.removeItem(AUTO_RECONNECT_KEY);
+}
+
+function shouldAutoReconnect() {
+  return localStorage.getItem(AUTO_RECONNECT_KEY) === 'true';
 }
 
 function loadGoogleIdentityScript() {

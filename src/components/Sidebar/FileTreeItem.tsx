@@ -6,7 +6,7 @@ import { FileTree } from './FileTree';
 
 export function FileTreeItem({ node }: { node: VaultNode }) {
   const { selectFile, selectedFile } = useVault();
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const isFolder = node.type === 'folder';
   const isSelected = selectedFile?.id === node.id;
 

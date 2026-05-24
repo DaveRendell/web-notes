@@ -2,6 +2,7 @@ import { LogOut, RefreshCw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useVault } from '../contexts/VaultContext';
 import { MarkdownViewer } from './MarkdownViewer';
+import { NoteSearch } from './NoteSearch';
 import { Sidebar } from './Sidebar/Sidebar';
 import { VaultPicker } from './VaultPicker';
 
@@ -39,10 +40,11 @@ export function AppShell() {
   return (
     <div className="app-shell">
       <header className="top-bar">
-        <div>
+        <div className="top-bar-title">
           <p className="eyebrow">Current vault</p>
           <h1>{selectedVault.name}</h1>
         </div>
+        <NoteSearch />
         <div className="top-bar-actions">
           <button className="icon-text-button" type="button" onClick={clearVault}>
             <RefreshCw size={16} />
