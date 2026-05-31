@@ -1,6 +1,6 @@
 # Google Drive Setup
 
-This app is a static browser app. It uses a Google OAuth client ID to ask the signed-in user for read-only access to their own Drive files.
+This app is a static browser app. It uses a Google OAuth client ID to ask the signed-in user for access to their own Drive files.
 
 The OAuth client ID is not a secret. It is expected to be present in the built JavaScript bundle. Do not add a Google client secret to this app.
 
@@ -35,11 +35,13 @@ Restart the Vite dev server after changing `.env.local`.
    - Go to Google Auth platform.
    - Fill in the app name, support email, and developer contact email.
    - For local/private testing, add yourself as a test user if the app is in testing mode.
-5. Add the Drive read-only scope if Google asks you to declare scopes:
+5. Add the Drive scope if Google asks you to declare scopes:
 
 ```txt
-https://www.googleapis.com/auth/drive.readonly
+https://www.googleapis.com/auth/drive
 ```
+
+The app uses this scope because it can edit existing markdown files in the selected vault folder. If you previously configured the app with `https://www.googleapis.com/auth/drive.readonly`, update the scope in Google Cloud and sign in again so Google can ask for the new permission.
 
 6. Create an OAuth client:
    - Go to Google Auth platform > Clients.
@@ -91,7 +93,7 @@ If a future change introduces `VITE_GOOGLE_API_KEY`, treat it as public browser 
 
 - Never commit `.env.local`.
 - Never put a client secret in this SPA.
-- Keep the OAuth scope read-only unless the app needs to write to Drive.
+- Keep the OAuth scope as narrow as the app allows. Editing arbitrary existing vault files currently uses the full Drive scope.
 - Restrict OAuth origins to the domains where the app is actually hosted.
 - Users can revoke the app's access from their Google Account permissions page.
 

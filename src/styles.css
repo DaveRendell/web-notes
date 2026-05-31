@@ -198,6 +198,7 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   padding: 0 16px;
   background: #24577a;
   color: #ffffff;
@@ -392,10 +393,49 @@ button {
   font-size: 1.35rem;
 }
 
+.viewer-header-actions,
+.edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.viewer-header-actions {
+  justify-content: flex-end;
+  flex: 1;
+}
+
 .path-label {
   max-width: 45%;
   color: #697180;
   font-size: 0.85rem;
+}
+
+.viewer-header-actions .path-label {
+  max-width: min(460px, 45vw);
+}
+
+.editor-pane {
+  display: flex;
+  min-height: calc(100vh - 145px);
+  padding: 0;
+  background: #ffffff;
+}
+
+.markdown-editor {
+  width: 100%;
+  min-width: 0;
+  border-top: 1px solid #edf0f4;
+  font-size: 0.95rem;
+}
+
+.markdown-editor .cm-editor {
+  min-height: calc(100vh - 145px);
+}
+
+.markdown-editor .cm-scroller {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
 .markdown-body {
@@ -617,7 +657,24 @@ button {
     flex-direction: column;
   }
 
-  .path-label {
+  .viewer-header-actions {
+    align-items: flex-start;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .edit-actions {
+    width: 100%;
+  }
+
+  .edit-actions .icon-text-button,
+  .edit-actions .primary-button,
+  .viewer-header-actions > .icon-text-button {
+    width: 100%;
+  }
+
+  .path-label,
+  .viewer-header-actions .path-label {
     max-width: 100%;
   }
 

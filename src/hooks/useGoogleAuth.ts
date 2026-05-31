@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { GoogleTokenClient } from '../types/google';
 
 const GOOGLE_IDENTITY_SCRIPT = 'https://accounts.google.com/gsi/client';
-const DRIVE_READONLY_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 const STORED_TOKEN_KEY = 'vault-web-viewer:google-access-token';
 const AUTO_RECONNECT_KEY = 'vault-web-viewer:auto-reconnect-google';
 const TOKEN_EXPIRY_BUFFER_MS = 60_000;
@@ -14,6 +14,7 @@ type AuthRequestType = 'interactive' | 'silent';
 type StoredToken = {
   accessToken: string;
   expiresAt: number;
+  scope: string;
 };
 
 export function useGoogleAuth() {
@@ -40,7 +41,7 @@ export function useGoogleAuth() {
 
         tokenClientRef.current = window.google!.accounts.oauth2.initTokenClient({
           client_id: clientId,
-          scope: DRIVE_READONLY_SCOPE,
+          scope: DRIVE_SCOPE,
           callback: (response) => {
             if (response.error) {
               if (pendingRequestRef.current === 'silent') {
@@ -135,7 +136,7 @@ function readStoredToken() {
   try {
     const storedToken = JSON.parse(storedValue) as StoredToken;
 
-    if (storedToken.expiresAt <= Date.now() + TOKEN_EXPIRY_BUFFER_MS) {
+    if (storedToken.scope !== DRIVE_SCOPE || storedToken.expiresAt <= Date.now() + TOKEN_EXPIRY_BUFFER_MS) {
       sessionStorage.removeItem(STORED_TOKEN_KEY);
       return null;
     }
@@ -152,6 +153,7 @@ function storeToken(accessToken: string, expiresInSeconds?: number) {
   const storedToken: StoredToken = {
     accessToken,
     expiresAt: Date.now() + lifetimeMs - TOKEN_EXPIRY_BUFFER_MS,
+    scope: DRIVE_SCOPE,
   };
 
   sessionStorage.setItem(STORED_TOKEN_KEY, JSON.stringify(storedToken));

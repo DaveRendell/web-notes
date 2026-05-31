@@ -38,5 +38,5 @@ export function useMarkdownFile(accessToken: string | null, fileId: string | nul
     };
   }, [accessToken, fileId]);
 
-  return { content, error, isLoading };
+  return { content, error, isLoading, setContent };
 }

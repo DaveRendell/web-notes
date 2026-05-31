@@ -61,6 +61,30 @@ export async function getDriveFileText(accessToken: string, fileId: string): Pro
   return driveFetchText(`${DRIVE_API_ROOT}/files/${fileId}?alt=media`, accessToken);
 }
 
+export async function updateDriveFileText(
+  accessToken: string,
+  fileId: string,
+  content: string,
+): Promise<DriveFile> {
+  const params = new URLSearchParams({
+    uploadType: 'media',
+    fields: 'id, name, mimeType, parents, modifiedTime, size',
+    supportsAllDrives: 'true',
+  });
+
+  return driveFetch<DriveFile>(
+    `https://www.googleapis.com/upload/drive/v3/files/${fileId}?${params.toString()}`,
+    accessToken,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'text/markdown; charset=utf-8',
+      },
+      body: content,
+    },
+  );
+}
+
 function buildChildrenQuery(folderId: string, foldersOnly: boolean) {
   const parts = [`'${folderId.replace(/'/g, "\\'")}' in parents`, 'trashed = false'];
 
@@ -71,11 +95,13 @@ function buildChildrenQuery(folderId: string, foldersOnly: boolean) {
   return parts.join(' and ');
 }
 
-async function driveFetch<T>(url: string, accessToken: string): Promise<T> {
+async function driveFetch<T>(url: string, accessToken: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set('Authorization', `Bearer ${accessToken}`);
+
   const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
+    ...init,
+    headers,
   });
 
   if (!response.ok) {
