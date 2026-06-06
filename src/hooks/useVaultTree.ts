@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { listDriveChildren } from '../lib/googleDrive';
 import { createVaultNode, sortVaultNodes } from '../lib/vaultTree';
 import { GOOGLE_FOLDER_MIME_TYPE } from '../types/drive';
@@ -9,39 +9,44 @@ export function useVaultTree(accessToken: string | null, rootFolderId: string | 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const reloadTree = useCallback((signal?: AbortSignal) => {
     if (!accessToken || !rootFolderId) {
       setTree([]);
-      return;
+      return Promise.resolve();
     }
 
-    const controller = new AbortController();
     setIsLoading(true);
     setError(null);
 
-    loadTree(accessToken, rootFolderId, '', controller.signal)
+    return loadTree(accessToken, rootFolderId, '', signal ?? new AbortController().signal)
       .then((nodes) => {
-        if (!controller.signal.aborted) {
+        if (!signal?.aborted) {
           setTree(nodes);
         }
       })
       .catch((requestError: unknown) => {
-        if (!controller.signal.aborted) {
+        if (!signal?.aborted) {
           setError(requestError instanceof Error ? requestError.message : 'Failed to load vault tree.');
         }
       })
       .finally(() => {
-        if (!controller.signal.aborted) {
+        if (!signal?.aborted) {
           setIsLoading(false);
         }
       });
+  }, [accessToken, rootFolderId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void reloadTree(controller.signal);
 
     return () => {
       controller.abort();
     };
-  }, [accessToken, rootFolderId]);
+  }, [reloadTree]);
 
-  return { error, isLoading, tree };
+  return { error, isLoading, reloadTree, setTree, tree };
 }
 
 async function loadTree(

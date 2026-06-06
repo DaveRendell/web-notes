@@ -1,5 +1,7 @@
-import { createContext, ReactNode, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useVaultTree } from '../hooks/useVaultTree';
+import { createDriveMarkdownFile, deleteDriveFile, renameDriveFile } from '../lib/googleDrive';
+import { createVaultNode, sortVaultNodes } from '../lib/vaultTree';
 import { DriveFile } from '../types/drive';
 import { VaultNode } from '../types/vault';
 import { useAuth } from './AuthContext';
@@ -13,9 +15,12 @@ type StoredVault = {
 
 type VaultContextValue = {
   clearVault: () => void;
+  createNote: (parentFolder: VaultNode | null, name: string) => Promise<VaultNode>;
+  deleteNote: (note: VaultNode) => Promise<void>;
   error: string | null;
   isLoading: boolean;
   notes: VaultNode[];
+  renameNote: (note: VaultNode, name: string) => Promise<VaultNode>;
   resolveWikilink: (target: string) => VaultNode | null;
   selectFile: (file: VaultNode) => void;
   selectVault: (folder: Pick<DriveFile, 'id' | 'name'>) => void;
@@ -30,7 +35,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const { accessToken } = useAuth();
   const [selectedVault, setSelectedVault] = useState<StoredVault | null>(() => readStoredVault());
   const [selectedFile, setSelectedFile] = useState<VaultNode | null>(null);
-  const { error, isLoading, tree } = useVaultTree(accessToken, selectedVault?.id ?? null);
+  const [routePath, setRoutePath] = useState(() => getNotePathFromHash());
+  const { error, isLoading, setTree, tree } = useVaultTree(accessToken, selectedVault?.id ?? null);
   const notes = useMemo(() => flattenVaultTree(tree).filter((node) => node.type === 'markdown'), [tree]);
   const vaultIndex = useMemo(() => createVaultIndex(tree), [tree]);
 
@@ -39,12 +45,22 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(SELECTED_VAULT_KEY, JSON.stringify(vault));
     setSelectedVault(vault);
     setSelectedFile(null);
+    setRoutePath(null);
+    clearNoteHash();
   }, []);
 
   const clearVault = useCallback(() => {
     localStorage.removeItem(SELECTED_VAULT_KEY);
     setSelectedVault(null);
     setSelectedFile(null);
+    setRoutePath(null);
+    clearNoteHash();
+  }, []);
+
+  const selectFile = useCallback((file: VaultNode) => {
+    setSelectedFile(file);
+    setRoutePath(file.path);
+    setNoteHash(file.path);
   }, []);
 
   const resolveWikilink = useCallback(
@@ -55,20 +71,128 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [vaultIndex],
   );
 
+  const createNote = useCallback(
+    async (parentFolder: VaultNode | null, name: string) => {
+      if (!accessToken || !selectedVault) {
+        throw new Error('Sign in and choose a vault before creating notes.');
+      }
+
+      const parentFolderId = parentFolder?.id ?? selectedVault.id;
+      const parentPath = parentFolder?.path ?? '';
+      const file = await createDriveMarkdownFile(accessToken, parentFolderId, name);
+      const node = createVaultNode(file, parentPath);
+
+      setTree((currentTree) => addNodeToTree(currentTree, parentFolder?.id ?? null, node));
+      selectFile(node);
+      return node;
+    },
+    [accessToken, selectFile, selectedVault, setTree],
+  );
+
+  const renameNote = useCallback(
+    async (note: VaultNode, name: string) => {
+      if (!accessToken) {
+        throw new Error('Sign in before renaming notes.');
+      }
+
+      const file = await renameDriveFile(accessToken, note.id, name);
+      const parentPath = getParentPath(note.path);
+      const updatedNote = createVaultNode(file, parentPath);
+
+      setTree((currentTree) => replaceNodeInTree(currentTree, updatedNote));
+
+      if (selectedFile?.id === note.id) {
+        selectFile(updatedNote);
+      }
+
+      return updatedNote;
+    },
+    [accessToken, selectFile, selectedFile?.id, setTree],
+  );
+
+  const deleteNote = useCallback(
+    async (note: VaultNode) => {
+      if (!accessToken) {
+        throw new Error('Sign in before deleting notes.');
+      }
+
+      await deleteDriveFile(accessToken, note.id);
+      setTree((currentTree) => removeNodeFromTree(currentTree, note.id));
+
+      if (selectedFile?.id === note.id) {
+        setSelectedFile(null);
+        setRoutePath(null);
+        clearNoteHash();
+      }
+    },
+    [accessToken, selectedFile?.id, setTree],
+  );
+
+  useEffect(() => {
+    if (!routePath) {
+      if (selectedFile) {
+        setSelectedFile(null);
+      }
+      return;
+    }
+
+    if (selectedFile?.path === routePath || notes.length === 0) return;
+
+    const routedNote = vaultIndex.byPath.get(normalizeWikilinkTarget(routePath));
+    if (routedNote) {
+      setSelectedFile(routedNote);
+    }
+  }, [notes.length, routePath, selectedFile, vaultIndex]);
+
+  useEffect(() => {
+    function handleHashChange() {
+      setRoutePath(getNotePathFromHash());
+    }
+
+    window.addEventListener('hashchange', handleHashChange);
+    window.addEventListener('popstate', handleHashChange);
+
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('popstate', handleHashChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    document.title = selectedFile ? `${stripMarkdownExtension(selectedFile.name)} - Vault Web Viewer` : 'Vault Web Viewer';
+  }, [selectedFile]);
+
   const value = useMemo(
     () => ({
       clearVault,
+      createNote,
+      deleteNote,
       error,
       isLoading,
       notes,
+      renameNote,
       resolveWikilink,
-      selectFile: setSelectedFile,
+      selectFile,
       selectVault,
       selectedFile,
       selectedVault,
       tree,
     }),
-    [clearVault, error, isLoading, notes, resolveWikilink, selectVault, selectedFile, selectedVault, tree],
+    [
+      clearVault,
+      createNote,
+      deleteNote,
+      error,
+      isLoading,
+      notes,
+      renameNote,
+      resolveWikilink,
+      selectFile,
+      selectVault,
+      selectedFile,
+      selectedVault,
+      tree,
+    ],
   );
 
   return <VaultContext.Provider value={value}>{children}</VaultContext.Provider>;
@@ -102,6 +226,99 @@ function flattenVaultTree(nodes: VaultNode[]): VaultNode[] {
 function normalizeWikilinkTarget(target: string) {
   const trimmedTarget = target.trim().replace(/^\/+/, '');
   return trimmedTarget.toLowerCase().endsWith('.md') ? trimmedTarget : `${trimmedTarget}.md`;
+}
+
+function addNodeToTree(nodes: VaultNode[], parentFolderId: string | null, node: VaultNode): VaultNode[] {
+  if (!parentFolderId) {
+    return sortVaultNodes([...nodes, node]);
+  }
+
+  return nodes.map((currentNode) => {
+    if (currentNode.id === parentFolderId) {
+      return {
+        ...currentNode,
+        children: sortVaultNodes([...(currentNode.children ?? []), node]),
+      };
+    }
+
+    if (currentNode.children) {
+      return {
+        ...currentNode,
+        children: addNodeToTree(currentNode.children, parentFolderId, node),
+      };
+    }
+
+    return currentNode;
+  });
+}
+
+function replaceNodeInTree(nodes: VaultNode[], replacement: VaultNode): VaultNode[] {
+  return sortVaultNodes(
+    nodes.map((node) => {
+      if (node.id === replacement.id) {
+        return replacement;
+      }
+
+      if (node.children) {
+        return {
+          ...node,
+          children: replaceNodeInTree(node.children, replacement),
+        };
+      }
+
+      return node;
+    }),
+  );
+}
+
+function removeNodeFromTree(nodes: VaultNode[], nodeId: string): VaultNode[] {
+  return nodes
+    .filter((node) => node.id !== nodeId)
+    .map((node) => {
+      if (!node.children) return node;
+
+      return {
+        ...node,
+        children: removeNodeFromTree(node.children, nodeId),
+      };
+    });
+}
+
+function getParentPath(path: string) {
+  return path.split('/').slice(0, -1).join('/');
+}
+
+function stripMarkdownExtension(name: string) {
+  return name.replace(/\.md$/i, '');
+}
+
+function getNotePathFromHash() {
+  const hash = window.location.hash;
+  const routePrefix = '#/note/';
+
+  if (!hash.startsWith(routePrefix)) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(hash.slice(routePrefix.length));
+  } catch {
+    return null;
+  }
+}
+
+function setNoteHash(path: string) {
+  const nextHash = `#/note/${encodeURIComponent(path)}`;
+
+  if (window.location.hash === nextHash) return;
+
+  window.history.pushState(null, '', nextHash);
+}
+
+function clearNoteHash() {
+  if (!window.location.hash.startsWith('#/note/')) return;
+
+  window.history.pushState(null, '', window.location.pathname + window.location.search);
 }
 
 export function useVault() {

@@ -85,6 +85,54 @@ export async function updateDriveFileText(
   );
 }
 
+export async function createDriveMarkdownFile(
+  accessToken: string,
+  parentFolderId: string,
+  name: string,
+): Promise<DriveFile> {
+  const params = new URLSearchParams({
+    fields: 'id, name, mimeType, parents, modifiedTime, size',
+    supportsAllDrives: 'true',
+  });
+
+  return driveFetch<DriveFile>(`${DRIVE_API_ROOT}/files?${params.toString()}`, accessToken, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify({
+      mimeType: 'text/markdown',
+      name: ensureMarkdownExtension(name),
+      parents: [parentFolderId],
+    }),
+  });
+}
+
+export async function renameDriveFile(
+  accessToken: string,
+  fileId: string,
+  name: string,
+): Promise<DriveFile> {
+  const params = new URLSearchParams({
+    fields: 'id, name, mimeType, parents, modifiedTime, size',
+    supportsAllDrives: 'true',
+  });
+
+  return driveFetch<DriveFile>(`${DRIVE_API_ROOT}/files/${fileId}?${params.toString()}`, accessToken, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify({ name: ensureMarkdownExtension(name) }),
+  });
+}
+
+export async function deleteDriveFile(accessToken: string, fileId: string): Promise<void> {
+  await driveFetchEmpty(`${DRIVE_API_ROOT}/files/${fileId}?supportsAllDrives=true`, accessToken, {
+    method: 'DELETE',
+  });
+}
+
 function buildChildrenQuery(folderId: string, foldersOnly: boolean) {
   const parts = [`'${folderId.replace(/'/g, "\\'")}' in parents`, 'trashed = false'];
 
@@ -125,6 +173,20 @@ async function driveFetchText(url: string, accessToken: string): Promise<string>
   return response.text();
 }
 
+async function driveFetchEmpty(url: string, accessToken: string, init: RequestInit = {}): Promise<void> {
+  const headers = new Headers(init.headers);
+  headers.set('Authorization', `Bearer ${accessToken}`);
+
+  const response = await fetch(url, {
+    ...init,
+    headers,
+  });
+
+  if (!response.ok) {
+    throw new GoogleDriveError(await getErrorMessage(response), response.status);
+  }
+}
+
 async function getErrorMessage(response: Response) {
   try {
     const body = (await response.json()) as { error?: { message?: string } };
@@ -132,4 +194,9 @@ async function getErrorMessage(response: Response) {
   } catch {
     return `Google Drive request failed with ${response.status}`;
   }
+}
+
+function ensureMarkdownExtension(name: string) {
+  const trimmedName = name.trim();
+  return trimmedName.toLowerCase().endsWith('.md') ? trimmedName : `${trimmedName}.md`;
 }

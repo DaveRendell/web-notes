@@ -1,14 +1,34 @@
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { AlertCircle, FilePlus2, Loader2 } from 'lucide-react';
 import { useVault } from '../../contexts/VaultContext';
 import { FileTree } from './FileTree';
 
 export function Sidebar() {
-  const { error, isLoading, tree } = useVault();
+  const { createNote, error, isLoading, tree } = useVault();
+
+  async function handleCreateRootNote() {
+    const name = window.prompt('New note name');
+    if (!name?.trim()) return;
+
+    try {
+      await createNote(null, name);
+    } catch (requestError) {
+      window.alert(requestError instanceof Error ? requestError.message : 'Failed to create note.');
+    }
+  }
 
   return (
     <aside className="sidebar" aria-label="Vault files">
       <div className="sidebar-header">
         <h2>Files</h2>
+        <button
+          className="icon-button compact-icon"
+          type="button"
+          onClick={handleCreateRootNote}
+          aria-label="Add note"
+          title="Add note"
+        >
+          <FilePlus2 size={16} />
+        </button>
       </div>
       {isLoading && (
         <div className="status-row">
