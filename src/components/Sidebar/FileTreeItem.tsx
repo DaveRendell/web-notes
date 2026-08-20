@@ -1,6 +1,7 @@
 import { ChevronRight, FilePlus2, FileText, Folder, Pencil, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useVault } from '../../contexts/VaultContext';
+import { getVaultNodeDisplayName } from '../../lib/vaultTree';
 import { VaultNode } from '../../types/vault';
 import { FileTree } from './FileTree';
 
@@ -9,6 +10,7 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const isFolder = node.type === 'folder';
   const isSelected = selectedFile?.id === node.id;
+  const displayName = getVaultNodeDisplayName(node);
 
   function handleClick() {
     if (isFolder) {
@@ -70,7 +72,7 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
             <span className="tree-spacer" />
           )}
           {isFolder ? <Folder size={16} /> : <FileText size={16} />}
-          <span>{node.name}</span>
+          <span>{displayName}</span>
         </button>
         {isFolder && (
           <button

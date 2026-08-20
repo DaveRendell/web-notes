@@ -1,6 +1,7 @@
 import { AlertCircle, FilePlus2, Loader2 } from 'lucide-react';
 import { useVault } from '../../contexts/VaultContext';
 import { FileTree } from './FileTree';
+import { RecentNotes } from './RecentNotes';
 
 export function Sidebar() {
   const { createNote, error, isLoading, tree } = useVault();
@@ -30,6 +31,7 @@ export function Sidebar() {
           <FilePlus2 size={16} />
         </button>
       </div>
+      {!isLoading && !error && <RecentNotes />}
       {isLoading && (
         <div className="status-row">
           <Loader2 className="spin" size={16} />

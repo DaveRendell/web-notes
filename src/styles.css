@@ -351,6 +351,84 @@ button {
   font-size: 0.9rem;
 }
 
+.recent-notes {
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.recent-notes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px 6px;
+}
+
+.recent-notes-header h3 {
+  margin: 0;
+  color: #5f6673;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.recent-notes-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: #49627f;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.recent-notes-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recent-note {
+  display: grid;
+  width: 100%;
+  min-height: 32px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #303640;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recent-note:hover {
+  background: #eef3f7;
+}
+
+.recent-note.selected {
+  background: #dfeaf2;
+  color: #183f59;
+  font-weight: 700;
+}
+
+.recent-note span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-notes-empty {
+  margin: 2px 4px 4px;
+  color: #697180;
+  font-size: 0.8rem;
+}
+
 .compact-icon {
   width: 32px;
   min-height: 32px;
@@ -730,12 +808,15 @@ button {
 [data-theme="dark"] .status-row,
 [data-theme="dark"] .breadcrumb,
 [data-theme="dark"] .frontmatter-table th,
-[data-theme="dark"] .tree-action {
+[data-theme="dark"] .tree-action,
+[data-theme="dark"] .recent-notes-header h3,
+[data-theme="dark"] .recent-notes-empty {
   color: #aab4c0;
 }
 
 [data-theme="dark"] .eyebrow,
-[data-theme="dark"] .markdown-body a {
+[data-theme="dark"] .markdown-body a,
+[data-theme="dark"] .recent-notes-toggle {
   color: #8ab7dc;
 }
 
@@ -763,12 +844,14 @@ button {
 [data-theme="dark"] .icon-button:hover,
 [data-theme="dark"] .folder-row:hover,
 [data-theme="dark"] .tree-row:hover,
+[data-theme="dark"] .recent-note:hover,
 [data-theme="dark"] .note-search-result:hover,
 [data-theme="dark"] .note-search-result.active {
   background: #22303b;
 }
 
 [data-theme="dark"] .tree-row.selected,
+[data-theme="dark"] .recent-note.selected,
 [data-theme="dark"] .tree-action:hover {
   background: #263d50;
   color: #dceefa;
@@ -779,7 +862,8 @@ button {
   color: #ffb4ab;
 }
 
-[data-theme="dark"] .tree-item {
+[data-theme="dark"] .tree-item,
+[data-theme="dark"] .recent-note {
   color: #d6dde6;
 }
 
@@ -793,7 +877,8 @@ button {
 [data-theme="dark"] .workspace,
 [data-theme="dark"] .top-bar,
 [data-theme="dark"] .viewer-header,
-[data-theme="dark"] .sidebar-header {
+[data-theme="dark"] .sidebar-header,
+[data-theme="dark"] .recent-notes {
   border-color: #2b3643;
 }
 
@@ -822,6 +907,10 @@ button {
 [data-theme="dark"] .markdown-editor .cm-editor {
   background: #11161c;
   color: #e7ebf0;
+}
+
+[data-theme="dark"] .markdown-editor .cm-cursor {
+  border-left-color: #ffffff;
 }
 
 [data-theme="dark"] .markdown-editor .cm-gutters {

@@ -7,6 +7,8 @@ import { VaultNode } from '../types/vault';
 import { useAuth } from './AuthContext';
 
 const SELECTED_VAULT_KEY = 'vault-web-viewer:selected-vault';
+const RECENT_NOTES_KEY = 'vault-web-viewer:recent-notes';
+const MAX_RECENT_NOTES = 25;
 
 type StoredVault = {
   id: string;
@@ -20,6 +22,7 @@ type VaultContextValue = {
   error: string | null;
   isLoading: boolean;
   notes: VaultNode[];
+  recentNotes: VaultNode[];
   renameNote: (note: VaultNode, name: string) => Promise<VaultNode>;
   resolveWikilink: (target: string) => VaultNode | null;
   selectFile: (file: VaultNode) => void;
@@ -35,9 +38,17 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const { accessToken } = useAuth();
   const [selectedVault, setSelectedVault] = useState<StoredVault | null>(() => readStoredVault());
   const [selectedFile, setSelectedFile] = useState<VaultNode | null>(null);
+  const [recentNoteIds, setRecentNoteIds] = useState<string[]>(() => readRecentNoteIds(selectedVault?.id ?? null));
   const [routePath, setRoutePath] = useState(() => getNotePathFromHash());
   const { error, isLoading, setTree, tree } = useVaultTree(accessToken, selectedVault?.id ?? null);
   const notes = useMemo(() => flattenVaultTree(tree).filter((node) => node.type === 'markdown'), [tree]);
+  const recentNotes = useMemo(() => {
+    const notesById = new Map(notes.map((note) => [note.id, note]));
+    return recentNoteIds.flatMap((id) => {
+      const note = notesById.get(id);
+      return note ? [note] : [];
+    });
+  }, [notes, recentNoteIds]);
   const vaultIndex = useMemo(() => createVaultIndex(tree), [tree]);
 
   const selectVault = useCallback((folder: Pick<DriveFile, 'id' | 'name'>) => {
@@ -45,6 +56,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(SELECTED_VAULT_KEY, JSON.stringify(vault));
     setSelectedVault(vault);
     setSelectedFile(null);
+    setRecentNoteIds(readRecentNoteIds(vault.id));
     setRoutePath(null);
     clearNoteHash();
   }, []);
@@ -53,6 +65,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(SELECTED_VAULT_KEY);
     setSelectedVault(null);
     setSelectedFile(null);
+    setRecentNoteIds([]);
     setRoutePath(null);
     clearNoteHash();
   }, []);
@@ -118,6 +131,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
       await deleteDriveFile(accessToken, note.id);
       setTree((currentTree) => removeNodeFromTree(currentTree, note.id));
+      setRecentNoteIds((currentIds) => {
+        const nextIds = currentIds.filter((id) => id !== note.id);
+        writeRecentNoteIds(selectedVault?.id ?? null, nextIds);
+        return nextIds;
+      });
 
       if (selectedFile?.id === note.id) {
         setSelectedFile(null);
@@ -125,8 +143,23 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         clearNoteHash();
       }
     },
-    [accessToken, selectedFile?.id, setTree],
+    [accessToken, selectedFile?.id, selectedVault?.id, setTree],
   );
+
+  useEffect(() => {
+    if (!selectedVault || selectedFile?.type !== 'markdown') return;
+
+    setRecentNoteIds((currentIds) => {
+      if (currentIds[0] === selectedFile.id) return currentIds;
+
+      const nextIds = [selectedFile.id, ...currentIds.filter((id) => id !== selectedFile.id)].slice(
+        0,
+        MAX_RECENT_NOTES,
+      );
+      writeRecentNoteIds(selectedVault.id, nextIds);
+      return nextIds;
+    });
+  }, [selectedFile, selectedVault]);
 
   useEffect(() => {
     if (!routePath) {
@@ -170,6 +203,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       error,
       isLoading,
       notes,
+      recentNotes,
       renameNote,
       resolveWikilink,
       selectFile,
@@ -185,6 +219,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       error,
       isLoading,
       notes,
+      recentNotes,
       renameNote,
       resolveWikilink,
       selectFile,
@@ -344,4 +379,44 @@ function readStoredVault(): StoredVault | null {
     localStorage.removeItem(SELECTED_VAULT_KEY);
     return null;
   }
+}
+
+function readRecentNoteIds(vaultId: string | null): string[] {
+  if (!vaultId) return [];
+
+  try {
+    const storedValue = localStorage.getItem(RECENT_NOTES_KEY);
+    if (!storedValue) return [];
+
+    const recentNotesByVault = JSON.parse(storedValue) as Record<string, unknown>;
+    const storedIds = recentNotesByVault[vaultId];
+
+    return Array.isArray(storedIds)
+      ? storedIds.filter((id): id is string => typeof id === 'string').slice(0, MAX_RECENT_NOTES)
+      : [];
+  } catch {
+    localStorage.removeItem(RECENT_NOTES_KEY);
+    return [];
+  }
+}
+
+function writeRecentNoteIds(vaultId: string | null, noteIds: string[]) {
+  if (!vaultId) return;
+
+  let recentNotesByVault: Record<string, string[]> = {};
+
+  try {
+    const storedValue = localStorage.getItem(RECENT_NOTES_KEY);
+    if (storedValue) {
+      const parsedValue = JSON.parse(storedValue) as unknown;
+      if (parsedValue && typeof parsedValue === 'object' && !Array.isArray(parsedValue)) {
+        recentNotesByVault = parsedValue as Record<string, string[]>;
+      }
+    }
+  } catch {
+    // Replace malformed local data with the current vault's valid history.
+  }
+
+  recentNotesByVault[vaultId] = noteIds.slice(0, MAX_RECENT_NOTES);
+  localStorage.setItem(RECENT_NOTES_KEY, JSON.stringify(recentNotesByVault));
 }

@@ -23,6 +23,10 @@ export class GoogleDriveError extends Error {
   }
 }
 
+export function isGoogleDriveAuthError(error: unknown): error is GoogleDriveError {
+  return error instanceof GoogleDriveError && error.status === 401;
+}
+
 export async function listDriveChildren({
   accessToken,
   folderId,
@@ -54,7 +58,7 @@ export async function listDriveChildren({
     pageToken = response.nextPageToken;
   } while (pageToken);
 
-  return files;
+  return files.filter((file) => !file.name.startsWith('.'));
 }
 
 export async function getDriveFileText(accessToken: string, fileId: string): Promise<string> {

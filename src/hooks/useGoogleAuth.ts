@@ -4,12 +4,18 @@ import { GoogleTokenClient } from '../types/google';
 const GOOGLE_IDENTITY_SCRIPT = 'https://accounts.google.com/gsi/client';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 const STORED_TOKEN_KEY = 'vault-web-viewer:google-access-token';
-const AUTO_RECONNECT_KEY = 'vault-web-viewer:auto-reconnect-google';
+const LEGACY_AUTO_RECONNECT_KEY = 'vault-web-viewer:auto-reconnect-google';
 const TOKEN_EXPIRY_BUFFER_MS = 60_000;
 const DEFAULT_TOKEN_LIFETIME_MS = 55 * 60 * 1000;
 
 type AuthStatus = 'idle' | 'loading' | 'authenticated' | 'error';
-type AuthRequestType = 'interactive' | 'silent';
+type AuthRequestType = 'interactive' | 'refresh';
+
+type PendingRefresh = {
+  promise: Promise<string>;
+  reject: (reason: Error) => void;
+  resolve: (accessToken: string) => void;
+};
 
 type StoredToken = {
   accessToken: string;
@@ -18,12 +24,19 @@ type StoredToken = {
 };
 
 export function useGoogleAuth() {
-  const initialToken = readStoredToken();
-  const [accessToken, setAccessToken] = useState<string | null>(initialToken);
-  const [status, setStatus] = useState<AuthStatus>(initialToken ? 'authenticated' : 'loading');
+  const [token, setToken] = useState<StoredToken | null>(() => readStoredToken());
+  const tokenRef = useRef(token);
+  const [status, setStatus] = useState<AuthStatus>(token ? 'authenticated' : 'loading');
   const [error, setError] = useState<string | null>(null);
   const tokenClientRef = useRef<GoogleTokenClient | null>(null);
   const pendingRequestRef = useRef<AuthRequestType>('interactive');
+  const pendingRefreshRef = useRef<PendingRefresh | null>(null);
+  const accessToken = token?.accessToken ?? null;
+
+  const setCurrentToken = useCallback((nextToken: StoredToken | null) => {
+    tokenRef.current = nextToken;
+    setToken(nextToken);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -44,42 +57,49 @@ export function useGoogleAuth() {
           scope: DRIVE_SCOPE,
           callback: (response) => {
             if (response.error) {
-              if (pendingRequestRef.current === 'silent') {
-                setStatus('idle');
+              const message = response.error_description ?? response.error;
+
+              if (pendingRequestRef.current === 'refresh') {
+                pendingRefreshRef.current?.reject(new Error(message));
+                pendingRefreshRef.current = null;
+                setStatus(tokenRef.current ? 'authenticated' : 'idle');
                 setError(null);
-              } else {
-                setStatus('error');
-                setError(response.error_description ?? response.error);
+                return;
               }
+
+              setStatus('error');
+              setError(message);
               return;
             }
 
             if (response.access_token) {
-              setAccessToken(response.access_token);
-              storeToken(response.access_token, response.expires_in);
-              localStorage.setItem(AUTO_RECONNECT_KEY, 'true');
+              const nextToken = createStoredToken(response.access_token, response.expires_in);
+
+              setCurrentToken(nextToken);
+              storeToken(nextToken);
               setStatus('authenticated');
               setError(null);
+              pendingRefreshRef.current?.resolve(response.access_token);
+              pendingRefreshRef.current = null;
             }
           },
           error_callback: (authError) => {
-            if (pendingRequestRef.current === 'silent') {
-              setStatus('idle');
+            const message = authError.message ?? authError.type ?? 'Google authentication failed.';
+
+            if (pendingRequestRef.current === 'refresh') {
+              pendingRefreshRef.current?.reject(new Error(message));
+              pendingRefreshRef.current = null;
+              setStatus(tokenRef.current ? 'authenticated' : 'idle');
               setError(null);
-            } else {
-              setStatus('error');
-              setError(authError.message ?? authError.type ?? 'Google authentication failed.');
+              return;
             }
+
+            setStatus('error');
+            setError(message);
           },
         });
 
-        if (!accessToken && shouldAutoReconnect()) {
-          pendingRequestRef.current = 'silent';
-          setStatus('loading');
-          tokenClientRef.current.requestAccessToken({ prompt: '' });
-        } else if (!accessToken) {
-          setStatus('idle');
-        }
+        setStatus(tokenRef.current ? 'authenticated' : 'idle');
       })
       .catch((scriptError: unknown) => {
         if (!mounted) return;
@@ -90,7 +110,7 @@ export function useGoogleAuth() {
     return () => {
       mounted = false;
     };
-  }, [accessToken]);
+  }, [setCurrentToken]);
 
   const signIn = useCallback(() => {
     if (!tokenClientRef.current) {
@@ -102,23 +122,84 @@ export function useGoogleAuth() {
     pendingRequestRef.current = 'interactive';
     setStatus('loading');
     setError(null);
-    tokenClientRef.current?.requestAccessToken({ prompt: accessToken ? '' : 'consent' });
-  }, [accessToken]);
+    tokenClientRef.current.requestAccessToken({ prompt: '' });
+  }, []);
 
   const signOut = useCallback(() => {
-    if (accessToken && window.google) {
-      window.google.accounts.oauth2.revoke(accessToken, () => undefined);
-    }
-
-    setAccessToken(null);
-    clearStoredAuth();
+    pendingRefreshRef.current?.reject(new Error('Signed out while reconnecting to Google Drive.'));
+    pendingRefreshRef.current = null;
+    setCurrentToken(null);
+    clearStoredToken();
     setStatus('idle');
     setError(null);
-  }, [accessToken]);
+  }, [setCurrentToken]);
+
+  const reconnect = useCallback(() => {
+    if (!tokenClientRef.current) {
+      return Promise.reject(new Error('Google authentication is still loading. Try again in a moment.'));
+    }
+
+    if (pendingRefreshRef.current) {
+      return pendingRefreshRef.current.promise;
+    }
+
+    pendingRequestRef.current = 'refresh';
+    setStatus('loading');
+    setError(null);
+
+    let rejectRefresh!: (reason: Error) => void;
+    let resolveRefresh!: (accessToken: string) => void;
+    const promise = new Promise<string>((resolve, reject) => {
+      rejectRefresh = reject;
+      resolveRefresh = resolve;
+    });
+
+    pendingRefreshRef.current = { promise, reject: rejectRefresh, resolve: resolveRefresh };
+    tokenClientRef.current.requestAccessToken({ prompt: '' });
+    return promise;
+  }, []);
+
+  const ensureAccessToken = useCallback(() => {
+    if (token && token.expiresAt > Date.now() + TOKEN_EXPIRY_BUFFER_MS) {
+      return Promise.resolve(token.accessToken);
+    }
+
+    return reconnect();
+  }, [reconnect, token]);
+
+  const disconnect = useCallback(async () => {
+    if (!window.google) {
+      setStatus('error');
+      setError('Google authentication is still loading. Try again in a moment.');
+      return;
+    }
+
+    try {
+      const tokenToRevoke = await ensureAccessToken();
+      await new Promise<void>((resolve) => {
+        window.google!.accounts.oauth2.revoke(tokenToRevoke, resolve);
+      });
+      signOut();
+      localStorage.removeItem(LEGACY_AUTO_RECONNECT_KEY);
+    } catch (disconnectError) {
+      setStatus('authenticated');
+      setError(disconnectError instanceof Error ? disconnectError.message : 'Failed to disconnect Google Drive.');
+    }
+  }, [ensureAccessToken, signOut]);
+
+  const invalidateAccessToken = useCallback(() => {
+    if (!tokenRef.current) return;
+
+    setCurrentToken({ ...tokenRef.current, expiresAt: 0 });
+    clearStoredToken();
+  }, [setCurrentToken]);
 
   return {
     accessToken,
+    disconnect,
+    ensureAccessToken,
     error,
+    invalidateAccessToken,
     isAuthenticated: Boolean(accessToken),
     signIn,
     signOut,
@@ -126,7 +207,7 @@ export function useGoogleAuth() {
   };
 }
 
-function readStoredToken() {
+function readStoredToken(): StoredToken | null {
   const storedValue = sessionStorage.getItem(STORED_TOKEN_KEY);
 
   if (!storedValue) {
@@ -141,31 +222,29 @@ function readStoredToken() {
       return null;
     }
 
-    return storedToken.accessToken;
+    return storedToken;
   } catch {
     sessionStorage.removeItem(STORED_TOKEN_KEY);
     return null;
   }
 }
 
-function storeToken(accessToken: string, expiresInSeconds?: number) {
+function createStoredToken(accessToken: string, expiresInSeconds?: number): StoredToken {
   const lifetimeMs = expiresInSeconds ? expiresInSeconds * 1000 : DEFAULT_TOKEN_LIFETIME_MS;
-  const storedToken: StoredToken = {
+
+  return {
     accessToken,
-    expiresAt: Date.now() + lifetimeMs - TOKEN_EXPIRY_BUFFER_MS,
+    expiresAt: Date.now() + lifetimeMs,
     scope: DRIVE_SCOPE,
   };
+}
 
+function storeToken(storedToken: StoredToken) {
   sessionStorage.setItem(STORED_TOKEN_KEY, JSON.stringify(storedToken));
 }
 
-function clearStoredAuth() {
+function clearStoredToken() {
   sessionStorage.removeItem(STORED_TOKEN_KEY);
-  localStorage.removeItem(AUTO_RECONNECT_KEY);
-}
-
-function shouldAutoReconnect() {
-  return localStorage.getItem(AUTO_RECONNECT_KEY) === 'true';
 }
 
 function loadGoogleIdentityScript() {

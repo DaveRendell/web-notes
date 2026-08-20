@@ -1,4 +1,5 @@
 import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { Check, Edit3, FileText, Loader2, X } from 'lucide-react';
 import {
@@ -22,7 +23,7 @@ import { visit } from 'unist-util-visit';
 import { useAuth } from '../contexts/AuthContext';
 import { useVault } from '../contexts/VaultContext';
 import { useMarkdownFile } from '../hooks/useMarkdownFile';
-import { updateDriveFileText } from '../lib/googleDrive';
+import { isGoogleDriveAuthError, updateDriveFileText } from '../lib/googleDrive';
 import {
   convertWikilinksToMarkdown,
   type MarkdownTaskCheckbox,
@@ -35,13 +36,15 @@ import { FrontmatterProperties } from './FrontmatterProperties';
 import { MarkdownEditor } from './MarkdownEditor';
 
 export function MarkdownViewer() {
-  const { accessToken } = useAuth();
+  const { accessToken, ensureAccessToken, invalidateAccessToken } = useAuth();
   const { resolveWikilink, selectFile, selectedFile } = useVault();
   const { content, error, isLoading, setContent } = useMarkdownFile(accessToken, selectedFile?.id ?? null);
   const viewerRef = useRef<HTMLElement>(null);
   const isTaskSaveInFlightRef = useRef(false);
+  const isSaveInFlightRef = useRef(false);
   const [draft, setDraft] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [needsAuthReconnect, setNeedsAuthReconnect] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingTask, setIsSavingTask] = useState(false);
@@ -52,8 +55,11 @@ export function MarkdownViewer() {
   const hasUnsavedChanges = draft !== content;
 
   useEffect(() => {
+    if (isSaveInFlightRef.current) return;
+
     setDraft(content);
     setIsEditing(false);
+    setNeedsAuthReconnect(false);
     setSaveError(null);
   }, [content, selectedFile?.id]);
 
@@ -112,16 +118,28 @@ export function MarkdownViewer() {
   async function handleSave() {
     if (!accessToken || !selectedFile || !hasUnsavedChanges) return;
 
+    isSaveInFlightRef.current = true;
     setIsSaving(true);
     setSaveError(null);
 
     try {
-      await updateDriveFileText(accessToken, selectedFile.id, draft);
+      const validAccessToken = await ensureAccessToken();
+      await updateDriveFileText(validAccessToken, selectedFile.id, draft);
+
       setContent(draft);
       setIsEditing(false);
+      setNeedsAuthReconnect(false);
+      setSaveError(null);
     } catch (requestError) {
-      setSaveError(requestError instanceof Error ? requestError.message : 'Failed to save markdown file.');
+      if (isGoogleDriveAuthError(requestError)) {
+        invalidateAccessToken();
+        setNeedsAuthReconnect(true);
+        setSaveError('Google Drive access expired. Reconnect to retry; your changes are preserved.');
+      } else {
+        setSaveError(requestError instanceof Error ? requestError.message : 'Failed to save markdown file.');
+      }
     } finally {
+      isSaveInFlightRef.current = false;
       setIsSaving(false);
     }
   }
@@ -160,7 +178,8 @@ export function MarkdownViewer() {
     setSaveError(null);
 
     try {
-      await updateDriveFileText(accessToken, selectedFile.id, nextContent);
+      const validAccessToken = await ensureAccessToken();
+      await updateDriveFileText(validAccessToken, selectedFile.id, nextContent);
       logTaskDebug('toggle saved', {
         note: selectedFile.path,
         nextChecked: checked,
@@ -168,7 +187,14 @@ export function MarkdownViewer() {
       });
     } catch (requestError) {
       setContent(content);
-      setSaveError(requestError instanceof Error ? requestError.message : 'Failed to update checkbox.');
+
+      if (isGoogleDriveAuthError(requestError)) {
+        invalidateAccessToken();
+        setSaveError('Google Drive access expired. Select the checkbox again to reconnect and retry.');
+      } else {
+        setSaveError(requestError instanceof Error ? requestError.message : 'Failed to update checkbox.');
+      }
+
       logTaskDebug('toggle save failed', requestError);
     } finally {
       isTaskSaveInFlightRef.current = false;
@@ -179,6 +205,7 @@ export function MarkdownViewer() {
   function handleCancel() {
     setDraft(content);
     setIsEditing(false);
+    setNeedsAuthReconnect(false);
     setSaveError(null);
   }
 
@@ -219,7 +246,13 @@ export function MarkdownViewer() {
                 disabled={isSaving || !hasUnsavedChanges}
               >
                 {isSaving ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
-                {isSaving ? 'Saving...' : 'Save'}
+                {isSaving
+                  ? needsAuthReconnect
+                    ? 'Reconnecting...'
+                    : 'Saving...'
+                  : needsAuthReconnect
+                    ? 'Reconnect & save'
+                    : 'Save'}
               </button>
             </div>
           ) : (
@@ -292,7 +325,7 @@ export function MarkdownViewer() {
                 );
               },
             }}
-            remarkPlugins={[remarkGfm, taskMetadataPlugin]}
+            remarkPlugins={[remarkGfm, remarkBreaks, taskMetadataPlugin]}
           >
             {markdownBody}
           </ReactMarkdown>

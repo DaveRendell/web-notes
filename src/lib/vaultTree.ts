@@ -26,6 +26,10 @@ export function sortVaultNodes(nodes: VaultNode[]) {
   });
 }
 
+export function getVaultNodeDisplayName(node: VaultNode) {
+  return node.type === 'markdown' ? node.name.replace(/\.md$/i, '') : node.name;
+}
+
 function getVaultNodeType(file: DriveFile): VaultNodeType {
   if (file.mimeType === GOOGLE_FOLDER_MIME_TYPE) {
     return 'folder';

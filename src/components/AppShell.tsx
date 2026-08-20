@@ -1,4 +1,4 @@
-import { LogOut, Moon, RefreshCw, Sun } from 'lucide-react';
+import { LogOut, Moon, RefreshCw, Sun, Unplug } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useVault } from '../contexts/VaultContext';
@@ -8,7 +8,7 @@ import { Sidebar } from './Sidebar/Sidebar';
 import { VaultPicker } from './VaultPicker';
 
 export function AppShell() {
-  const { error: authError, isAuthenticated, signIn, signOut, status } = useAuth();
+  const { disconnect, error: authError, isAuthenticated, signIn, signOut, status } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { clearVault, selectedVault } = useVault();
 
@@ -37,7 +37,7 @@ export function AppShell() {
   if (!selectedVault) {
     return (
       <main className="picker-screen">
-        <TopBar onSignOut={signOut} />
+        <TopBar onDisconnect={disconnect} onSignOut={signOut} />
         <VaultPicker />
       </main>
     );
@@ -68,6 +68,16 @@ export function AppShell() {
           <button className="icon-button" type="button" onClick={signOut} aria-label="Sign out" title="Sign out">
             <LogOut size={18} />
           </button>
+          <button
+            className="icon-text-button"
+            type="button"
+            onClick={disconnect}
+            aria-label="Disconnect Google Drive"
+            title="Disconnect Google Drive and revoke access"
+          >
+            <Unplug size={18} />
+            Disconnect
+          </button>
         </div>
       </header>
       <div className="workspace">
@@ -78,7 +88,7 @@ export function AppShell() {
   );
 }
 
-function TopBar({ onSignOut }: { onSignOut: () => void }) {
+function TopBar({ onDisconnect, onSignOut }: { onDisconnect: () => void; onSignOut: () => void }) {
   const { theme, toggleTheme } = useTheme();
 
   return (
@@ -99,6 +109,16 @@ function TopBar({ onSignOut }: { onSignOut: () => void }) {
         </button>
         <button className="icon-button" type="button" onClick={onSignOut} aria-label="Sign out" title="Sign out">
           <LogOut size={18} />
+        </button>
+        <button
+          className="icon-text-button"
+          type="button"
+          onClick={onDisconnect}
+          aria-label="Disconnect Google Drive"
+          title="Disconnect Google Drive and revoke access"
+        >
+          <Unplug size={18} />
+          Disconnect
         </button>
       </div>
     </header>
