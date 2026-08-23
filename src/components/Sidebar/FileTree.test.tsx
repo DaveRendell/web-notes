@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   dropTargetForElements: vi.fn(() => () => undefined),
   monitorForElements: vi.fn(() => () => undefined),
   moveNode: vi.fn(),
+  toggleFavorite: vi.fn(),
 }));
 
 vi.mock('@atlaskit/pragmatic-drag-and-drop/element/adapter', () => ({
@@ -29,6 +30,7 @@ vi.mock('../../contexts/VaultContext', () => ({
     createNote: vi.fn(),
     deleteFolder: vi.fn(),
     deleteNote: vi.fn(),
+    favoriteNoteIds: [],
     isOnline: true,
     moveNode: mocks.moveNode,
     noteIcons: { note: '📝' },
@@ -36,6 +38,7 @@ vi.mock('../../contexts/VaultContext', () => ({
     renameNote: vi.fn(),
     selectFile: vi.fn(),
     selectedFile: null,
+    toggleFavorite: mocks.toggleFavorite,
     tree,
   }),
 }));
@@ -64,6 +67,16 @@ describe('FileTree drag and drop', () => {
       'Rename',
       'Delete folder',
     ]);
+  });
+
+  it('adds a note to favourites from its overflow menu', () => {
+    render(<FileTree nodes={tree} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Folder A' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Note' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add favourite' }));
+
+    expect(mocks.toggleFavorite).toHaveBeenCalledWith('note');
   });
 
   it('offers valid destinations through the keyboard move dialog', () => {

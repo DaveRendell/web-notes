@@ -79,6 +79,26 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('VaultContext cache mutations', () => {
+  it('persists and reorders favourites independently for the selected vault', () => {
+    const wrapper = ({ children }: { children: ReactNode }) => <VaultProvider>{children}</VaultProvider>;
+    const { result } = renderHook(() => useVault(), { wrapper });
+
+    act(() => {
+      result.current.toggleFavorite('first');
+      result.current.toggleFavorite('second');
+    });
+    expect(result.current.favoriteNoteIds).toEqual(['first', 'second']);
+
+    act(() => result.current.reorderFavorite('second', 'first', 'before'));
+    expect(result.current.favoriteNoteIds).toEqual(['second', 'first']);
+    expect(JSON.parse(localStorage.getItem('vault-web-viewer:favorite-notes') ?? '{}')).toEqual({
+      vault: ['second', 'first'],
+    });
+
+    act(() => result.current.toggleFavorite('second'));
+    expect(result.current.favoriteNoteIds).toEqual(['first']);
+  });
+
   it('creates folders at the vault root and inside existing folders', async () => {
     const wrapper = ({ children }: { children: ReactNode }) => <VaultProvider>{children}</VaultProvider>;
     const { result } = renderHook(() => useVault(), { wrapper });

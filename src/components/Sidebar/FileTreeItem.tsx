@@ -8,6 +8,8 @@ import {
   FolderPlus,
   GripVertical,
   Pencil,
+  Star,
+  StarOff,
   Trash2,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -28,12 +30,14 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
     createNote,
     deleteFolder,
     deleteNote,
+    favoriteNoteIds,
     isOnline,
     noteIcons,
     renameFolder,
     renameNote,
     selectFile,
     selectedFile,
+    toggleFavorite,
   } = useVault();
   const {
     activeNodeId,
@@ -57,6 +61,7 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
   const isInvalidTarget = Boolean(isFolder && activeNodeId && !canMoveTo(activeNodeId, node.id));
   const displayName = getVaultNodeDisplayName(node);
   const noteEmoji = node.type === 'markdown' ? noteIcons[node.id] : null;
+  const isFavorite = favoriteNoteIds.includes(node.id);
 
   useEffect(() => {
     const element = rowRef.current;
@@ -265,6 +270,17 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
                 )}
                 {node.type === 'markdown' && (
                   <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        toggleFavorite(node.id);
+                      }}
+                    >
+                      {isFavorite ? <StarOff size={14} /> : <Star size={14} />}
+                      <span>{isFavorite ? 'Remove favourite' : 'Add favourite'}</span>
+                    </button>
                     <button type="button" role="menuitem" onClick={() => runMenuAction(handleRenameNote)} disabled={!isOnline}>
                       <Pencil size={14} />
                       <span>Rename</span>

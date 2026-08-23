@@ -30,6 +30,7 @@ import { useAuth } from './AuthContext';
 
 const SELECTED_VAULT_KEY = 'vault-web-viewer:selected-vault';
 const RECENT_NOTES_KEY = 'vault-web-viewer:recent-notes';
+const FAVORITE_NOTES_KEY = 'vault-web-viewer:favorite-notes';
 const MAX_RECENT_NOTES = 25;
 
 type StoredVault = {
@@ -45,6 +46,8 @@ type VaultContextValue = {
   deleteFolder: (folder: VaultNode) => Promise<void>;
   deleteNote: (note: VaultNode) => Promise<void>;
   error: string | null;
+  favoriteNotes: VaultNode[];
+  favoriteNoteIds: string[];
   isLoading: boolean;
   isOnline: boolean;
   isRefreshing: boolean;
@@ -52,6 +55,7 @@ type VaultContextValue = {
   noteIcons: Record<string, string | null>;
   notes: VaultNode[];
   recentNotes: VaultNode[];
+  reorderFavorite: (noteId: string, targetNoteId: string, placement: 'before' | 'after') => void;
   refreshError: string | null;
   renameFolder: (folder: VaultNode, name: string) => Promise<VaultNode>;
   renameNote: (note: VaultNode, name: string) => Promise<VaultNode>;
@@ -61,6 +65,7 @@ type VaultContextValue = {
   selectedFile: VaultNode | null;
   selectedVault: StoredVault | null;
   storeSavedNote: (note: VaultNode, file: DriveFile, content: string) => void;
+  toggleFavorite: (noteId: string) => void;
   tree: VaultNode[];
 };
 
@@ -71,6 +76,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [selectedVault, setSelectedVault] = useState<StoredVault | null>(() => readStoredVault());
   const [selectedFile, setSelectedFile] = useState<VaultNode | null>(null);
   const [recentNoteIds, setRecentNoteIds] = useState<string[]>(() => readRecentNoteIds(selectedVault?.id ?? null));
+  const [favoriteNoteIds, setFavoriteNoteIds] = useState<string[]>(() => readFavoriteNoteIds(selectedVault?.id ?? null));
   const [routePath, setRoutePath] = useState(() => getNotePathFromHash());
   const [noteIcons, setNoteIcons] = useState<Record<string, string | null>>({});
   const isOnline = useOnlineStatus();
@@ -89,6 +95,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       return note ? [note] : [];
     });
   }, [notes, recentNoteIds]);
+  const favoriteNotes = useMemo(() => {
+    const notesById = new Map(notes.map((note) => [note.id, note]));
+    return favoriteNoteIds.flatMap((id) => {
+      const note = notesById.get(id);
+      return note ? [note] : [];
+    });
+  }, [favoriteNoteIds, notes]);
   const vaultIndex = useMemo(() => createVaultIndex(tree), [tree]);
 
   const selectVault = useCallback((folder: Pick<DriveFile, 'id' | 'name'>) => {
@@ -97,6 +110,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setSelectedVault(vault);
     setSelectedFile(null);
     setRecentNoteIds(readRecentNoteIds(vault.id));
+    setFavoriteNoteIds(readFavoriteNoteIds(vault.id));
     setRoutePath(null);
     clearNoteHash();
   }, []);
@@ -106,6 +120,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setSelectedVault(null);
     setSelectedFile(null);
     setRecentNoteIds([]);
+    setFavoriteNoteIds([]);
     setRoutePath(null);
     clearNoteHash();
   }, []);
@@ -135,6 +150,38 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setRoutePath(file.path);
     setNoteHash(file.path);
   }, []);
+
+  const toggleFavorite = useCallback(
+    (noteId: string) => {
+      if (!selectedVault) return;
+
+      setFavoriteNoteIds((currentIds) => {
+        const nextIds = currentIds.includes(noteId)
+          ? currentIds.filter((id) => id !== noteId)
+          : [...currentIds, noteId];
+        writeFavoriteNoteIds(selectedVault.id, nextIds);
+        return nextIds;
+      });
+    },
+    [selectedVault],
+  );
+
+  const reorderFavorite = useCallback(
+    (noteId: string, targetNoteId: string, placement: 'before' | 'after') => {
+      if (!selectedVault || noteId === targetNoteId) return;
+
+      setFavoriteNoteIds((currentIds) => {
+        if (!currentIds.includes(noteId) || !currentIds.includes(targetNoteId)) return currentIds;
+
+        const nextIds = currentIds.filter((id) => id !== noteId);
+        const targetIndex = nextIds.indexOf(targetNoteId);
+        nextIds.splice(targetIndex + (placement === 'after' ? 1 : 0), 0, noteId);
+        writeFavoriteNoteIds(selectedVault.id, nextIds);
+        return nextIds;
+      });
+    },
+    [selectedVault],
+  );
 
   const resolveWikilink = useCallback(
     (target: string) => {
@@ -258,6 +305,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         writeRecentNoteIds(selectedVault?.id ?? null, nextIds);
         return nextIds;
       });
+      setFavoriteNoteIds((currentIds) => {
+        const nextIds = currentIds.filter((id) => id !== note.id);
+        writeFavoriteNoteIds(selectedVault?.id ?? null, nextIds);
+        return nextIds;
+      });
       setNoteIcons((currentIcons) => {
         const nextIcons = { ...currentIcons };
         delete nextIcons[note.id];
@@ -298,6 +350,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setRecentNoteIds((currentIds) => {
         const nextIds = currentIds.filter((id) => !removedNoteIds.has(id));
         writeRecentNoteIds(selectedVault?.id ?? null, nextIds);
+        return nextIds;
+      });
+      setFavoriteNoteIds((currentIds) => {
+        const nextIds = currentIds.filter((id) => !removedNoteIds.has(id));
+        writeFavoriteNoteIds(selectedVault?.id ?? null, nextIds);
         return nextIds;
       });
       setNoteIcons((currentIcons) => {
@@ -511,6 +568,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       deleteFolder,
       deleteNote,
       error,
+      favoriteNoteIds,
+      favoriteNotes,
       isLoading,
       isOnline,
       isRefreshing,
@@ -518,6 +577,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       noteIcons,
       notes,
       recentNotes,
+      reorderFavorite,
       refreshError,
       renameFolder,
       renameNote,
@@ -527,6 +587,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       selectedFile,
       selectedVault,
       storeSavedNote,
+      toggleFavorite,
       tree,
     }),
     [
@@ -537,6 +598,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       deleteFolder,
       deleteNote,
       error,
+      favoriteNoteIds,
+      favoriteNotes,
       isLoading,
       isOnline,
       isRefreshing,
@@ -544,6 +607,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       noteIcons,
       notes,
       recentNotes,
+      reorderFavorite,
       refreshError,
       renameFolder,
       renameNote,
@@ -553,6 +617,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       selectedFile,
       selectedVault,
       storeSavedNote,
+      toggleFavorite,
       tree,
     ],
   );
@@ -773,4 +838,43 @@ function writeRecentNoteIds(vaultId: string | null, noteIds: string[]) {
 
   recentNotesByVault[vaultId] = noteIds.slice(0, MAX_RECENT_NOTES);
   localStorage.setItem(RECENT_NOTES_KEY, JSON.stringify(recentNotesByVault));
+}
+
+function readFavoriteNoteIds(vaultId: string | null): string[] {
+  if (!vaultId) return [];
+
+  try {
+    const storedValue = localStorage.getItem(FAVORITE_NOTES_KEY);
+    if (!storedValue) return [];
+
+    const favoriteNotesByVault = JSON.parse(storedValue) as Record<string, unknown>;
+    const storedIds = favoriteNotesByVault[vaultId];
+    return Array.isArray(storedIds)
+      ? storedIds.filter((id): id is string => typeof id === 'string')
+      : [];
+  } catch {
+    localStorage.removeItem(FAVORITE_NOTES_KEY);
+    return [];
+  }
+}
+
+function writeFavoriteNoteIds(vaultId: string | null, noteIds: string[]) {
+  if (!vaultId) return;
+
+  let favoriteNotesByVault: Record<string, string[]> = {};
+
+  try {
+    const storedValue = localStorage.getItem(FAVORITE_NOTES_KEY);
+    if (storedValue) {
+      const parsedValue = JSON.parse(storedValue) as unknown;
+      if (parsedValue && typeof parsedValue === 'object' && !Array.isArray(parsedValue)) {
+        favoriteNotesByVault = parsedValue as Record<string, string[]>;
+      }
+    }
+  } catch {
+    // Replace malformed local data with the current vault's valid favourites.
+  }
+
+  favoriteNotesByVault[vaultId] = noteIds;
+  localStorage.setItem(FAVORITE_NOTES_KEY, JSON.stringify(favoriteNotesByVault));
 }

@@ -6,14 +6,18 @@ import { VaultNode } from '../types/vault';
 const MAX_RESULTS = 8;
 
 export function NoteSearch() {
-  const { notes, selectFile } = useVault();
+  const { notes, recentNotes, selectFile } = useVault();
   const [query, setQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const blurTimeoutRef = useRef<number | null>(null);
   const listboxId = useId();
-  const results = useMemo(() => searchNotes(notes, query), [notes, query]);
-  const isOpen = isFocused && query.trim().length > 0;
+  const hasQuery = query.trim().length > 0;
+  const results = useMemo(
+    () => hasQuery ? searchNotes(notes, query) : recentNotes.slice(0, MAX_RESULTS),
+    [hasQuery, notes, query, recentNotes],
+  );
+  const isOpen = isFocused;
 
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
     setQuery(event.target.value);
@@ -80,8 +84,9 @@ export function NoteSearch() {
       />
       {isOpen && (
         <div className="note-search-results" id={listboxId} role="listbox">
+          {!hasQuery && results.length > 0 && <div className="note-search-results-label">Recent notes</div>}
           {results.length === 0 ? (
-            <div className="note-search-empty">No matching notes</div>
+            <div className="note-search-empty">{hasQuery ? 'No matching notes' : 'No recent notes'}</div>
           ) : (
             results.map((note, index) => (
               <button
