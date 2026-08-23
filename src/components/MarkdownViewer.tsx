@@ -37,14 +37,24 @@ import { FrontmatterProperties } from './FrontmatterProperties';
 import { MarkdownEditor } from './MarkdownEditor';
 
 export function MarkdownViewer() {
-  const { accessToken, ensureAccessToken, invalidateAccessToken } = useAuth();
-  const { resolveWikilink, selectFile, selectedFile } = useVault();
-  const { content, error, isLoading, setContent } = useMarkdownFile(accessToken, selectedFile?.id ?? null);
+  const { accessToken, accountId, ensureAccessToken, invalidateAccessToken } = useAuth();
+  const { isOnline, resolveWikilink, selectFile, selectedFile, selectedVault, storeSavedNote } = useVault();
+  const { cacheContent, content, error, isLoading, isRefreshing, refreshError, setContent } = useMarkdownFile(
+    accessToken,
+    accountId,
+    selectedVault?.id ?? null,
+    selectedFile,
+  );
   const viewerRef = useRef<HTMLElement>(null);
   const isTaskSaveInFlightRef = useRef(false);
   const isSaveInFlightRef = useRef(false);
   const [draft, setDraft] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const draftRef = useRef(draft);
+  const isEditingRef = useRef(isEditing);
+  const previousContentRef = useRef(content);
+  const previousFileIdRef = useRef(selectedFile?.id);
+  const [hasRemoteUpdate, setHasRemoteUpdate] = useState(false);
   const [needsAuthReconnect, setNeedsAuthReconnect] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -55,11 +65,39 @@ export function MarkdownViewer() {
   const taskMetadataPlugin = useMemo(() => createTaskMetadataPlugin(taskCheckboxes), [taskCheckboxes]);
   const hasUnsavedChanges = draft !== content;
 
+  draftRef.current = draft;
+  isEditingRef.current = isEditing;
+
   useEffect(() => {
+    const previousContent = previousContentRef.current;
+    const fileChanged = previousFileIdRef.current !== selectedFile?.id;
+    previousContentRef.current = content;
+    previousFileIdRef.current = selectedFile?.id;
+
+    if (fileChanged) {
+      setDraft(content);
+      setIsEditing(false);
+      setHasRemoteUpdate(false);
+      setNeedsAuthReconnect(false);
+      setSaveError(null);
+      return;
+    }
+
     if (isSaveInFlightRef.current) return;
+
+    if (isEditingRef.current) {
+      if (content !== previousContent && draftRef.current !== previousContent) {
+        setHasRemoteUpdate(true);
+        return;
+      }
+
+      setDraft(content);
+      return;
+    }
 
     setDraft(content);
     setIsEditing(false);
+    setHasRemoteUpdate(false);
     setNeedsAuthReconnect(false);
     setSaveError(null);
   }, [content, selectedFile?.id]);
@@ -117,7 +155,7 @@ export function MarkdownViewer() {
   }
 
   async function handleSave() {
-    if (!accessToken || !selectedFile || !hasUnsavedChanges) return;
+    if (!accessToken || !selectedFile || !hasUnsavedChanges || !isOnline) return;
 
     isSaveInFlightRef.current = true;
     setIsSaving(true);
@@ -125,10 +163,12 @@ export function MarkdownViewer() {
 
     try {
       const validAccessToken = await ensureAccessToken();
-      await updateDriveFileText(validAccessToken, selectedFile.id, draft);
+      const updatedFile = await updateDriveFileText(validAccessToken, selectedFile.id, draft);
 
-      setContent(draft);
+      cacheContent(draft, updatedFile.modifiedTime);
+      storeSavedNote(selectedFile, updatedFile, draft);
       setIsEditing(false);
+      setHasRemoteUpdate(false);
       setNeedsAuthReconnect(false);
       setSaveError(null);
     } catch (requestError) {
@@ -180,7 +220,9 @@ export function MarkdownViewer() {
 
     try {
       const validAccessToken = await ensureAccessToken();
-      await updateDriveFileText(validAccessToken, selectedFile.id, nextContent);
+      const updatedFile = await updateDriveFileText(validAccessToken, selectedFile.id, nextContent);
+      cacheContent(nextContent, updatedFile.modifiedTime);
+      storeSavedNote(selectedFile, updatedFile, nextContent);
       logTaskDebug('toggle saved', {
         note: selectedFile.path,
         nextChecked: checked,
@@ -206,6 +248,7 @@ export function MarkdownViewer() {
   function handleCancel() {
     setDraft(content);
     setIsEditing(false);
+    setHasRemoteUpdate(false);
     setNeedsAuthReconnect(false);
     setSaveError(null);
   }
@@ -242,7 +285,7 @@ export function MarkdownViewer() {
                 className="primary-button compact"
                 type="button"
                 onClick={handleSave}
-                disabled={isSaving || !hasUnsavedChanges}
+                disabled={isSaving || !hasUnsavedChanges || !isOnline}
               >
                 {isSaving ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
                 {isSaving
@@ -263,7 +306,7 @@ export function MarkdownViewer() {
                 setIsEditing(true);
                 setSaveError(null);
               }}
-              disabled={isLoading || Boolean(error)}
+              disabled={isLoading || Boolean(error) || !isOnline}
             >
               <Edit3 size={16} />
               Edit
@@ -278,7 +321,26 @@ export function MarkdownViewer() {
           <span>Loading note...</span>
         </div>
       )}
+      {isRefreshing && (
+        <div className="status-row viewer-status">
+          <Loader2 className="spin" size={16} />
+          <span>Refreshing note from Google Drive...</span>
+        </div>
+      )}
       {error && <p className="error-text viewer-status">{error}</p>}
+      {!isOnline && (
+        <p className="warning-text viewer-status">
+          Offline: cached notes are read-only until the internet connection returns.
+        </p>
+      )}
+      {refreshError && (
+        <p className="warning-text viewer-status">Showing cached content; Drive refresh failed: {refreshError}</p>
+      )}
+      {hasRemoteUpdate && (
+        <p className="warning-text viewer-status">
+          This note changed in Google Drive while you were editing. Saving will overwrite it with your draft.
+        </p>
+      )}
       {saveError && <p className="error-text viewer-status">{saveError}</p>}
       {!isLoading && !error && isEditing && (
         <section className="editor-pane" aria-label="Raw markdown editor">
@@ -315,6 +377,7 @@ export function MarkdownViewer() {
                   <li {...props}>
                     {taskCheckbox
                       ? injectTaskCheckboxHandler(children, {
+                          isOnline,
                           isSavingTask,
                           onToggle: (checked) => void handleTaskToggle(taskCheckbox, checked),
                           taskCheckbox,
@@ -405,6 +468,7 @@ function getTaskCheckboxFromNode(node: Element | undefined): MarkdownTaskCheckbo
 function injectTaskCheckboxHandler(
   children: ReactNode,
   options: {
+    isOnline: boolean;
     isSavingTask: boolean;
     onToggle: (checked: boolean) => void;
     taskCheckbox: MarkdownTaskCheckbox;
@@ -420,7 +484,7 @@ function injectTaskCheckboxHandler(
       logTaskDebug('render task checkbox', options.taskCheckbox);
 
       return cloneElement(child as ReactElement<InputHTMLAttributes<HTMLInputElement>>, {
-        disabled: options.isSavingTask,
+        disabled: options.isSavingTask || !options.isOnline,
         onChange: (event: ChangeEvent<HTMLInputElement>) => options.onToggle(event.currentTarget.checked),
       } satisfies InputHTMLAttributes<HTMLInputElement>);
     }

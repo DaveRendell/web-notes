@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GoogleTokenClient } from '../types/google';
+import { getDriveAccountId } from '../lib/googleDrive';
+import { deleteAccountCache } from '../lib/vaultCache';
 
 const GOOGLE_IDENTITY_SCRIPT = 'https://accounts.google.com/gsi/client';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
@@ -19,6 +21,7 @@ type PendingRefresh = {
 
 type StoredToken = {
   accessToken: string;
+  accountId?: string;
   expiresAt: number;
   scope: string;
 };
@@ -27,11 +30,13 @@ export function useGoogleAuth() {
   const [token, setToken] = useState<StoredToken | null>(() => readStoredToken());
   const tokenRef = useRef(token);
   const [status, setStatus] = useState<AuthStatus>(token ? 'authenticated' : 'loading');
+  const [isAccountResolved, setIsAccountResolved] = useState(Boolean(token?.accountId));
   const [error, setError] = useState<string | null>(null);
   const tokenClientRef = useRef<GoogleTokenClient | null>(null);
   const pendingRequestRef = useRef<AuthRequestType>('interactive');
   const pendingRefreshRef = useRef<PendingRefresh | null>(null);
   const accessToken = token?.accessToken ?? null;
+  const accountId = token?.accountId ?? null;
 
   const setCurrentToken = useCallback((nextToken: StoredToken | null) => {
     tokenRef.current = nextToken;
@@ -40,6 +45,26 @@ export function useGoogleAuth() {
 
   useEffect(() => {
     let mounted = true;
+
+    function resolveAccount(nextToken: StoredToken) {
+      setIsAccountResolved(false);
+
+      void getDriveAccountId(nextToken.accessToken)
+        .then((resolvedAccountId) => {
+          if (!mounted || tokenRef.current?.accessToken !== nextToken.accessToken) return;
+
+          const identifiedToken = { ...nextToken, accountId: resolvedAccountId };
+          setCurrentToken(identifiedToken);
+          storeToken(identifiedToken);
+          setIsAccountResolved(true);
+        })
+        .catch((accountError: unknown) => {
+          if (!mounted) return;
+
+          console.warn('[auth] Failed to identify the Google Drive account; cache disabled.', accountError);
+          setIsAccountResolved(true);
+        });
+    }
 
     loadGoogleIdentityScript()
       .then(() => {
@@ -73,7 +98,11 @@ export function useGoogleAuth() {
             }
 
             if (response.access_token) {
-              const nextToken = createStoredToken(response.access_token, response.expires_in);
+              const nextToken = createStoredToken(
+                response.access_token,
+                response.expires_in,
+                tokenRef.current?.accountId,
+              );
 
               setCurrentToken(nextToken);
               storeToken(nextToken);
@@ -81,6 +110,12 @@ export function useGoogleAuth() {
               setError(null);
               pendingRefreshRef.current?.resolve(response.access_token);
               pendingRefreshRef.current = null;
+
+              if (nextToken.accountId) {
+                setIsAccountResolved(true);
+              } else {
+                resolveAccount(nextToken);
+              }
             }
           },
           error_callback: (authError) => {
@@ -100,6 +135,10 @@ export function useGoogleAuth() {
         });
 
         setStatus(tokenRef.current ? 'authenticated' : 'idle');
+
+        if (tokenRef.current && !tokenRef.current.accountId) {
+          resolveAccount(tokenRef.current);
+        }
       })
       .catch((scriptError: unknown) => {
         if (!mounted) return;
@@ -130,6 +169,7 @@ export function useGoogleAuth() {
     pendingRefreshRef.current = null;
     setCurrentToken(null);
     clearStoredToken();
+    setIsAccountResolved(false);
     setStatus('idle');
     setError(null);
   }, [setCurrentToken]);
@@ -179,13 +219,16 @@ export function useGoogleAuth() {
       await new Promise<void>((resolve) => {
         window.google!.accounts.oauth2.revoke(tokenToRevoke, resolve);
       });
+      if (accountId) {
+        await deleteAccountCache(accountId);
+      }
       signOut();
       localStorage.removeItem(LEGACY_AUTO_RECONNECT_KEY);
     } catch (disconnectError) {
       setStatus('authenticated');
       setError(disconnectError instanceof Error ? disconnectError.message : 'Failed to disconnect Google Drive.');
     }
-  }, [ensureAccessToken, signOut]);
+  }, [accountId, ensureAccessToken, signOut]);
 
   const invalidateAccessToken = useCallback(() => {
     if (!tokenRef.current) return;
@@ -196,10 +239,12 @@ export function useGoogleAuth() {
 
   return {
     accessToken,
+    accountId,
     disconnect,
     ensureAccessToken,
     error,
     invalidateAccessToken,
+    isAccountResolved,
     isAuthenticated: Boolean(accessToken),
     signIn,
     signOut,
@@ -229,11 +274,12 @@ function readStoredToken(): StoredToken | null {
   }
 }
 
-function createStoredToken(accessToken: string, expiresInSeconds?: number): StoredToken {
+function createStoredToken(accessToken: string, expiresInSeconds?: number, accountId?: string): StoredToken {
   const lifetimeMs = expiresInSeconds ? expiresInSeconds * 1000 : DEFAULT_TOKEN_LIFETIME_MS;
 
   return {
     accessToken,
+    accountId,
     expiresAt: Date.now() + lifetimeMs,
     scope: DRIVE_SCOPE,
   };

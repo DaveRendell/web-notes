@@ -792,6 +792,10 @@ button {
   color: #b42318;
 }
 
+.warning-text {
+  color: #8a4b08;
+}
+
 .status-row {
   display: flex;
   align-items: center;
@@ -803,6 +807,12 @@ button {
 .viewer-status {
   margin: 20px 28px;
   padding: 0;
+}
+
+.sidebar-sync-status {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  font-size: 0.8rem;
 }
 
 .spin {
@@ -856,6 +866,10 @@ button {
 [data-theme="dark"] .recent-notes-header h3,
 [data-theme="dark"] .recent-notes-empty {
   color: #aab4c0;
+}
+
+[data-theme="dark"] .warning-text {
+  color: #e5b568;
 }
 
 [data-theme="dark"] .eyebrow,

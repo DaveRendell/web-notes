@@ -1,10 +1,10 @@
-import { AlertCircle, FilePlus2, Loader2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle, FilePlus2, Loader2 } from 'lucide-react';
 import { useVault } from '../../contexts/VaultContext';
 import { FileTree } from './FileTree';
 import { RecentNotes } from './RecentNotes';
 
 export function Sidebar() {
-  const { createNote, error, isLoading, tree } = useVault();
+  const { createNote, error, isLoading, isOnline, isRefreshing, refreshError, tree } = useVault();
 
   async function handleCreateRootNote() {
     const name = window.prompt('New note name');
@@ -25,8 +25,9 @@ export function Sidebar() {
           className="icon-button compact-icon"
           type="button"
           onClick={handleCreateRootNote}
+          disabled={!isOnline}
           aria-label="Add note"
-          title="Add note"
+          title={isOnline ? 'Add note' : 'Reconnect to the internet to add a note'}
         >
           <FilePlus2 size={16} />
         </button>
@@ -36,6 +37,18 @@ export function Sidebar() {
         <div className="status-row">
           <Loader2 className="spin" size={16} />
           <span>Loading vault...</span>
+        </div>
+      )}
+      {!isLoading && isRefreshing && (
+        <div className="status-row sidebar-sync-status">
+          <Loader2 className="spin" size={16} />
+          <span>Refreshing from Google Drive...</span>
+        </div>
+      )}
+      {refreshError && (
+        <div className="status-row warning-text sidebar-sync-status">
+          <AlertTriangle size={16} />
+          <span>Showing cached files; Drive refresh failed.</span>
         </div>
       )}
       {error && (

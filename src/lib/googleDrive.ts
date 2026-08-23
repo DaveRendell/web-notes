@@ -7,6 +7,12 @@ type DriveListResponse = {
   nextPageToken?: string;
 };
 
+type DriveAboutResponse = {
+  user?: {
+    permissionId?: string;
+  };
+};
+
 type ListChildrenOptions = {
   accessToken: string;
   folderId: string;
@@ -25,6 +31,18 @@ export class GoogleDriveError extends Error {
 
 export function isGoogleDriveAuthError(error: unknown): error is GoogleDriveError {
   return error instanceof GoogleDriveError && error.status === 401;
+}
+
+export async function getDriveAccountId(accessToken: string): Promise<string> {
+  const params = new URLSearchParams({ fields: 'user(permissionId)' });
+  const response = await driveFetch<DriveAboutResponse>(`${DRIVE_API_ROOT}/about?${params.toString()}`, accessToken);
+  const accountId = response.user?.permissionId;
+
+  if (!accountId) {
+    throw new GoogleDriveError('Google Drive did not return an account identifier.');
+  }
+
+  return accountId;
 }
 
 export async function listDriveChildren({
