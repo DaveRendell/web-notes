@@ -24,6 +24,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useVault } from '../contexts/VaultContext';
 import { useMarkdownFile } from '../hooks/useMarkdownFile';
 import { isGoogleDriveAuthError, updateDriveFileText } from '../lib/googleDrive';
+import { getVaultNodeDisplayName } from '../lib/vaultTree';
 import {
   convertWikilinksToMarkdown,
   type MarkdownTaskCheckbox,
@@ -223,11 +224,9 @@ export function MarkdownViewer() {
     <main className="viewer" ref={viewerRef}>
       <div className="viewer-header">
         <div>
-          <p className="eyebrow">{isEditing ? 'Editing markdown' : 'Markdown'}</p>
-          <h2>{selectedFile.name}</h2>
+          <h2 title={selectedFile.path}>{getVaultNodeDisplayName(selectedFile)}</h2>
         </div>
         <div className="viewer-header-actions">
-          <span className="path-label">{selectedFile.path}</span>
           {isEditing ? (
             <div className="edit-actions">
               <button

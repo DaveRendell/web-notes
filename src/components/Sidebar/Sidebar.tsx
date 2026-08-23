@@ -18,7 +18,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="sidebar" aria-label="Vault files">
+    <aside className="sidebar" id="vault-sidebar" aria-label="Vault files">
       <div className="sidebar-header">
         <h2>Files</h2>
         <button
