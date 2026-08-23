@@ -6,7 +6,7 @@ import { getVaultNodeDisplayName } from '../../lib/vaultTree';
 const DEFAULT_VISIBLE_NOTES = 5;
 
 export function RecentNotes() {
-  const { recentNotes, selectFile, selectedFile, selectedVault } = useVault();
+  const { noteIcons, recentNotes, selectFile, selectedFile, selectedVault } = useVault();
   const [isExpanded, setIsExpanded] = useState(false);
   const visibleNotes = isExpanded ? recentNotes : recentNotes.slice(0, DEFAULT_VISIBLE_NOTES);
   const canExpand = recentNotes.length > DEFAULT_VISIBLE_NOTES;
@@ -44,7 +44,11 @@ export function RecentNotes() {
                 onClick={() => selectFile(note)}
                 title={note.path}
               >
-                <FileText size={15} />
+                {noteIcons[note.id] ? (
+                  <span className="note-emoji" aria-hidden="true">{noteIcons[note.id]}</span>
+                ) : (
+                  <FileText size={15} />
+                )}
                 <span>{getVaultNodeDisplayName(note)}</span>
               </button>
             </li>

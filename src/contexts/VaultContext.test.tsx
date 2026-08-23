@@ -9,8 +9,10 @@ const mocks = vi.hoisted(() => ({
   createDriveMarkdownFile: vi.fn(),
   deleteDriveFile: vi.fn(),
   deleteNoteContent: vi.fn(),
+  getNoteIcons: vi.fn(),
   moveDriveFile: vi.fn(),
   putNoteContent: vi.fn(),
+  putNoteIcon: vi.fn(),
   putVaultTree: vi.fn(),
   renameDriveFile: vi.fn(),
   renameDriveFolder: vi.fn(),
@@ -35,7 +37,9 @@ vi.mock('../lib/googleDrive', () => ({
 }));
 vi.mock('../lib/vaultCache', () => ({
   deleteNoteContent: mocks.deleteNoteContent,
+  getNoteIcons: mocks.getNoteIcons,
   putNoteContent: mocks.putNoteContent,
+  putNoteIcon: mocks.putNoteIcon,
   updateNoteContentVersion: mocks.updateNoteContentVersion,
 }));
 vi.mock('../hooks/useVaultTree', async () => {
@@ -59,6 +63,7 @@ import { useVault, VaultProvider } from './VaultContext';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.getNoteIcons.mockResolvedValue([]);
   localStorage.clear();
   window.history.replaceState(null, '', window.location.pathname);
   localStorage.setItem('vault-web-viewer:selected-vault', JSON.stringify({ id: 'vault', name: 'My vault' }));
@@ -124,6 +129,29 @@ describe('VaultContext cache mutations', () => {
     await act(async () => result.current.deleteNote(result.current.tree[0]));
     await waitFor(() => expect(result.current.tree).toEqual([]));
     expect(mocks.deleteNoteContent).toHaveBeenCalledWith('account', 'vault', 'note');
+  });
+
+  it('derives and caches a note icon only when content is supplied', async () => {
+    const wrapper = ({ children }: { children: ReactNode }) => <VaultProvider>{children}</VaultProvider>;
+    const { result } = renderHook(() => useVault(), { wrapper });
+
+    act(() => result.current.cacheNoteIcon('note', '---\ntitle: ignored\n---\n# 🎯 Goal'));
+
+    expect(result.current.noteIcons.note).toBe('🎯');
+    expect(mocks.putNoteIcon).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: 'account', emoji: '🎯', fileId: 'note', vaultId: 'vault' }),
+    );
+  });
+
+  it('loads previously cached note icons for the selected account and vault', async () => {
+    mocks.getNoteIcons.mockResolvedValue([
+      { accountId: 'account', vaultId: 'vault', fileId: 'note', emoji: '📚', cachedAt: 1 },
+    ]);
+    const wrapper = ({ children }: { children: ReactNode }) => <VaultProvider>{children}</VaultProvider>;
+    const { result } = renderHook(() => useVault(), { wrapper });
+
+    await waitFor(() => expect(result.current.noteIcons.note).toBe('📚'));
+    expect(mocks.getNoteIcons).toHaveBeenCalledWith('account', 'vault');
   });
 
   it('renames a folder and rebases all descendant paths', async () => {

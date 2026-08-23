@@ -71,6 +71,20 @@ export function parseMarkdownWithFrontmatter(content: string): ParsedMarkdown {
   }
 }
 
+export function findLeadingEmoji(content: string): string | null {
+  const { body } = parseMarkdownWithFrontmatter(content);
+  const tree = markdownParser.runSync(markdownParser.parse(body)) as Root;
+  const visibleText = findFirstVisibleText(tree as MarkdownNode);
+  if (!visibleText) return null;
+
+  const segments = new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(visibleText.trimStart());
+  const firstSegment = segments[Symbol.iterator]().next().value?.segment;
+
+  return firstSegment && /[\p{Extended_Pictographic}\p{Regional_Indicator}\u20e3]/u.test(firstSegment)
+    ? firstSegment
+    : null;
+}
+
 export function convertWikilinksToMarkdown(content: string) {
   return content.replace(WIKILINK_PATTERN, (fullMatch, rawLink: string) => {
     if (fullMatch.startsWith('!')) {
@@ -136,6 +150,30 @@ function parseWikilink(rawLink: string) {
     target: targetWithoutHeading,
     label: (rawLabel ?? getDefaultWikilinkLabel(targetWithoutHeading)).trim(),
   };
+}
+
+type MarkdownNode = {
+  type: string;
+  value?: unknown;
+  children?: MarkdownNode[];
+};
+
+function findFirstVisibleText(node: MarkdownNode): string | null {
+  if ((node.type === 'text' || node.type === 'inlineCode' || node.type === 'code') && typeof node.value === 'string') {
+    return node.value.trim() ? node.value : null;
+  }
+
+  if (node.type === 'html' && typeof node.value === 'string') {
+    const visibleHtmlText = node.value.replace(/<[^>]*>/g, '');
+    if (visibleHtmlText.trim()) return visibleHtmlText;
+  }
+
+  for (const child of node.children ?? []) {
+    const text = findFirstVisibleText(child);
+    if (text) return text;
+  }
+
+  return null;
 }
 
 function getFrontmatterEndOffset(content: string) {

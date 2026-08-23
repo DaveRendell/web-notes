@@ -29,6 +29,7 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
     deleteFolder,
     deleteNote,
     isOnline,
+    noteIcons,
     renameFolder,
     renameNote,
     selectFile,
@@ -55,6 +56,7 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
   const isDropTarget = dropTargetId === node.id;
   const isInvalidTarget = Boolean(isFolder && activeNodeId && !canMoveTo(activeNodeId, node.id));
   const displayName = getVaultNodeDisplayName(node);
+  const noteEmoji = node.type === 'markdown' ? noteIcons[node.id] : null;
 
   useEffect(() => {
     const element = rowRef.current;
@@ -217,7 +219,13 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
           ) : (
             <span className="tree-spacer" />
           )}
-          {isFolder ? <Folder size={16} /> : <FileText size={16} />}
+          {isFolder ? (
+            <Folder size={16} />
+          ) : noteEmoji ? (
+            <span className="note-emoji" aria-hidden="true">{noteEmoji}</span>
+          ) : (
+            <FileText size={16} />
+          )}
           <span>{displayName}</span>
         </button>
         {isMovable && (

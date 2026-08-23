@@ -31,6 +31,7 @@ vi.mock('../../contexts/VaultContext', () => ({
     deleteNote: vi.fn(),
     isOnline: true,
     moveNode: mocks.moveNode,
+    noteIcons: { note: '📝' },
     renameFolder: vi.fn(),
     renameNote: vi.fn(),
     selectFile: vi.fn(),
@@ -46,6 +47,13 @@ beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
 describe('FileTree drag and drop', () => {
+  it('uses a cached emoji in place of the generic note icon', () => {
+    const { container } = render(<FileTree nodes={tree} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Folder A' }));
+
+    expect(container.querySelector('.note-emoji')?.textContent).toBe('📝');
+  });
+
   it('keeps folder actions in a compact overflow menu', () => {
     render(<FileTree nodes={tree} />);
 

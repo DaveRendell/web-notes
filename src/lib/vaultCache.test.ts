@@ -14,8 +14,10 @@ import {
   deleteNoteContent,
   deleteVault,
   getNoteContent,
+  getNoteIcons,
   getVaultTree,
   putNoteContent,
+  putNoteIcon,
   putVaultTree,
   updateNoteContentVersion,
 } from './vaultCache';
@@ -51,7 +53,7 @@ describe('vault cache database', () => {
     const database = await getVaultCacheDatabase();
 
     expect(database.version).toBe(VAULT_CACHE_DATABASE_VERSION);
-    expect([...database.objectStoreNames]).toEqual(['noteContents', 'vaults']);
+    expect([...database.objectStoreNames]).toEqual(['noteContents', 'noteIcons', 'vaults']);
   });
 
   it('stores typed vault trees and note bodies with compound-key isolation', async () => {
@@ -111,24 +113,66 @@ describe('vault cache database', () => {
     expect(await getNoteContent('account-a', 'vault-1', 'keep')).toBeNull();
   });
 
+  it('stores note icons separately from note bodies and prunes them with missing notes', async () => {
+    await putNoteIcon({
+      accountId: 'account-a',
+      vaultId: 'vault-1',
+      fileId: 'emoji',
+      emoji: '📝',
+      cachedAt: 1,
+    });
+    await putNoteIcon({
+      accountId: 'account-a',
+      vaultId: 'vault-1',
+      fileId: 'plain',
+      emoji: null,
+      cachedAt: 2,
+    });
+    await putNoteIcon({
+      accountId: 'account-b',
+      vaultId: 'vault-1',
+      fileId: 'emoji',
+      emoji: '🔒',
+      cachedAt: 3,
+    });
+
+    expect(await getNoteIcons('account-a', 'vault-1')).toEqual([
+      expect.objectContaining({ emoji: '📝', fileId: 'emoji' }),
+      expect.objectContaining({ emoji: null, fileId: 'plain' }),
+    ]);
+
+    await deleteMissingNoteContents('account-a', 'vault-1', new Set(['emoji']));
+    expect(await getNoteIcons('account-a', 'vault-1')).toEqual([
+      expect.objectContaining({ emoji: '📝', fileId: 'emoji' }),
+    ]);
+    expect(await getNoteIcons('account-b', 'vault-1')).toHaveLength(1);
+
+    await deleteNoteContent('account-a', 'vault-1', 'emoji');
+    expect(await getNoteIcons('account-a', 'vault-1')).toEqual([]);
+  });
+
   it('deletes one vault or every record for one account without crossing account boundaries', async () => {
     for (const accountId of ['account-a', 'account-b']) {
       for (const vaultId of ['vault-1', 'vault-2']) {
         await putVaultTree(createCachedVaultRecord(accountId, vaultId, vaultId, [note(`${accountId}-${vaultId}`)]));
         await putNoteContent({ accountId, vaultId, fileId: 'note', content: 'body', cachedAt: 1 });
+        await putNoteIcon({ accountId, vaultId, fileId: 'note', emoji: '📝', cachedAt: 1 });
       }
     }
 
     await deleteVault('account-a', 'vault-1');
     expect(await getVaultTree('account-a', 'vault-1')).toBeNull();
     expect(await getNoteContent('account-a', 'vault-1', 'note')).toBeNull();
+    expect(await getNoteIcons('account-a', 'vault-1')).toEqual([]);
     expect(await getVaultTree('account-a', 'vault-2')).not.toBeNull();
 
     await deleteAccountCache('account-a');
     expect(await getVaultTree('account-a', 'vault-2')).toBeNull();
     expect(await getNoteContent('account-a', 'vault-2', 'note')).toBeNull();
+    expect(await getNoteIcons('account-a', 'vault-2')).toEqual([]);
     expect(await getVaultTree('account-b', 'vault-1')).not.toBeNull();
     expect(await getNoteContent('account-b', 'vault-2', 'note')).not.toBeNull();
+    expect(await getNoteIcons('account-b', 'vault-2')).toHaveLength(1);
   });
 
   it('ignores malformed records instead of exposing invalid cache data', async () => {

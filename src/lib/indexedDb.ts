@@ -2,7 +2,7 @@ import { type DBSchema, type IDBPDatabase, openDB } from 'idb';
 import type { VaultNode } from '../types/vault';
 
 export const VAULT_CACHE_DATABASE_NAME = 'vault-web-viewer';
-export const VAULT_CACHE_DATABASE_VERSION = 2;
+export const VAULT_CACHE_DATABASE_VERSION = 3;
 
 export type CachedVaultRecord = {
   accountId: string;
@@ -21,6 +21,14 @@ export type CachedNoteContentRecord = {
   cachedAt: number;
 };
 
+export type CachedNoteIconRecord = {
+  accountId: string;
+  vaultId: string;
+  fileId: string;
+  emoji: string | null;
+  cachedAt: number;
+};
+
 interface VaultCacheSchema extends DBSchema {
   vaults: {
     key: [string, string];
@@ -30,6 +38,14 @@ interface VaultCacheSchema extends DBSchema {
   noteContents: {
     key: [string, string, string];
     value: CachedNoteContentRecord;
+    indexes: {
+      'by-account': string;
+      'by-vault': [string, string];
+    };
+  };
+  noteIcons: {
+    key: [string, string, string];
+    value: CachedNoteIconRecord;
     indexes: {
       'by-account': string;
       'by-vault': [string, string];
@@ -54,6 +70,14 @@ export function getVaultCacheDatabase() {
           });
           noteStore.createIndex('by-account', 'accountId');
           noteStore.createIndex('by-vault', ['accountId', 'vaultId']);
+        }
+
+        if (!database.objectStoreNames.contains('noteIcons')) {
+          const iconStore = database.createObjectStore('noteIcons', {
+            keyPath: ['accountId', 'vaultId', 'fileId'],
+          });
+          iconStore.createIndex('by-account', 'accountId');
+          iconStore.createIndex('by-vault', ['accountId', 'vaultId']);
         }
       },
     });

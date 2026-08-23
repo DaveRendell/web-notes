@@ -4,6 +4,7 @@ import type { VaultNode } from '../types/vault';
 
 const mocks = vi.hoisted(() => ({
   cacheContent: vi.fn(),
+  cacheNoteIcon: vi.fn(),
   content: 'original body',
   ensureAccessToken: vi.fn(() => Promise.resolve('valid-token')),
   setContent: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock('../contexts/AuthContext', () => ({
 }));
 vi.mock('../contexts/VaultContext', () => ({
   useVault: () => ({
+    cacheNoteIcon: mocks.cacheNoteIcon,
     isOnline: true,
     resolveWikilink: () => null,
     selectFile: vi.fn(),

@@ -1,5 +1,10 @@
 import type { VaultNode } from '../types/vault';
-import { type CachedNoteContentRecord, type CachedVaultRecord, getVaultCacheDatabase } from './indexedDb';
+import {
+  type CachedNoteContentRecord,
+  type CachedNoteIconRecord,
+  type CachedVaultRecord,
+  getVaultCacheDatabase,
+} from './indexedDb';
 
 export async function getVaultTree(accountId: string, vaultId: string) {
   return safelyRead(async () => {
@@ -19,11 +24,13 @@ export async function putVaultTree(record: CachedVaultRecord) {
 export async function deleteVault(accountId: string, vaultId: string) {
   await safelyWrite(async () => {
     const database = await getVaultCacheDatabase();
-    const transaction = database.transaction(['vaults', 'noteContents'], 'readwrite');
+    const transaction = database.transaction(['vaults', 'noteContents', 'noteIcons'], 'readwrite');
     await transaction.objectStore('vaults').delete([accountId, vaultId]);
 
     const noteKeys = await transaction.objectStore('noteContents').index('by-vault').getAllKeys([accountId, vaultId]);
+    const iconKeys = await transaction.objectStore('noteIcons').index('by-vault').getAllKeys([accountId, vaultId]);
     await Promise.all(noteKeys.map((key) => transaction.objectStore('noteContents').delete(key)));
+    await Promise.all(iconKeys.map((key) => transaction.objectStore('noteIcons').delete(key)));
     await transaction.done;
   });
 }
@@ -46,7 +53,27 @@ export async function putNoteContent(record: CachedNoteContentRecord) {
 export async function deleteNoteContent(accountId: string, vaultId: string, fileId: string) {
   await safelyWrite(async () => {
     const database = await getVaultCacheDatabase();
-    await database.delete('noteContents', [accountId, vaultId, fileId]);
+    const transaction = database.transaction(['noteContents', 'noteIcons'], 'readwrite');
+    await Promise.all([
+      transaction.objectStore('noteContents').delete([accountId, vaultId, fileId]),
+      transaction.objectStore('noteIcons').delete([accountId, vaultId, fileId]),
+    ]);
+    await transaction.done;
+  });
+}
+
+export async function getNoteIcons(accountId: string, vaultId: string) {
+  return safelyRead(async () => {
+    const database = await getVaultCacheDatabase();
+    const records = await database.getAllFromIndex('noteIcons', 'by-vault', [accountId, vaultId]);
+    return records.filter(isCachedNoteIconRecord);
+  }, [] as CachedNoteIconRecord[]);
+}
+
+export async function putNoteIcon(record: CachedNoteIconRecord) {
+  await safelyWrite(async () => {
+    const database = await getVaultCacheDatabase();
+    await database.put('noteIcons', record);
   });
 }
 
@@ -69,11 +96,18 @@ export async function deleteMissingNoteContents(
 ) {
   await safelyWrite(async () => {
     const database = await getVaultCacheDatabase();
-    const transaction = database.transaction('noteContents', 'readwrite');
+    const transaction = database.transaction(['noteContents', 'noteIcons'], 'readwrite');
     const store = transaction.objectStore('noteContents');
-    const keys = await store.index('by-vault').getAllKeys([accountId, vaultId]);
+    const iconStore = transaction.objectStore('noteIcons');
+    const [keys, iconKeys] = await Promise.all([
+      store.index('by-vault').getAllKeys([accountId, vaultId]),
+      iconStore.index('by-vault').getAllKeys([accountId, vaultId]),
+    ]);
 
-    await Promise.all(keys.filter((key) => !validFileIds.has(key[2])).map((key) => store.delete(key)));
+    await Promise.all([
+      ...keys.filter((key) => !validFileIds.has(key[2])).map((key) => store.delete(key)),
+      ...iconKeys.filter((key) => !validFileIds.has(key[2])).map((key) => iconStore.delete(key)),
+    ]);
     await transaction.done;
   });
 }
@@ -81,17 +115,20 @@ export async function deleteMissingNoteContents(
 export async function deleteAccountCache(accountId: string) {
   await safelyWrite(async () => {
     const database = await getVaultCacheDatabase();
-    const transaction = database.transaction(['vaults', 'noteContents'], 'readwrite');
+    const transaction = database.transaction(['vaults', 'noteContents', 'noteIcons'], 'readwrite');
     const vaultStore = transaction.objectStore('vaults');
     const noteStore = transaction.objectStore('noteContents');
-    const [vaultKeys, noteKeys] = await Promise.all([
+    const iconStore = transaction.objectStore('noteIcons');
+    const [vaultKeys, noteKeys, iconKeys] = await Promise.all([
       vaultStore.index('by-account').getAllKeys(accountId),
       noteStore.index('by-account').getAllKeys(accountId),
+      iconStore.index('by-account').getAllKeys(accountId),
     ]);
 
     await Promise.all([
       ...vaultKeys.map((key) => vaultStore.delete(key)),
       ...noteKeys.map((key) => noteStore.delete(key)),
+      ...iconKeys.map((key) => iconStore.delete(key)),
     ]);
     await transaction.done;
   });
@@ -150,6 +187,18 @@ function isCachedNoteContentRecord(value: unknown): value is CachedNoteContentRe
     typeof value.content === 'string' &&
     typeof value.cachedAt === 'number' &&
     (value.modifiedTime === undefined || typeof value.modifiedTime === 'string')
+  );
+}
+
+function isCachedNoteIconRecord(value: unknown): value is CachedNoteIconRecord {
+  if (!isObject(value)) return false;
+
+  return (
+    typeof value.accountId === 'string' &&
+    typeof value.vaultId === 'string' &&
+    typeof value.fileId === 'string' &&
+    (value.emoji === null || typeof value.emoji === 'string') &&
+    typeof value.cachedAt === 'number'
   );
 }
 

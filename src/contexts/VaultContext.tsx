@@ -9,7 +9,14 @@ import {
   renameDriveFolder,
   renameDriveFile,
 } from '../lib/googleDrive';
-import { deleteNoteContent, putNoteContent, updateNoteContentVersion } from '../lib/vaultCache';
+import {
+  deleteNoteContent,
+  getNoteIcons,
+  putNoteContent,
+  putNoteIcon,
+  updateNoteContentVersion,
+} from '../lib/vaultCache';
+import { findLeadingEmoji } from '../lib/markdown';
 import {
   containsVaultNode,
   createVaultNode,
@@ -31,6 +38,7 @@ type StoredVault = {
 };
 
 type VaultContextValue = {
+  cacheNoteIcon: (fileId: string, content: string) => void;
   clearVault: () => void;
   createFolder: (parentFolder: VaultNode | null, name: string) => Promise<VaultNode>;
   createNote: (parentFolder: VaultNode | null, name: string) => Promise<VaultNode>;
@@ -41,6 +49,7 @@ type VaultContextValue = {
   isOnline: boolean;
   isRefreshing: boolean;
   moveNode: (node: VaultNode, destinationFolder: VaultNode | null) => Promise<VaultNode>;
+  noteIcons: Record<string, string | null>;
   notes: VaultNode[];
   recentNotes: VaultNode[];
   refreshError: string | null;
@@ -63,6 +72,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [selectedFile, setSelectedFile] = useState<VaultNode | null>(null);
   const [recentNoteIds, setRecentNoteIds] = useState<string[]>(() => readRecentNoteIds(selectedVault?.id ?? null));
   const [routePath, setRoutePath] = useState(() => getNotePathFromHash());
+  const [noteIcons, setNoteIcons] = useState<Record<string, string | null>>({});
   const isOnline = useOnlineStatus();
   const { error, isLoading, isRefreshing, refreshError, setTree, tree } = useVaultTree(
     accessToken,
@@ -99,6 +109,26 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setRoutePath(null);
     clearNoteHash();
   }, []);
+
+  const cacheNoteIcon = useCallback(
+    (fileId: string, content: string) => {
+      if (!accountId || !selectedVault) return;
+
+      const emoji = findLeadingEmoji(content);
+      setNoteIcons((currentIcons) => {
+        if (Object.hasOwn(currentIcons, fileId) && currentIcons[fileId] === emoji) return currentIcons;
+        return { ...currentIcons, [fileId]: emoji };
+      });
+      void putNoteIcon({
+        accountId,
+        vaultId: selectedVault.id,
+        fileId,
+        emoji,
+        cachedAt: Date.now(),
+      });
+    },
+    [accountId, selectedVault],
+  );
 
   const selectFile = useCallback((file: VaultNode) => {
     setSelectedFile(file);
@@ -228,6 +258,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         writeRecentNoteIds(selectedVault?.id ?? null, nextIds);
         return nextIds;
       });
+      setNoteIcons((currentIcons) => {
+        const nextIcons = { ...currentIcons };
+        delete nextIcons[note.id];
+        return nextIcons;
+      });
 
       if (selectedFile?.id === note.id) {
         setSelectedFile(null);
@@ -264,6 +299,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         const nextIds = currentIds.filter((id) => !removedNoteIds.has(id));
         writeRecentNoteIds(selectedVault?.id ?? null, nextIds);
         return nextIds;
+      });
+      setNoteIcons((currentIcons) => {
+        const nextIcons = { ...currentIcons };
+        for (const noteId of removedNoteIds) delete nextIcons[noteId];
+        return nextIcons;
       });
 
       if (selectedFile && removedNoteIds.has(selectedFile.id)) {
@@ -382,6 +422,24 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    let cancelled = false;
+    setNoteIcons({});
+
+    if (accountId && selectedVault) {
+      void getNoteIcons(accountId, selectedVault.id).then((records) => {
+        if (cancelled) return;
+
+        const cachedIcons = Object.fromEntries(records.map((record) => [record.fileId, record.emoji]));
+        setNoteIcons((currentIcons) => ({ ...cachedIcons, ...currentIcons }));
+      });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, selectedVault]);
+
+  useEffect(() => {
     if (!selectedVault || selectedFile?.type !== 'markdown') return;
 
     setRecentNoteIds((currentIds) => {
@@ -446,6 +504,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
+      cacheNoteIcon,
       clearVault,
       createFolder,
       createNote,
@@ -456,6 +515,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       isOnline,
       isRefreshing,
       moveNode,
+      noteIcons,
       notes,
       recentNotes,
       refreshError,
@@ -471,6 +531,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }),
     [
       clearVault,
+      cacheNoteIcon,
       createFolder,
       createNote,
       deleteFolder,
@@ -480,6 +541,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       isOnline,
       isRefreshing,
       moveNode,
+      noteIcons,
       notes,
       recentNotes,
       refreshError,

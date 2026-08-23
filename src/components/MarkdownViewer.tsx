@@ -38,7 +38,7 @@ import { MarkdownEditor } from './MarkdownEditor';
 
 export function MarkdownViewer() {
   const { accessToken, accountId, ensureAccessToken, invalidateAccessToken } = useAuth();
-  const { isOnline, resolveWikilink, selectFile, selectedFile, selectedVault, storeSavedNote } = useVault();
+  const { cacheNoteIcon, isOnline, resolveWikilink, selectFile, selectedFile, selectedVault, storeSavedNote } = useVault();
   const { cacheContent, content, error, isLoading, isRefreshing, refreshError, setContent } = useMarkdownFile(
     accessToken,
     accountId,
@@ -67,6 +67,11 @@ export function MarkdownViewer() {
 
   draftRef.current = draft;
   isEditingRef.current = isEditing;
+
+  useEffect(() => {
+    if (!accessToken || !selectedFile || isLoading || error) return;
+    cacheNoteIcon(selectedFile.id, content);
+  }, [accessToken, cacheNoteIcon, content, error, isLoading, selectedFile]);
 
   useEffect(() => {
     const previousContent = previousContentRef.current;
