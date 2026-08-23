@@ -1,5 +1,6 @@
 import CodeMirror from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
+import { EditorView } from '@codemirror/view';
 
 type MarkdownEditorProps = {
   value: string;
@@ -16,7 +17,7 @@ export function MarkdownEditor({ value, onChange }: MarkdownEditorProps) {
         lineNumbers: true,
       }}
       className="markdown-editor"
-      extensions={[markdown()]}
+      extensions={[markdown(), EditorView.lineWrapping]}
       height="100%"
       onChange={onChange}
       value={value}
