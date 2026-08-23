@@ -130,6 +130,29 @@ export async function createDriveMarkdownFile(
   });
 }
 
+export async function createDriveFolder(
+  accessToken: string,
+  parentFolderId: string,
+  name: string,
+): Promise<DriveFile> {
+  const params = new URLSearchParams({
+    fields: 'id, name, mimeType, parents, modifiedTime, size',
+    supportsAllDrives: 'true',
+  });
+
+  return driveFetch<DriveFile>(`${DRIVE_API_ROOT}/files?${params.toString()}`, accessToken, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify({
+      mimeType: GOOGLE_FOLDER_MIME_TYPE,
+      name: name.trim(),
+      parents: [parentFolderId],
+    }),
+  });
+}
+
 export async function renameDriveFile(
   accessToken: string,
   fileId: string,
@@ -146,6 +169,43 @@ export async function renameDriveFile(
       'Content-Type': 'application/json; charset=utf-8',
     },
     body: JSON.stringify({ name: ensureMarkdownExtension(name) }),
+  });
+}
+
+export async function renameDriveFolder(
+  accessToken: string,
+  folderId: string,
+  name: string,
+): Promise<DriveFile> {
+  const params = new URLSearchParams({
+    fields: 'id, name, mimeType, parents, modifiedTime, size',
+    supportsAllDrives: 'true',
+  });
+
+  return driveFetch<DriveFile>(`${DRIVE_API_ROOT}/files/${folderId}?${params.toString()}`, accessToken, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify({ name: name.trim() }),
+  });
+}
+
+export async function moveDriveFile(
+  accessToken: string,
+  fileId: string,
+  oldParentId: string,
+  newParentId: string,
+): Promise<DriveFile> {
+  const params = new URLSearchParams({
+    addParents: newParentId,
+    removeParents: oldParentId,
+    fields: 'id, name, mimeType, parents, modifiedTime, size',
+    supportsAllDrives: 'true',
+  });
+
+  return driveFetch<DriveFile>(`${DRIVE_API_ROOT}/files/${fileId}?${params.toString()}`, accessToken, {
+    method: 'PATCH',
   });
 }
 

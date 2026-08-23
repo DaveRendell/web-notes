@@ -30,6 +30,42 @@ export function getVaultNodeDisplayName(node: VaultNode) {
   return node.type === 'markdown' ? node.name.replace(/\.md$/i, '') : node.name;
 }
 
+export function findVaultNode(nodes: VaultNode[], nodeId: string): VaultNode | null {
+  for (const node of nodes) {
+    if (node.id === nodeId) return node;
+    if (node.children) {
+      const match = findVaultNode(node.children, nodeId);
+      if (match) return match;
+    }
+  }
+
+  return null;
+}
+
+export function findVaultNodeParentId(
+  nodes: VaultNode[],
+  nodeId: string,
+  parentId: string | null = null,
+): string | null {
+  for (const node of nodes) {
+    if (node.id === nodeId) return parentId;
+    if (node.children) {
+      const match = findVaultNodeParentId(node.children, nodeId, node.id);
+      if (match !== null) return match;
+    }
+  }
+
+  return null;
+}
+
+export function containsVaultNode(node: VaultNode, nodeId: string): boolean {
+  return Boolean(node.children?.some((child) => child.id === nodeId || containsVaultNode(child, nodeId)));
+}
+
+export function flattenVaultNodes(nodes: VaultNode[]): VaultNode[] {
+  return nodes.flatMap((node) => [node, ...(node.children ? flattenVaultNodes(node.children) : [])]);
+}
+
 function getVaultNodeType(file: DriveFile): VaultNodeType {
   if (file.mimeType === GOOGLE_FOLDER_MIME_TYPE) {
     return 'folder';

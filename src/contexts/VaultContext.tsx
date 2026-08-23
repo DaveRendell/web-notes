@@ -1,9 +1,22 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useVaultTree } from '../hooks/useVaultTree';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
-import { createDriveMarkdownFile, deleteDriveFile, renameDriveFile } from '../lib/googleDrive';
+import {
+  createDriveFolder,
+  createDriveMarkdownFile,
+  deleteDriveFile,
+  moveDriveFile,
+  renameDriveFolder,
+  renameDriveFile,
+} from '../lib/googleDrive';
 import { deleteNoteContent, putNoteContent, updateNoteContentVersion } from '../lib/vaultCache';
-import { createVaultNode, sortVaultNodes } from '../lib/vaultTree';
+import {
+  containsVaultNode,
+  createVaultNode,
+  findVaultNode,
+  findVaultNodeParentId,
+  sortVaultNodes,
+} from '../lib/vaultTree';
 import { DriveFile } from '../types/drive';
 import { VaultNode } from '../types/vault';
 import { useAuth } from './AuthContext';
@@ -19,15 +32,19 @@ type StoredVault = {
 
 type VaultContextValue = {
   clearVault: () => void;
+  createFolder: (parentFolder: VaultNode | null, name: string) => Promise<VaultNode>;
   createNote: (parentFolder: VaultNode | null, name: string) => Promise<VaultNode>;
+  deleteFolder: (folder: VaultNode) => Promise<void>;
   deleteNote: (note: VaultNode) => Promise<void>;
   error: string | null;
   isLoading: boolean;
   isOnline: boolean;
   isRefreshing: boolean;
+  moveNode: (node: VaultNode, destinationFolder: VaultNode | null) => Promise<VaultNode>;
   notes: VaultNode[];
   recentNotes: VaultNode[];
   refreshError: string | null;
+  renameFolder: (folder: VaultNode, name: string) => Promise<VaultNode>;
   renameNote: (note: VaultNode, name: string) => Promise<VaultNode>;
   resolveWikilink: (target: string) => VaultNode | null;
   selectFile: (file: VaultNode) => void;
@@ -127,6 +144,28 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [accessToken, accountId, ensureAccessToken, isOnline, selectFile, selectedVault, setTree],
   );
 
+  const createFolder = useCallback(
+    async (parentFolder: VaultNode | null, name: string) => {
+      if (!accessToken || !selectedVault) {
+        throw new Error('Sign in and choose a vault before creating folders.');
+      }
+      if (!isOnline) throw new Error('Reconnect to the internet before creating a folder.');
+      if (parentFolder && parentFolder.type !== 'folder') {
+        throw new Error('Folders can only be created inside another folder or at the vault root.');
+      }
+
+      const parentFolderId = parentFolder?.id ?? selectedVault.id;
+      const parentPath = parentFolder?.path ?? '';
+      const validAccessToken = await ensureAccessToken();
+      const file = await createDriveFolder(validAccessToken, parentFolderId, name);
+      const node = createVaultNode(file, parentPath);
+
+      setTree((currentTree) => addNodeToTree(currentTree, parentFolder?.id ?? null, node));
+      return node;
+    },
+    [accessToken, ensureAccessToken, isOnline, selectedVault, setTree],
+  );
+
   const renameNote = useCallback(
     async (note: VaultNode, name: string) => {
       if (!accessToken) {
@@ -151,6 +190,24 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       return updatedNote;
     },
     [accessToken, accountId, ensureAccessToken, isOnline, selectFile, selectedFile?.id, selectedVault, setTree],
+  );
+
+  const renameFolder = useCallback(
+    async (folder: VaultNode, name: string) => {
+      if (!accessToken) throw new Error('Sign in before renaming folders.');
+      if (!isOnline) throw new Error('Reconnect to the internet before renaming a folder.');
+      if (folder.type !== 'folder') throw new Error('Only folders can be renamed with this action.');
+
+      const currentFolder = findVaultNode(tree, folder.id);
+      if (currentFolder?.type !== 'folder') throw new Error('This folder is no longer in the current vault.');
+
+      const validAccessToken = await ensureAccessToken();
+      const file = await renameDriveFolder(validAccessToken, currentFolder.id, name);
+      const updatedFolder = rebaseMovedNode(currentFolder, file, getParentPath(currentFolder.path));
+      setTree((currentTree) => replaceNodeInTree(currentTree, updatedFolder));
+      return updatedFolder;
+    },
+    [accessToken, ensureAccessToken, isOnline, setTree, tree],
   );
 
   const deleteNote = useCallback(
@@ -179,6 +236,126 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
     },
     [accessToken, accountId, ensureAccessToken, isOnline, selectedFile?.id, selectedVault, setTree],
+  );
+
+  const deleteFolder = useCallback(
+    async (folder: VaultNode) => {
+      if (!accessToken) throw new Error('Sign in before deleting folders.');
+      if (!isOnline) throw new Error('Reconnect to the internet before deleting a folder.');
+
+      const currentFolder = findVaultNode(tree, folder.id);
+      if (currentFolder?.type !== 'folder') throw new Error('This folder is no longer in the current vault.');
+
+      const removedNoteIds = new Set(
+        flattenVaultTree([currentFolder])
+          .filter((node) => node.type === 'markdown')
+          .map((node) => node.id),
+      );
+      const validAccessToken = await ensureAccessToken();
+      await deleteDriveFile(validAccessToken, currentFolder.id);
+      setTree((currentTree) => removeNodeFromTree(currentTree, currentFolder.id));
+
+      if (accountId && selectedVault) {
+        for (const noteId of removedNoteIds) {
+          void deleteNoteContent(accountId, selectedVault.id, noteId);
+        }
+      }
+      setRecentNoteIds((currentIds) => {
+        const nextIds = currentIds.filter((id) => !removedNoteIds.has(id));
+        writeRecentNoteIds(selectedVault?.id ?? null, nextIds);
+        return nextIds;
+      });
+
+      if (selectedFile && removedNoteIds.has(selectedFile.id)) {
+        setSelectedFile(null);
+        setRoutePath(null);
+        clearNoteHash();
+      }
+    },
+    [accessToken, accountId, ensureAccessToken, isOnline, selectedFile, selectedVault, setTree, tree],
+  );
+
+  const moveNode = useCallback(
+    async (node: VaultNode, destinationFolder: VaultNode | null) => {
+      if (!accessToken || !selectedVault) {
+        throw new Error('Sign in and choose a vault before moving files.');
+      }
+      if (!isOnline) throw new Error('Reconnect to the internet before moving a file.');
+      if (node.type !== 'markdown' && node.type !== 'folder') {
+        throw new Error('Only notes and folders can be moved.');
+      }
+
+      const currentNode = findVaultNode(tree, node.id);
+      if (!currentNode) throw new Error('This file is no longer in the current vault.');
+      if (currentNode.type !== 'markdown' && currentNode.type !== 'folder') {
+        throw new Error('Only notes and folders can be moved.');
+      }
+
+      const currentDestination = destinationFolder ? findVaultNode(tree, destinationFolder.id) : null;
+      if (destinationFolder && currentDestination?.type !== 'folder') {
+        throw new Error('Files can only be moved into folders or the vault root.');
+      }
+      if (currentDestination?.id === currentNode.id) {
+        throw new Error('A folder cannot be moved into itself.');
+      }
+      if (currentNode.type === 'folder' && currentDestination && containsVaultNode(currentNode, currentDestination.id)) {
+        throw new Error('A folder cannot be moved into one of its descendants.');
+      }
+
+      const currentParentId = findVaultNodeParentId(tree, currentNode.id);
+      const destinationParentId = currentDestination?.id ?? null;
+      if (currentParentId === destinationParentId) {
+        return currentNode;
+      }
+
+      const oldDriveParentId = currentParentId ?? selectedVault.id;
+      const newDriveParentId = destinationParentId ?? selectedVault.id;
+      const currentParentPath = currentParentId ? findVaultNode(tree, currentParentId)?.path ?? '' : '';
+      const destinationPath = currentDestination?.path ?? '';
+      const optimisticFile = { ...currentNode.source, parents: [newDriveParentId] };
+      setTree((currentTree) =>
+        addNodeToTree(
+          removeNodeFromTree(currentTree, currentNode.id),
+          destinationParentId,
+          rebaseMovedNode(findVaultNode(currentTree, currentNode.id) ?? currentNode, optimisticFile, destinationPath),
+        ),
+      );
+
+      try {
+        const validAccessToken = await ensureAccessToken();
+        const file = await moveDriveFile(
+          validAccessToken,
+          currentNode.id,
+          oldDriveParentId,
+          newDriveParentId,
+        );
+        const movedNode = rebaseMovedNode(currentNode, file, destinationPath);
+
+        setTree((currentTree) => {
+          const liveNode = findVaultNode(currentTree, currentNode.id);
+          return liveNode ? replaceNodeInTree(currentTree, rebaseMovedNode(liveNode, file, destinationPath)) : currentTree;
+        });
+        if (currentNode.type === 'markdown' && accountId) {
+          void updateNoteContentVersion(accountId, selectedVault.id, currentNode.id, file.modifiedTime);
+        }
+
+        return movedNode;
+      } catch (requestError) {
+        setTree((currentTree) => {
+          const liveNode = findVaultNode(currentTree, currentNode.id);
+          if (!liveNode) return currentTree;
+
+          const restoredFile = {
+            ...liveNode.source,
+            parents: currentNode.source.parents ?? [oldDriveParentId],
+          };
+          const restoredNode = rebaseMovedNode(liveNode, restoredFile, currentParentPath);
+          return addNodeToTree(removeNodeFromTree(currentTree, currentNode.id), currentParentId, restoredNode);
+        });
+        throw requestError;
+      }
+    },
+    [accessToken, accountId, ensureAccessToken, isOnline, selectedVault, setTree, tree],
   );
 
   const storeSavedNote = useCallback(
@@ -270,15 +447,19 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       clearVault,
+      createFolder,
       createNote,
+      deleteFolder,
       deleteNote,
       error,
       isLoading,
       isOnline,
       isRefreshing,
+      moveNode,
       notes,
       recentNotes,
       refreshError,
+      renameFolder,
       renameNote,
       resolveWikilink,
       selectFile,
@@ -290,15 +471,19 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }),
     [
       clearVault,
+      createFolder,
       createNote,
+      deleteFolder,
       deleteNote,
       error,
       isLoading,
       isOnline,
       isRefreshing,
+      moveNode,
       notes,
       recentNotes,
       refreshError,
+      renameFolder,
       renameNote,
       resolveWikilink,
       selectFile,
@@ -400,6 +585,26 @@ function removeNodeFromTree(nodes: VaultNode[], nodeId: string): VaultNode[] {
         children: removeNodeFromTree(node.children, nodeId),
       };
     });
+}
+
+function rebaseMovedNode(node: VaultNode, file: DriveFile, destinationPath: string): VaultNode {
+  const movedNode = createVaultNode(file, destinationPath);
+
+  if (node.type !== 'folder') return movedNode;
+
+  return {
+    ...movedNode,
+    children: node.children?.map((child) => rebaseDescendantPath(child, movedNode.path)) ?? [],
+  };
+}
+
+function rebaseDescendantPath(node: VaultNode, parentPath: string): VaultNode {
+  const path = `${parentPath}/${node.name}`;
+  return {
+    ...node,
+    path,
+    children: node.children?.map((child) => rebaseDescendantPath(child, path)),
+  };
 }
 
 function getParentPath(path: string) {
