@@ -3,6 +3,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { EditorView } from '@codemirror/view';
 import { useMemo } from 'react';
+import { createEmojiCompletionSource } from '../lib/emojiCompletion';
 import { createWikilinkCompletionSource } from '../lib/wikilinkCompletion';
 import type { VaultNode } from '../types/vault';
 
@@ -14,8 +15,10 @@ type MarkdownEditorProps = {
 };
 
 export function MarkdownEditor({ notes, value, onChange, recentNotes }: MarkdownEditorProps) {
-  const wikilinkCompletion = useMemo(
-    () => autocompletion({ override: [createWikilinkCompletionSource(notes, recentNotes)] }),
+  const editorCompletions = useMemo(
+    () => autocompletion({
+      override: [createWikilinkCompletionSource(notes, recentNotes), createEmojiCompletionSource()],
+    }),
     [notes, recentNotes],
   );
 
@@ -28,7 +31,7 @@ export function MarkdownEditor({ notes, value, onChange, recentNotes }: Markdown
         lineNumbers: true,
       }}
       className="markdown-editor"
-      extensions={[markdown(), EditorView.lineWrapping, wikilinkCompletion]}
+      extensions={[markdown(), EditorView.lineWrapping, editorCompletions]}
       height="100%"
       onChange={onChange}
       value={value}

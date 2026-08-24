@@ -1082,6 +1082,10 @@ button {
   white-space: nowrap;
 }
 
+.markdown-editor .cm-completionIcon-emoji {
+  display: none;
+}
+
 .markdown-editor .cm-completionDetail {
   overflow: hidden;
   max-width: 220px;

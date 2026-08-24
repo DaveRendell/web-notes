@@ -4,13 +4,11 @@ import {
   type CompletionSource,
   pickedCompletion,
 } from '@codemirror/autocomplete';
-import { syntaxTree } from '@codemirror/language';
+import { isProseCompletionContext } from './markdownCompletion';
 import { getNoteTitle, searchNotes } from './noteSearch';
 import type { VaultNode } from '../types/vault';
 
 const MAX_RESULTS = 8;
-const FRONTMATTER_PATTERN = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/;
-const EXCLUDED_SYNTAX_NODES = new Set(['InlineCode', 'FencedCode', 'CodeBlock']);
 
 export function createWikilinkCompletionSource(
   notes: VaultNode[],
@@ -19,7 +17,7 @@ export function createWikilinkCompletionSource(
   return (context: CompletionContext) => {
     const match = context.matchBefore(/\[\[([^\]\n|#]*)$/);
     if (!match || context.state.sliceDoc(match.from - 1, match.from) === '!') return null;
-    if (isInFrontmatter(context) || isInExcludedSyntax(context)) return null;
+    if (!isProseCompletionContext(context)) return null;
 
     const query = match.text.slice(2);
     const results = query.trim()
@@ -56,19 +54,4 @@ function createCompletion(note: VaultNode): Completion {
     label: getNoteTitle(note),
     type: 'text',
   };
-}
-
-function isInFrontmatter(context: CompletionContext) {
-  const match = context.state.sliceDoc().match(FRONTMATTER_PATTERN);
-  return Boolean(match && context.pos <= match[0].length);
-}
-
-function isInExcludedSyntax(context: CompletionContext) {
-  const resolvedNode = syntaxTree(context.state).resolveInner(context.pos, -1);
-
-  for (let node: typeof resolvedNode | null = resolvedNode; node; node = node.parent) {
-    if (EXCLUDED_SYNTAX_NODES.has(node.name)) return true;
-  }
-
-  return false;
 }
