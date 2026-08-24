@@ -69,9 +69,11 @@ export function NoteSearch() {
     <div className="note-search">
       <Search className="note-search-icon" size={16} aria-hidden="true" />
       <input
+        id="note-search-input"
         aria-autocomplete="list"
         aria-controls={isOpen ? listboxId : undefined}
         aria-expanded={isOpen}
+        aria-keyshortcuts="Control+K Meta+K"
         aria-label="Search notes by title"
         onBlur={handleBlur}
         onChange={handleChange}
@@ -79,6 +81,7 @@ export function NoteSearch() {
         onKeyDown={handleKeyDown}
         placeholder="Search notes"
         role="combobox"
+        title="Search notes (Ctrl/Cmd+K)"
         type="search"
         value={query}
       />

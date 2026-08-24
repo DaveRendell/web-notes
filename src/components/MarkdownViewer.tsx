@@ -353,50 +353,52 @@ export function MarkdownViewer() {
         </section>
       )}
       {!isLoading && !error && !isEditing && (
-        <article className="markdown-body">
+        <div className="note-view">
           <FrontmatterProperties
             error={parsedMarkdown.frontmatterError}
             properties={parsedMarkdown.frontmatter}
           />
-          <ReactMarkdown
-            components={{
-              a: ({ href, children }) => {
-                const wikilinkTarget = href ? getWikilinkTargetFromHref(href) : null;
-                const linkedFile = wikilinkTarget ? resolveWikilink(wikilinkTarget) : null;
+          <article className="markdown-body">
+            <ReactMarkdown
+              components={{
+                a: ({ href, children }) => {
+                  const wikilinkTarget = href ? getWikilinkTargetFromHref(href) : null;
+                  const linkedFile = wikilinkTarget ? resolveWikilink(wikilinkTarget) : null;
 
-                return (
-                  <a
-                    className={wikilinkTarget ? (linkedFile ? 'wikilink' : 'wikilink missing') : undefined}
-                    href={href}
-                    onClick={(event) => handleLinkClick(href, event)}
-                    title={wikilinkTarget && !linkedFile ? `Not found: ${wikilinkTarget}` : undefined}
-                  >
-                    {children}
-                  </a>
-                );
-              },
-              li: ({ children, node, ...props }) => {
-                const taskCheckbox = getTaskCheckboxFromNode(node);
+                  return (
+                    <a
+                      className={wikilinkTarget ? (linkedFile ? 'wikilink' : 'wikilink missing') : undefined}
+                      href={href}
+                      onClick={(event) => handleLinkClick(href, event)}
+                      title={wikilinkTarget && !linkedFile ? `Not found: ${wikilinkTarget}` : undefined}
+                    >
+                      {children}
+                    </a>
+                  );
+                },
+                li: ({ children, node, ...props }) => {
+                  const taskCheckbox = getTaskCheckboxFromNode(node);
 
-                return (
-                  <li {...props}>
-                    {taskCheckbox
-                      ? injectTaskCheckboxHandler(children, {
-                          isOnline,
-                          isSavingTask,
-                          onToggle: (checked) => void handleTaskToggle(taskCheckbox, checked),
-                          taskCheckbox,
-                        })
-                      : children}
-                  </li>
-                );
-              },
-            }}
-            remarkPlugins={[remarkGfm, remarkBreaks, taskMetadataPlugin]}
-          >
-            {markdownBody}
-          </ReactMarkdown>
-        </article>
+                  return (
+                    <li {...props}>
+                      {taskCheckbox
+                        ? injectTaskCheckboxHandler(children, {
+                            isOnline,
+                            isSavingTask,
+                            onToggle: (checked) => void handleTaskToggle(taskCheckbox, checked),
+                            taskCheckbox,
+                          })
+                        : children}
+                    </li>
+                  );
+                },
+              }}
+              remarkPlugins={[remarkGfm, remarkBreaks, taskMetadataPlugin]}
+            >
+              {markdownBody}
+            </ReactMarkdown>
+          </article>
+        </div>
       )}
     </main>
   );

@@ -1,4 +1,4 @@
-import { LogOut, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Sun, Unplug } from 'lucide-react';
+import { EllipsisVertical, LogOut, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Sun, Unplug } from 'lucide-react';
 import { CSSProperties, KeyboardEvent, PointerEvent, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -11,12 +11,52 @@ import { VaultPicker } from './VaultPicker';
 export function AppShell() {
   const { disconnect, error: authError, isAuthenticated, signIn, signOut, status } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const { clearVault, selectedVault } = useVault();
+  const { clearVault, createNote, isOnline, selectedVault } = useVault();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readSidebarCollapsed);
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !selectedVault) return;
+
+    function handleShortcut(event: globalThis.KeyboardEvent) {
+      const hasPrimaryModifier = event.ctrlKey || event.metaKey;
+
+      if (hasPrimaryModifier && !event.altKey && !event.shiftKey && event.code === 'KeyK') {
+        event.preventDefault();
+        const searchInput = document.querySelector<HTMLInputElement>('#note-search-input');
+        searchInput?.focus();
+        searchInput?.select();
+        return;
+      }
+
+      if (
+        !hasPrimaryModifier
+        || !event.altKey
+        || event.shiftKey
+        || event.code !== 'KeyN'
+        || isEditableShortcutTarget(event.target)
+      ) return;
+
+      event.preventDefault();
+      if (!isOnline) {
+        window.alert('Reconnect to the internet before creating a note.');
+        return;
+      }
+
+      const name = window.prompt('New note name');
+      if (!name?.trim()) return;
+
+      void createNote(null, name).catch((requestError) => {
+        window.alert(requestError instanceof Error ? requestError.message : 'Failed to create note.');
+      });
+    }
+
+    document.addEventListener('keydown', handleShortcut, true);
+    return () => document.removeEventListener('keydown', handleShortcut, true);
+  }, [createNote, isAuthenticated, isOnline, selectedVault]);
 
   if (!isAuthenticated) {
     return (
@@ -51,7 +91,7 @@ export function AppShell() {
 
   return (
     <div className="app-shell">
-      <header className="top-bar">
+      <header className="top-bar vault-top-bar">
         <div className="top-bar-title">
           <button
             className="icon-button"
@@ -67,34 +107,7 @@ export function AppShell() {
           <h1>{selectedVault.name}</h1>
         </div>
         <NoteSearch />
-        <div className="top-bar-actions">
-          <button
-            className="icon-button"
-            type="button"
-            onClick={toggleTheme}
-            aria-label={theme === 'dark' ? 'Use light mode' : 'Use dark mode'}
-            title={theme === 'dark' ? 'Use light mode' : 'Use dark mode'}
-          >
-            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-          <button className="icon-text-button" type="button" onClick={clearVault}>
-            <RefreshCw size={16} />
-            Change vault
-          </button>
-          <button className="icon-button" type="button" onClick={signOut} aria-label="Sign out" title="Sign out">
-            <LogOut size={18} />
-          </button>
-          <button
-            className="icon-text-button"
-            type="button"
-            onClick={disconnect}
-            aria-label="Disconnect Google Drive"
-            title="Disconnect Google Drive and revoke access"
-          >
-            <Unplug size={18} />
-            Disconnect
-          </button>
-        </div>
+        <HeaderActionsMenu onChangeVault={clearVault} onDisconnect={disconnect} onSignOut={signOut} />
       </header>
       <ResizableWorkspace isSidebarCollapsed={isSidebarCollapsed} />
     </div>
@@ -198,39 +211,121 @@ function clampSidebarWidth(width: number) {
   return Math.min(Math.max(width, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH, viewportMaximum);
 }
 
-function TopBar({ onDisconnect, onSignOut }: { onDisconnect: () => void; onSignOut: () => void }) {
-  const { theme, toggleTheme } = useTheme();
+function isEditableShortcutTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+}
 
+function TopBar({ onDisconnect, onSignOut }: { onDisconnect: () => void; onSignOut: () => void }) {
   return (
     <header className="top-bar">
       <div>
         <p className="eyebrow">Google Drive</p>
         <h1>Choose a vault folder</h1>
       </div>
-      <div className="top-bar-actions">
-        <button
-          className="icon-button"
-          type="button"
-          onClick={toggleTheme}
-          aria-label={theme === 'dark' ? 'Use light mode' : 'Use dark mode'}
-          title={theme === 'dark' ? 'Use light mode' : 'Use dark mode'}
-        >
-          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-        </button>
-        <button className="icon-button" type="button" onClick={onSignOut} aria-label="Sign out" title="Sign out">
-          <LogOut size={18} />
-        </button>
-        <button
-          className="icon-text-button"
-          type="button"
-          onClick={onDisconnect}
-          aria-label="Disconnect Google Drive"
-          title="Disconnect Google Drive and revoke access"
-        >
-          <Unplug size={18} />
-          Disconnect
-        </button>
-      </div>
+      <HeaderActionsMenu onDisconnect={onDisconnect} onSignOut={onSignOut} />
     </header>
+  );
+}
+
+type HeaderActionsMenuProps = {
+  onChangeVault?: () => void;
+  onDisconnect: () => void;
+  onSignOut: () => void;
+};
+
+export function HeaderActionsMenu({ onChangeVault, onDisconnect, onSignOut }: HeaderActionsMenuProps) {
+  const { theme, toggleTheme } = useTheme();
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const getMenuItems = () =>
+      Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
+    getMenuItems()[0]?.focus();
+
+    function handlePointerDown(event: globalThis.PointerEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) setIsOpen(false);
+    }
+
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+        triggerRef.current?.focus();
+        return;
+      }
+
+      const menuItems = getMenuItems();
+      const currentIndex = menuItems.indexOf(document.activeElement as HTMLButtonElement);
+      let nextIndex: number | null = null;
+      if (event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % menuItems.length;
+      if (event.key === 'ArrowUp') nextIndex = (currentIndex - 1 + menuItems.length) % menuItems.length;
+      if (event.key === 'Home') nextIndex = 0;
+      if (event.key === 'End') nextIndex = menuItems.length - 1;
+      if (nextIndex === null || menuItems.length === 0) return;
+
+      event.preventDefault();
+      menuItems[nextIndex]?.focus();
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  function runAction(action: () => void) {
+    setIsOpen(false);
+    action();
+  }
+
+  return (
+    <div
+      className="top-bar-actions header-actions-menu"
+      ref={menuRef}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node)) setIsOpen(false);
+      }}
+    >
+      <button
+        ref={triggerRef}
+        className="icon-button"
+        type="button"
+        onClick={() => setIsOpen((current) => !current)}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+        aria-label="Open options menu"
+        title="Options"
+      >
+        <EllipsisVertical size={18} />
+      </button>
+      {isOpen && (
+        <div className="header-menu-popover" role="menu">
+          <button type="button" role="menuitem" onClick={() => runAction(toggleTheme)}>
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+          </button>
+          {onChangeVault && (
+            <button type="button" role="menuitem" onClick={() => runAction(onChangeVault)}>
+              <RefreshCw size={16} />
+              <span>Change vault</span>
+            </button>
+          )}
+          <button type="button" role="menuitem" onClick={() => runAction(onSignOut)}>
+            <LogOut size={16} />
+            <span>Sign out</span>
+          </button>
+          <button className="danger" type="button" role="menuitem" onClick={() => runAction(onDisconnect)}>
+            <Unplug size={16} />
+            <span>Disconnect Google Drive</span>
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

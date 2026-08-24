@@ -75,6 +75,18 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('MarkdownViewer cache conflicts', () => {
+  it('renders frontmatter properties flush outside the padded markdown article', () => {
+    mocks.content = '---\ntitle: Test note\n---\nBody';
+    const { container } = render(<MarkdownViewer />);
+
+    const noteView = container.querySelector('.note-view');
+    const properties = container.querySelector('.frontmatter-panel');
+    const article = container.querySelector('.markdown-body');
+    expect(properties?.parentElement).toBe(noteView);
+    expect(article?.parentElement).toBe(noteView);
+    expect(article?.contains(properties)).toBe(false);
+  });
+
   it('preserves an unsaved draft when fresher Drive content arrives and caches the later local save', async () => {
     const { rerender } = render(<MarkdownViewer />);
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));

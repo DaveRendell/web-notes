@@ -3,11 +3,12 @@ import {
   dropTargetForElements,
   monitorForElements,
 } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
-import { ChevronRight, FileText, GripVertical, StarOff } from 'lucide-react';
+import { FileText, GripVertical, StarOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useVault } from '../../contexts/VaultContext';
 import { getVaultNodeDisplayName } from '../../lib/vaultTree';
 import type { VaultNode } from '../../types/vault';
+import { CollapsibleSidebarSection } from './CollapsibleSidebarSection';
 
 const FAVORITE_DRAG_TYPE = 'favorite-note';
 const FAVORITE_DROP_TYPE = 'favorite-destination';
@@ -22,13 +23,8 @@ export function FavoriteNotes() {
     selectedVault,
     toggleFavorite,
   } = useVault();
-  const [isOpen, setIsOpen] = useState(true);
   const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ noteId: string; placement: 'before' | 'after' } | null>(null);
-
-  useEffect(() => {
-    setIsOpen(true);
-  }, [selectedVault?.id]);
 
   useEffect(
     () =>
@@ -50,19 +46,14 @@ export function FavoriteNotes() {
   );
 
   return (
-    <section className="favorite-notes" aria-labelledby="favorite-notes-heading">
-      <button
-        className="favorite-notes-header"
-        type="button"
-        onClick={() => setIsOpen((current) => !current)}
-        aria-expanded={isOpen}
-      >
-        <ChevronRight className={isOpen ? 'chevron open' : 'chevron'} size={14} />
-        <span id="favorite-notes-heading">Favourites</span>
-        {favoriteNotes.length > 0 && <span className="favorite-count">{favoriteNotes.length}</span>}
-      </button>
-
-      {isOpen && (favoriteNotes.length === 0 ? (
+    <CollapsibleSidebarSection
+      className="favorite-notes"
+      count={favoriteNotes.length}
+      headingId="favorite-notes-heading"
+      resetKey={selectedVault?.id}
+      title="Favourites"
+    >
+      {favoriteNotes.length === 0 ? (
         <p className="favorite-notes-empty">Favourite notes will appear here.</p>
       ) : (
         <ul className="favorite-notes-list">
@@ -79,8 +70,8 @@ export function FavoriteNotes() {
             />
           ))}
         </ul>
-      ))}
-    </section>
+      )}
+    </CollapsibleSidebarSection>
   );
 }
 
