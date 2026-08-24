@@ -79,6 +79,34 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('VaultContext cache mutations', () => {
+  it('updates the selected note for browser back and forward navigation', async () => {
+    mocks.createDriveMarkdownFile
+      .mockResolvedValueOnce(file('alpha', 'Alpha.md', 'created'))
+      .mockResolvedValueOnce(file('beta', 'Beta.md', 'created'));
+    const wrapper = ({ children }: { children: ReactNode }) => <VaultProvider>{children}</VaultProvider>;
+    const { result } = renderHook(() => useVault(), { wrapper });
+
+    await act(async () => {
+      await result.current.createNote(null, 'Alpha');
+      await result.current.createNote(null, 'Beta');
+    });
+    expect(result.current.selectedFile?.id).toBe('beta');
+
+    act(() => {
+      window.history.replaceState(null, '', '#/note/Alpha.md');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    await waitFor(() => expect(result.current.selectedFile?.id).toBe('alpha'));
+    expect(window.location.hash).toBe('#/note/Alpha.md');
+
+    act(() => {
+      window.history.replaceState(null, '', '#/note/Beta.md');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    await waitFor(() => expect(result.current.selectedFile?.id).toBe('beta'));
+    expect(window.location.hash).toBe('#/note/Beta.md');
+  });
+
   it('persists and reorders favourites independently for the selected vault', () => {
     const wrapper = ({ children }: { children: ReactNode }) => <VaultProvider>{children}</VaultProvider>;
     const { result } = renderHook(() => useVault(), { wrapper });
@@ -198,6 +226,7 @@ describe('VaultContext cache mutations', () => {
     expect(result.current.tree[0]).toEqual(expect.objectContaining({ name: 'Renamed Folder', path: 'Renamed Folder' }));
     expect(result.current.tree[0]?.children?.[0]?.children?.[0]?.path).toBe('Renamed Folder/Nested/Note.md');
     await waitFor(() => expect(result.current.selectedFile?.path).toBe('Renamed Folder/Nested/Note.md'));
+    expect(window.location.hash).toBe('#/note/Renamed%20Folder%2FNested%2FNote.md');
   });
 
   it('deletes a folder, its descendant note caches, and the selected descendant', async () => {

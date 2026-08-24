@@ -519,9 +519,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const currentNote = selectedFile
-      ? vaultIndex.byId.get(selectedFile.id)
-      : vaultIndex.byPath.get(normalizeWikilinkTarget(routePath));
+    const normalizedRoutePath = normalizeWikilinkTarget(routePath);
+    const routedNote = vaultIndex.byPath.get(normalizedRoutePath);
+    const selectedNote = selectedFile ? vaultIndex.byId.get(selectedFile.id) : null;
+    const currentNote = routedNote ?? (
+      selectedFile && normalizeWikilinkTarget(selectedFile.path) === normalizedRoutePath
+        ? selectedNote
+        : null
+    );
 
     if (!currentNote) {
       if (selectedFile && !isLoading && !isRefreshing) {
