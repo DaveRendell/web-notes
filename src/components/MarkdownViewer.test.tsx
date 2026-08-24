@@ -6,9 +6,12 @@ const mocks = vi.hoisted(() => ({
   cacheContent: vi.fn(),
   cacheNoteIcon: vi.fn(),
   content: 'original body',
+  deleteNote: vi.fn(),
   ensureAccessToken: vi.fn(() => Promise.resolve('valid-token')),
+  renameNote: vi.fn(),
   setContent: vi.fn(),
   storeSavedNote: vi.fn(),
+  toggleFavorite: vi.fn(),
   updateDriveFileText: vi.fn(),
 }));
 
@@ -32,12 +35,16 @@ vi.mock('../contexts/AuthContext', () => ({
 vi.mock('../contexts/VaultContext', () => ({
   useVault: () => ({
     cacheNoteIcon: mocks.cacheNoteIcon,
+    deleteNote: mocks.deleteNote,
+    favoriteNoteIds: [],
     isOnline: true,
+    renameNote: mocks.renameNote,
     resolveWikilink: () => null,
     selectFile: vi.fn(),
     selectedFile,
     selectedVault: { id: 'vault', name: 'My vault' },
     storeSavedNote: mocks.storeSavedNote,
+    toggleFavorite: mocks.toggleFavorite,
   }),
 }));
 vi.mock('../hooks/useMarkdownFile', () => ({
@@ -75,16 +82,39 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('MarkdownViewer cache conflicts', () => {
-  it('renders frontmatter properties flush outside the padded markdown article', () => {
+  it('combines optional frontmatter properties and note controls above the note', () => {
     mocks.content = '---\ntitle: Test note\n---\nBody';
     const { container } = render(<MarkdownViewer />);
 
     const noteView = container.querySelector('.note-view');
     const properties = container.querySelector('.frontmatter-panel');
     const article = container.querySelector('.markdown-body');
-    expect(properties?.parentElement).toBe(noteView);
+    expect(properties?.parentElement).toBe(container.querySelector('.viewer'));
     expect(article?.parentElement).toBe(noteView);
     expect(article?.contains(properties)).toBe(false);
+    expect(screen.queryByRole('heading', { name: 'Note' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Edit' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: '1 property' })).not.toBeNull();
+  });
+
+  it('keeps note controls visible without rendering a properties disclosure when none exist', () => {
+    render(<MarkdownViewer />);
+
+    expect(screen.getByRole('region', { name: 'Note controls' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /propert/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Edit' })).not.toBeNull();
+  });
+
+  it('offers favourite, rename, and delete actions in the note menu', () => {
+    render(<MarkdownViewer />);
+    fireEvent.click(screen.getByRole('button', { name: 'Note actions' }));
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add favourite' }));
+    expect(mocks.toggleFavorite).toHaveBeenCalledWith('note');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Note actions' }));
+    expect(screen.getByRole('menuitem', { name: 'Rename note' })).not.toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Delete note' })).not.toBeNull();
   });
 
   it('preserves an unsaved draft when fresher Drive content arrives and caches the later local save', async () => {

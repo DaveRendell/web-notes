@@ -38,11 +38,14 @@ describe('Sidebar files section', () => {
     expect(sectionHeader?.contains(screen.getByRole('button', { name: 'Add note' }))).toBe(true);
     expect(sectionHeader?.contains(screen.getByRole('button', { name: 'Add folder' }))).toBe(true);
     const sectionContent = screen.getByText('File tree').closest('.sidebar-section-content');
+    const filesSection = filesToggle.closest('.files-section');
     expect(sectionContent?.getAttribute('aria-hidden')).toBe('false');
+    expect(filesSection?.classList.contains('is-open')).toBe(true);
 
     fireEvent.click(filesToggle);
 
     expect(sectionContent?.getAttribute('aria-hidden')).toBe('true');
+    expect(filesSection?.classList.contains('is-open')).toBe(false);
     expect(screen.getByRole('button', { name: 'Add note' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Add folder' })).toBeTruthy();
   });

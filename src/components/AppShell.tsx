@@ -3,6 +3,7 @@ import { CSSProperties, KeyboardEvent, PointerEvent, useEffect, useRef, useState
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useVault } from '../contexts/VaultContext';
+import { AnimatedPopover } from './AnimatedPopover';
 import { MarkdownViewer } from './MarkdownViewer';
 import { NoteSearch } from './NoteSearch';
 import { Sidebar } from './Sidebar/Sidebar';
@@ -304,28 +305,26 @@ export function HeaderActionsMenu({ onChangeVault, onDisconnect, onSignOut }: He
       >
         <EllipsisVertical size={18} />
       </button>
-      {isOpen && (
-        <div className="header-menu-popover" role="menu">
-          <button type="button" role="menuitem" onClick={() => runAction(toggleTheme)}>
-            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-            <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+      <AnimatedPopover className="header-menu-popover" isOpen={isOpen} role="menu">
+        <button type="button" role="menuitem" onClick={() => runAction(toggleTheme)}>
+          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+        </button>
+        {onChangeVault && (
+          <button type="button" role="menuitem" onClick={() => runAction(onChangeVault)}>
+            <RefreshCw size={16} />
+            <span>Change vault</span>
           </button>
-          {onChangeVault && (
-            <button type="button" role="menuitem" onClick={() => runAction(onChangeVault)}>
-              <RefreshCw size={16} />
-              <span>Change vault</span>
-            </button>
-          )}
-          <button type="button" role="menuitem" onClick={() => runAction(onSignOut)}>
-            <LogOut size={16} />
-            <span>Sign out</span>
-          </button>
-          <button className="danger" type="button" role="menuitem" onClick={() => runAction(onDisconnect)}>
-            <Unplug size={16} />
-            <span>Disconnect Google Drive</span>
-          </button>
-        </div>
-      )}
+        )}
+        <button type="button" role="menuitem" onClick={() => runAction(onSignOut)}>
+          <LogOut size={16} />
+          <span>Sign out</span>
+        </button>
+        <button className="danger" type="button" role="menuitem" onClick={() => runAction(onDisconnect)}>
+          <Unplug size={16} />
+          <span>Disconnect Google Drive</span>
+        </button>
+      </AnimatedPopover>
     </div>
   );
 }

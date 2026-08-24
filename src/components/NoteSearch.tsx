@@ -2,6 +2,7 @@ import { Search } from 'lucide-react';
 import { ChangeEvent, KeyboardEvent, useId, useMemo, useRef, useState } from 'react';
 import { useVault } from '../contexts/VaultContext';
 import { VaultNode } from '../types/vault';
+import { AnimatedPopover } from './AnimatedPopover';
 
 const MAX_RESULTS = 8;
 
@@ -85,29 +86,27 @@ export function NoteSearch() {
         type="search"
         value={query}
       />
-      {isOpen && (
-        <div className="note-search-results" id={listboxId} role="listbox">
-          {!hasQuery && results.length > 0 && <div className="note-search-results-label">Recent notes</div>}
-          {results.length === 0 ? (
-            <div className="note-search-empty">{hasQuery ? 'No matching notes' : 'No recent notes'}</div>
-          ) : (
-            results.map((note, index) => (
-              <button
-                aria-selected={index === activeIndex}
-                className={index === activeIndex ? 'note-search-result active' : 'note-search-result'}
-                key={note.id}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => chooseNote(note)}
-                role="option"
-                type="button"
-              >
-                <span>{getNoteTitle(note)}</span>
-                <small>{note.path}</small>
-              </button>
-            ))
-          )}
-        </div>
-      )}
+      <AnimatedPopover className="note-search-results" id={listboxId} isOpen={isOpen} role="listbox">
+        {!hasQuery && results.length > 0 && <div className="note-search-results-label">Recent notes</div>}
+        {results.length === 0 ? (
+          <div className="note-search-empty">{hasQuery ? 'No matching notes' : 'No recent notes'}</div>
+        ) : (
+          results.map((note, index) => (
+            <button
+              aria-selected={index === activeIndex}
+              className={index === activeIndex ? 'note-search-result active' : 'note-search-result'}
+              key={note.id}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => chooseNote(note)}
+              role="option"
+              type="button"
+            >
+              <span>{getNoteTitle(note)}</span>
+              <small>{note.path}</small>
+            </button>
+          ))
+        )}
+      </AnimatedPopover>
     </div>
   );
 }

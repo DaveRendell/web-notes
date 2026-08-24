@@ -1,7 +1,7 @@
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
-import { Check, Edit3, FileText, Loader2, X } from 'lucide-react';
+import { Check, Edit3, EllipsisVertical, FileText, Loader2, Pencil, Star, StarOff, Trash2, X } from 'lucide-react';
 import {
   Children,
   ChangeEvent,
@@ -24,7 +24,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { useVault } from '../contexts/VaultContext';
 import { useMarkdownFile } from '../hooks/useMarkdownFile';
 import { isGoogleDriveAuthError, updateDriveFileText } from '../lib/googleDrive';
-import { getVaultNodeDisplayName } from '../lib/vaultTree';
 import {
   convertWikilinksToMarkdown,
   type MarkdownTaskCheckbox,
@@ -35,10 +34,23 @@ import {
 } from '../lib/markdown';
 import { FrontmatterProperties } from './FrontmatterProperties';
 import { MarkdownEditor } from './MarkdownEditor';
+import { AnimatedPopover } from './AnimatedPopover';
 
 export function MarkdownViewer() {
   const { accessToken, accountId, ensureAccessToken, invalidateAccessToken } = useAuth();
-  const { cacheNoteIcon, isOnline, resolveWikilink, selectFile, selectedFile, selectedVault, storeSavedNote } = useVault();
+  const {
+    cacheNoteIcon,
+    deleteNote,
+    favoriteNoteIds,
+    isOnline,
+    renameNote,
+    resolveWikilink,
+    selectFile,
+    selectedFile,
+    selectedVault,
+    storeSavedNote,
+    toggleFavorite,
+  } = useVault();
   const { cacheContent, content, error, isLoading, isRefreshing, refreshError, setContent } = useMarkdownFile(
     accessToken,
     accountId,
@@ -46,6 +58,7 @@ export function MarkdownViewer() {
     selectedFile,
   );
   const viewerRef = useRef<HTMLElement>(null);
+  const noteMenuRef = useRef<HTMLDivElement>(null);
   const isTaskSaveInFlightRef = useRef(false);
   const isSaveInFlightRef = useRef(false);
   const [draft, setDraft] = useState('');
@@ -59,6 +72,7 @@ export function MarkdownViewer() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingTask, setIsSavingTask] = useState(false);
+  const [isNoteMenuOpen, setIsNoteMenuOpen] = useState(false);
   const parsedMarkdown = useMemo(() => parseMarkdownWithFrontmatter(content), [content]);
   const markdownBody = useMemo(() => convertWikilinksToMarkdown(parsedMarkdown.body), [parsedMarkdown.body]);
   const taskCheckboxes = useMemo(() => findMarkdownTaskCheckboxes(content), [content]);
@@ -109,7 +123,27 @@ export function MarkdownViewer() {
 
   useEffect(() => {
     viewerRef.current?.scrollTo({ top: 0 });
+    setIsNoteMenuOpen(false);
   }, [selectedFile?.id]);
+
+  useEffect(() => {
+    if (!isNoteMenuOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!noteMenuRef.current?.contains(event.target as Node)) setIsNoteMenuOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setIsNoteMenuOpen(false);
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isNoteMenuOpen]);
 
   useEffect(() => {
     if (!isTaskDebugEnabled()) return;
@@ -258,6 +292,33 @@ export function MarkdownViewer() {
     setSaveError(null);
   }
 
+  async function handleRenameNote() {
+    if (!selectedFile) return;
+    const name = window.prompt('Rename note', selectedFile.name);
+    if (!name?.trim() || name.trim() === selectedFile.name) return;
+
+    try {
+      await renameNote(selectedFile, name);
+    } catch (requestError) {
+      window.alert(requestError instanceof Error ? requestError.message : 'Failed to rename note.');
+    }
+  }
+
+  async function handleDeleteNote() {
+    if (!selectedFile || !window.confirm(`Delete ${selectedFile.name}?`)) return;
+
+    try {
+      await deleteNote(selectedFile);
+    } catch (requestError) {
+      window.alert(requestError instanceof Error ? requestError.message : 'Failed to delete note.');
+    }
+  }
+
+  function runNoteMenuAction(action: () => void | Promise<void>) {
+    setIsNoteMenuOpen(false);
+    void action();
+  }
+
   if (!selectedFile) {
     return (
       <main className="viewer empty-viewer">
@@ -270,55 +331,99 @@ export function MarkdownViewer() {
 
   return (
     <main className="viewer" ref={viewerRef}>
-      <div className="viewer-header">
-        <div>
-          <h2 title={selectedFile.path}>{getVaultNodeDisplayName(selectedFile)}</h2>
-        </div>
-        <div className="viewer-header-actions">
-          {isEditing ? (
-            <div className="edit-actions">
+      <FrontmatterProperties
+        key={selectedFile.id}
+        error={parsedMarkdown.frontmatterError}
+        properties={parsedMarkdown.frontmatter}
+        actions={
+          <>
+            {isEditing ? (
+              <div className="edit-actions">
+                <button
+                  className="icon-text-button"
+                  type="button"
+                  onClick={handleCancel}
+                  disabled={isSaving}
+                >
+                  <X size={16} />
+                  Cancel
+                </button>
+                <button
+                  className="primary-button compact"
+                  type="button"
+                  onClick={handleSave}
+                  disabled={isSaving || !hasUnsavedChanges || !isOnline}
+                >
+                  {isSaving ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
+                  {isSaving
+                    ? needsAuthReconnect
+                      ? 'Reconnecting...'
+                      : 'Saving...'
+                    : needsAuthReconnect
+                      ? 'Reconnect & save'
+                      : 'Save'}
+                </button>
+              </div>
+            ) : (
               <button
                 className="icon-text-button"
                 type="button"
-                onClick={handleCancel}
-                disabled={isSaving}
+                onClick={() => {
+                  setDraft(content);
+                  setIsEditing(true);
+                  setSaveError(null);
+                }}
+                disabled={isLoading || Boolean(error) || !isOnline}
               >
-                <X size={16} />
-                Cancel
+                <Edit3 size={16} />
+                Edit
               </button>
+            )}
+            <div className="note-actions-menu" ref={noteMenuRef}>
               <button
-                className="primary-button compact"
+                className="icon-button"
                 type="button"
-                onClick={handleSave}
-                disabled={isSaving || !hasUnsavedChanges || !isOnline}
+                onClick={() => setIsNoteMenuOpen((current) => !current)}
+                aria-expanded={isNoteMenuOpen}
+                aria-haspopup="menu"
+                aria-label="Note actions"
+                title="Note actions"
               >
-                {isSaving ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
-                {isSaving
-                  ? needsAuthReconnect
-                    ? 'Reconnecting...'
-                    : 'Saving...'
-                  : needsAuthReconnect
-                    ? 'Reconnect & save'
-                    : 'Save'}
+                <EllipsisVertical size={18} />
               </button>
+              <AnimatedPopover className="header-menu-popover" isOpen={isNoteMenuOpen} role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => runNoteMenuAction(() => toggleFavorite(selectedFile.id))}
+                >
+                  {favoriteNoteIds.includes(selectedFile.id) ? <StarOff size={16} /> : <Star size={16} />}
+                  <span>{favoriteNoteIds.includes(selectedFile.id) ? 'Remove favourite' : 'Add favourite'}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => runNoteMenuAction(handleRenameNote)}
+                  disabled={!isOnline || isEditing}
+                >
+                  <Pencil size={16} />
+                  <span>Rename note</span>
+                </button>
+                <button
+                  className="danger"
+                  type="button"
+                  role="menuitem"
+                  onClick={() => runNoteMenuAction(handleDeleteNote)}
+                  disabled={!isOnline || isEditing}
+                >
+                  <Trash2 size={16} />
+                  <span>Delete note</span>
+                </button>
+              </AnimatedPopover>
             </div>
-          ) : (
-            <button
-              className="icon-text-button"
-              type="button"
-              onClick={() => {
-                setDraft(content);
-                setIsEditing(true);
-                setSaveError(null);
-              }}
-              disabled={isLoading || Boolean(error) || !isOnline}
-            >
-              <Edit3 size={16} />
-              Edit
-            </button>
-          )}
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {isLoading && (
         <div className="status-row viewer-status">
@@ -354,10 +459,6 @@ export function MarkdownViewer() {
       )}
       {!isLoading && !error && !isEditing && (
         <div className="note-view">
-          <FrontmatterProperties
-            error={parsedMarkdown.frontmatterError}
-            properties={parsedMarkdown.frontmatter}
-          />
           <article className="markdown-body">
             <ReactMarkdown
               components={{

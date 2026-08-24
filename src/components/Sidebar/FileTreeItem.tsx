@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useVault } from '../../contexts/VaultContext';
 import { getVaultNodeDisplayName } from '../../lib/vaultTree';
 import { VaultNode } from '../../types/vault';
+import { AnimatedPopover } from '../AnimatedPopover';
 import { FileTreeList } from './FileTree';
 import {
   getVaultDragData,
@@ -246,53 +247,51 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
             >
               <EllipsisVertical size={14} />
             </button>
-            {isMenuOpen && (
-              <div className="tree-action-menu" role="menu">
-                {isFolder && (
-                  <>
-                    <button type="button" role="menuitem" onClick={() => runMenuAction(handleCreateChildNote)} disabled={!isOnline}>
-                      <FilePlus2 size={14} />
-                      <span>New note</span>
-                    </button>
-                    <button type="button" role="menuitem" onClick={() => runMenuAction(handleCreateChildFolder)} disabled={!isOnline}>
-                      <FolderPlus size={14} />
-                      <span>New folder</span>
-                    </button>
-                    <button type="button" role="menuitem" onClick={() => runMenuAction(handleRenameFolder)} disabled={!isOnline}>
-                      <Pencil size={14} />
-                      <span>Rename</span>
-                    </button>
-                    <button className="danger" type="button" role="menuitem" onClick={() => runMenuAction(handleDeleteFolder)} disabled={!isOnline}>
-                      <Trash2 size={14} />
-                      <span>Delete folder</span>
-                    </button>
-                  </>
-                )}
-                {node.type === 'markdown' && (
-                  <>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setIsMenuOpen(false);
-                        toggleFavorite(node.id);
-                      }}
-                    >
-                      {isFavorite ? <StarOff size={14} /> : <Star size={14} />}
-                      <span>{isFavorite ? 'Remove favourite' : 'Add favourite'}</span>
-                    </button>
-                    <button type="button" role="menuitem" onClick={() => runMenuAction(handleRenameNote)} disabled={!isOnline}>
-                      <Pencil size={14} />
-                      <span>Rename</span>
-                    </button>
-                    <button className="danger" type="button" role="menuitem" onClick={() => runMenuAction(handleDeleteNote)} disabled={!isOnline}>
-                      <Trash2 size={14} />
-                      <span>Delete note</span>
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
+            <AnimatedPopover className="tree-action-menu" isOpen={isMenuOpen} placementGap={2} role="menu">
+              {isFolder && (
+                <>
+                  <button type="button" role="menuitem" onClick={() => runMenuAction(handleCreateChildNote)} disabled={!isOnline}>
+                    <FilePlus2 size={14} />
+                    <span>New note</span>
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => runMenuAction(handleCreateChildFolder)} disabled={!isOnline}>
+                    <FolderPlus size={14} />
+                    <span>New folder</span>
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => runMenuAction(handleRenameFolder)} disabled={!isOnline}>
+                    <Pencil size={14} />
+                    <span>Rename</span>
+                  </button>
+                  <button className="danger" type="button" role="menuitem" onClick={() => runMenuAction(handleDeleteFolder)} disabled={!isOnline}>
+                    <Trash2 size={14} />
+                    <span>Delete folder</span>
+                  </button>
+                </>
+              )}
+              {node.type === 'markdown' && (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      toggleFavorite(node.id);
+                    }}
+                  >
+                    {isFavorite ? <StarOff size={14} /> : <Star size={14} />}
+                    <span>{isFavorite ? 'Remove favourite' : 'Add favourite'}</span>
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => runMenuAction(handleRenameNote)} disabled={!isOnline}>
+                    <Pencil size={14} />
+                    <span>Rename</span>
+                  </button>
+                  <button className="danger" type="button" role="menuitem" onClick={() => runMenuAction(handleDeleteNote)} disabled={!isOnline}>
+                    <Trash2 size={14} />
+                    <span>Delete note</span>
+                  </button>
+                </>
+              )}
+            </AnimatedPopover>
           </div>
         )}
       </div>

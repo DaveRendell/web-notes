@@ -27,7 +27,10 @@ export function CollapsibleSidebarSection({
   }, [resetKey]);
 
   return (
-    <section className={`sidebar-section${className ? ` ${className}` : ''}`} aria-labelledby={headingId}>
+    <section
+      className={`sidebar-section${className ? ` ${className}` : ''}${isOpen ? ' is-open' : ''}`}
+      aria-labelledby={headingId}
+    >
       <div className="sidebar-section-header">
         <button
           className="sidebar-section-toggle"
