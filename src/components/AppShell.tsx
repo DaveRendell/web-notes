@@ -1,4 +1,4 @@
-import { EllipsisVertical, LogOut, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Sun, Unplug } from 'lucide-react';
+import { LogOut, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings, Sun, Unplug } from 'lucide-react';
 import { CSSProperties, KeyboardEvent, PointerEvent, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -303,7 +303,7 @@ export function HeaderActionsMenu({ onChangeVault, onDisconnect, onSignOut }: He
         aria-label="Open options menu"
         title="Options"
       >
-        <EllipsisVertical size={18} />
+        <Settings size={18} />
       </button>
       <AnimatedPopover className="header-menu-popover" isOpen={isOpen} role="menu">
         <button type="button" role="menuitem" onClick={() => runAction(toggleTheme)}>
