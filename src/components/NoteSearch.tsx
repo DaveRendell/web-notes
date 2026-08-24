@@ -1,6 +1,7 @@
 import { Search } from 'lucide-react';
 import { ChangeEvent, KeyboardEvent, useId, useMemo, useRef, useState } from 'react';
 import { useVault } from '../contexts/VaultContext';
+import { getNoteTitle, searchNotes } from '../lib/noteSearch';
 import { VaultNode } from '../types/vault';
 import { AnimatedPopover } from './AnimatedPopover';
 
@@ -109,37 +110,4 @@ export function NoteSearch() {
       </AnimatedPopover>
     </div>
   );
-}
-
-function searchNotes(notes: VaultNode[], query: string) {
-  const normalizedQuery = query.trim().toLowerCase();
-
-  if (!normalizedQuery) {
-    return [];
-  }
-
-  return notes
-    .map((note) => ({
-      note,
-      score: getSearchScore(note, normalizedQuery),
-    }))
-    .filter((result) => result.score > 0)
-    .sort((a, b) => b.score - a.score || a.note.name.localeCompare(b.note.name))
-    .slice(0, MAX_RESULTS)
-    .map((result) => result.note);
-}
-
-function getSearchScore(note: VaultNode, normalizedQuery: string) {
-  const title = getNoteTitle(note).toLowerCase();
-  const path = note.path.toLowerCase();
-
-  if (title === normalizedQuery) return 100;
-  if (title.startsWith(normalizedQuery)) return 80;
-  if (title.includes(normalizedQuery)) return 60;
-  if (path.includes(normalizedQuery)) return 30;
-  return 0;
-}
-
-function getNoteTitle(note: VaultNode) {
-  return note.name.replace(/\.md$/i, '');
 }

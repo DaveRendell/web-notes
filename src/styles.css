@@ -1045,6 +1045,54 @@ button {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
+.markdown-editor .cm-tooltip-autocomplete {
+  overflow: hidden;
+  border: 1px solid #dfe3ea;
+  border-radius: 7px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgb(30 38 48 / 16%);
+  animation: dropdown-fade-in 0.1s ease-out;
+}
+
+.markdown-editor .cm-tooltip-autocomplete > ul {
+  min-width: 260px;
+  max-width: min(440px, calc(100vw - 24px));
+  padding: 4px;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.markdown-editor .cm-tooltip-autocomplete > ul > li {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  border-radius: 5px;
+  padding: 6px 8px;
+  color: #202124;
+}
+
+.markdown-editor .cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: #e7f1f8;
+  color: #163e59;
+}
+
+.markdown-editor .cm-completionLabel {
+  overflow: hidden;
+  flex: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.markdown-editor .cm-completionDetail {
+  overflow: hidden;
+  max-width: 220px;
+  margin-left: 14px;
+  color: #6d7580;
+  font-size: 0.78rem;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .note-view {
   width: 100%;
 }
@@ -1565,6 +1613,25 @@ button {
   background: #1d2731;
 }
 
+[data-theme="dark"] .markdown-editor .cm-tooltip-autocomplete {
+  border-color: #344250;
+  background: #1a222b;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 45%);
+}
+
+[data-theme="dark"] .markdown-editor .cm-tooltip-autocomplete > ul > li {
+  color: #e7ebf0;
+}
+
+[data-theme="dark"] .markdown-editor .cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: #27485e;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .markdown-editor .cm-completionDetail {
+  color: #a8b3bf;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -1601,7 +1668,8 @@ button {
   }
 
   .dropdown-popover-open,
-  .dropdown-popover-closing {
+  .dropdown-popover-closing,
+  .markdown-editor .cm-tooltip-autocomplete {
     animation-duration: 0.01ms;
   }
 }

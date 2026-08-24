@@ -43,6 +43,8 @@ export function MarkdownViewer() {
     deleteNote,
     favoriteNoteIds,
     isOnline,
+    notes,
+    recentNotes,
     renameNote,
     resolveWikilink,
     selectFile,
@@ -454,7 +456,7 @@ export function MarkdownViewer() {
       {saveError && <p className="error-text viewer-status">{saveError}</p>}
       {!isLoading && !error && isEditing && (
         <section className="editor-pane" aria-label="Raw markdown editor">
-          <MarkdownEditor value={draft} onChange={setDraft} />
+          <MarkdownEditor notes={notes} value={draft} onChange={setDraft} recentNotes={recentNotes} />
         </section>
       )}
       {!isLoading && !error && !isEditing && (
