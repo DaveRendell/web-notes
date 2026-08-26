@@ -157,6 +157,7 @@ describe('VaultContext cache mutations', () => {
       created = await result.current.createNote(null, 'Note');
     });
     expect(result.current.tree[0]?.id).toBe('note');
+    await waitFor(() => expect(document.title).toBe('Note'));
     expect(mocks.putNoteContent).toHaveBeenCalledWith(
       expect.objectContaining({ accountId: 'account', content: '', fileId: 'note', modifiedTime: 'created' }),
     );
@@ -166,6 +167,7 @@ describe('VaultContext cache mutations', () => {
       renamed = await result.current.renameNote(created, 'Renamed');
     });
     expect(result.current.tree[0]?.name).toBe('Renamed.md');
+    await waitFor(() => expect(document.title).toBe('Renamed'));
     expect(mocks.updateNoteContentVersion).toHaveBeenCalledWith('account', 'vault', 'note', 'renamed');
 
     act(() => result.current.storeSavedNote(renamed, file('note', 'Renamed.md', 'saved'), 'new body'));

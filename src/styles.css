@@ -31,6 +31,7 @@ body {
 }
 
 button {
+  border: 0;
   font: inherit;
 }
 
@@ -306,7 +307,7 @@ button {
 .folder-row,
 .tree-item {
   min-height: 38px;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: 6px;
   cursor: pointer;
 }
@@ -353,8 +354,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border-color: #ccd4df;
-  background: #ffffff;
+  background: transparent;
   color: #293241;
 }
 
@@ -556,6 +556,8 @@ button {
 }
 
 .sidebar-section-toggle:hover {
+  border-radius: 4px;
+  background: #eef3f7;
   color: #183f59;
 }
 
@@ -1030,7 +1032,52 @@ button {
   background: #ffffff;
 }
 
+.markdown-editor-shell {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.markdown-format-toolbar {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 10px;
+  border-top: 1px solid #edf0f4;
+  border-bottom: 1px solid #edf0f4;
+  background: #ffffff;
+}
+
+.markdown-format-toolbar button {
+  display: inline-flex;
+  width: 30px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: transparent;
+  color: #3b4655;
+  cursor: pointer;
+}
+
+.markdown-format-toolbar button:hover,
+.markdown-format-toolbar button:focus-visible {
+  background: #eef3f7;
+  color: #183f59;
+  outline: none;
+}
+
+.markdown-format-separator {
+  width: 1px;
+  height: 20px;
+  margin: 0 3px;
+  background: #dfe3ea;
+}
+
 .markdown-editor {
+  flex: 1;
   width: 100%;
   min-width: 0;
   border-top: 1px solid #edf0f4;
@@ -1038,7 +1085,7 @@ button {
 }
 
 .markdown-editor .cm-editor {
-  min-height: calc(100vh - 114px);
+  min-height: calc(100vh - 152px);
 }
 
 .markdown-editor .cm-scroller {
@@ -1140,6 +1187,8 @@ button {
 }
 
 .frontmatter-summary:hover {
+  border-radius: 4px;
+  background: #eef3f7;
   color: #183f59;
 }
 
@@ -1385,9 +1434,11 @@ button {
 [data-theme="dark"] .note-search input,
 [data-theme="dark"] .icon-text-button,
 [data-theme="dark"] .icon-button {
-  border-color: #3a4655;
-  background: #12161b;
   color: #e7ebf0;
+}
+
+[data-theme="dark"] .note-search input {
+  background: #12161b;
 }
 
 [data-theme="dark"] .primary-button {
@@ -1400,6 +1451,8 @@ button {
 
 [data-theme="dark"] .icon-text-button:hover,
 [data-theme="dark"] .icon-button:hover,
+[data-theme="dark"] .sidebar-section-toggle:hover,
+[data-theme="dark"] .frontmatter-summary:hover,
 [data-theme="dark"] .folder-row:hover,
 [data-theme="dark"] .tree-row:hover,
 [data-theme="dark"] .favorite-note:hover,
@@ -1586,6 +1639,25 @@ button {
 
 [data-theme="dark"] .markdown-editor {
   border-color: #2b3643;
+}
+
+[data-theme="dark"] .markdown-format-toolbar {
+  border-color: #2b3643;
+  background: #11161c;
+}
+
+[data-theme="dark"] .markdown-format-toolbar button {
+  color: #b8c2cd;
+}
+
+[data-theme="dark"] .markdown-format-toolbar button:hover,
+[data-theme="dark"] .markdown-format-toolbar button:focus-visible {
+  background: #22303b;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .markdown-format-separator {
+  background: #344250;
 }
 
 [data-theme="dark"] .markdown-editor .cm-editor {

@@ -31,7 +31,7 @@ vi.mock('../contexts/VaultContext', () => ({
   }),
 }));
 vi.mock('./MarkdownViewer', () => ({ MarkdownViewer: () => <div>Viewer</div> }));
-vi.mock('./NoteSearch', () => ({ NoteSearch: () => <input id="note-search-input" aria-label="Search notes" /> }));
+vi.mock('./NoteSearch', () => ({ NoteSearch: () => <input id="note-search-input" aria-label="Find notes" /> }));
 vi.mock('./Sidebar/Sidebar', () => ({ Sidebar: () => <aside id="vault-sidebar">Sidebar</aside> }));
 
 import { AppShell } from './AppShell';
@@ -46,6 +46,7 @@ describe('AppShell header options', () => {
   it('places all right-side actions in one menu', () => {
     render(<AppShell />);
 
+    expect(screen.queryByRole('heading', { name: 'My Vault' })).toBeNull();
     expect(screen.queryByRole('menuitem')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Open options menu' }));
     const menuItems = screen.getAllByRole('menuitem');
@@ -78,7 +79,7 @@ describe('AppShell header options', () => {
     render(<AppShell />);
 
     fireEvent.keyDown(document, { code: 'KeyK', ctrlKey: true, key: 'k' });
-    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Search notes' }));
+    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Find notes' }));
 
     fireEvent.keyDown(document, { altKey: true, code: 'KeyN', ctrlKey: true, key: 'n' });
     expect(mocks.createNote).toHaveBeenCalledWith(null, 'Shortcut note');
@@ -87,7 +88,7 @@ describe('AppShell header options', () => {
   it('does not create a note while typing in an editable field', () => {
     const prompt = vi.spyOn(window, 'prompt').mockReturnValue('Shortcut note');
     render(<AppShell />);
-    const input = screen.getByRole('textbox', { name: 'Search notes' });
+    const input = screen.getByRole('textbox', { name: 'Find notes' });
 
     fireEvent.keyDown(input, { altKey: true, code: 'KeyN', ctrlKey: true, key: 'n' });
 

@@ -76,14 +76,14 @@ export function NoteSearch() {
         aria-controls={isOpen ? listboxId : undefined}
         aria-expanded={isOpen}
         aria-keyshortcuts="Control+K Meta+K"
-        aria-label="Search notes by title"
+        aria-label="Find notes by title"
         onBlur={handleBlur}
         onChange={handleChange}
         onFocus={handleFocus}
         onKeyDown={handleKeyDown}
-        placeholder="Search notes"
+        placeholder="Find notes"
         role="combobox"
-        title="Search notes (Ctrl/Cmd+K)"
+        title="Find notes (Ctrl/Cmd+K)"
         type="search"
         value={query}
       />

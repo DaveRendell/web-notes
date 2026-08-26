@@ -196,7 +196,11 @@ export function MarkdownViewer() {
   }
 
   async function handleSave() {
-    if (!accessToken || !selectedFile || !hasUnsavedChanges || !isOnline) return;
+    if (!accessToken || !selectedFile || !isOnline || isSaveInFlightRef.current) return;
+    if (!hasUnsavedChanges) {
+      setIsEditing(false);
+      return;
+    }
 
     isSaveInFlightRef.current = true;
     setIsSaving(true);
@@ -456,7 +460,13 @@ export function MarkdownViewer() {
       {saveError && <p className="error-text viewer-status">{saveError}</p>}
       {!isLoading && !error && isEditing && (
         <section className="editor-pane" aria-label="Raw markdown editor">
-          <MarkdownEditor notes={notes} value={draft} onChange={setDraft} recentNotes={recentNotes} />
+          <MarkdownEditor
+            notes={notes}
+            value={draft}
+            onChange={setDraft}
+            onSave={handleSave}
+            recentNotes={recentNotes}
+          />
         </section>
       )}
       {!isLoading && !error && !isEditing && (

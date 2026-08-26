@@ -63,8 +63,18 @@ vi.mock('../lib/googleDrive', () => ({
   updateDriveFileText: mocks.updateDriveFileText,
 }));
 vi.mock('./MarkdownEditor', () => ({
-  MarkdownEditor: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
-    <textarea aria-label="Markdown draft" value={value} onChange={(event) => onChange(event.target.value)} />
+  MarkdownEditor: ({ value, onChange, onSave }: { value: string; onChange: (value: string) => void; onSave: () => void }) => (
+    <textarea
+      aria-label="Markdown draft"
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      onKeyDown={(event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+          event.preventDefault();
+          onSave();
+        }
+      }}
+    />
   ),
 }));
 
@@ -143,5 +153,22 @@ describe('MarkdownViewer cache conflicts', () => {
       expect.objectContaining({ modifiedTime: 'saved' }),
       'my local draft',
     );
+  });
+
+  it('saves with Ctrl+S and returns to view mode', async () => {
+    render(<MarkdownViewer />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const editor = screen.getByRole('textbox', { name: 'Markdown draft' });
+    fireEvent.change(editor, { target: { value: 'saved by shortcut' } });
+
+    fireEvent.keyDown(editor, { ctrlKey: true, key: 's' });
+
+    await waitFor(() => expect(mocks.updateDriveFileText).toHaveBeenCalledWith(
+      'valid-token',
+      'note',
+      'saved by shortcut',
+    ));
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Markdown draft' })).toBeNull());
+    expect(screen.getByRole('button', { name: 'Edit' })).not.toBeNull();
   });
 });

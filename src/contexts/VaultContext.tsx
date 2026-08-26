@@ -561,7 +561,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    document.title = selectedFile ? `${stripMarkdownExtension(selectedFile.name)} - Vault Web Viewer` : 'Vault Web Viewer';
+    document.title = selectedFile ? stripMarkdownExtension(selectedFile.name) : 'Vault Web Viewer';
   }, [selectedFile]);
 
   const value = useMemo(

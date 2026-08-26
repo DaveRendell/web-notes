@@ -105,7 +105,6 @@ export function AppShell() {
           >
             {isSidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
           </button>
-          <h1>{selectedVault.name}</h1>
         </div>
         <NoteSearch />
         <HeaderActionsMenu onChangeVault={clearVault} onDisconnect={disconnect} onSignOut={signOut} />
