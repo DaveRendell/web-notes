@@ -1,5 +1,4 @@
 import ReactMarkdown from 'react-markdown';
-import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { Check, Edit3, EllipsisVertical, FileText, Loader2, Pencil, Star, StarOff, Trash2, X } from 'lucide-react';
 import {
@@ -26,13 +25,18 @@ import { useVault } from '../contexts/VaultContext';
 import { useMarkdownFile } from '../hooks/useMarkdownFile';
 import { isGoogleDriveAuthError, updateDriveFileText } from '../lib/googleDrive';
 import {
-  convertWikilinksToMarkdown,
   type MarkdownTaskCheckbox,
   findMarkdownTaskCheckboxes,
   getWikilinkTargetFromHref,
   parseMarkdownWithFrontmatter,
   toggleMarkdownTaskCheckbox,
 } from '../lib/markdown';
+import {
+  createMarkdownSourcePositionPlugin,
+  createRemarkSourceBreaksPlugin,
+  createRemarkWikilinkPlugin,
+  getMarkdownClickOffset,
+} from '../lib/markdownClickPosition';
 import {
   deleteMarkdownBlock,
   moveMarkdownBlock,
@@ -75,6 +79,7 @@ export function MarkdownViewer() {
   const selectedFileRef = useRef(selectedFile);
   const [draft, setDraft] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [editCursorOffset, setEditCursorOffset] = useState<number | null>(null);
   const draftRef = useRef(draft);
   const isEditingRef = useRef(isEditing);
   const previousContentRef = useRef(content);
@@ -87,7 +92,19 @@ export function MarkdownViewer() {
   const [isSavingTask, setIsSavingTask] = useState(false);
   const [isNoteMenuOpen, setIsNoteMenuOpen] = useState(false);
   const parsedMarkdown = useMemo(() => parseMarkdownWithFrontmatter(content), [content]);
-  const markdownBody = useMemo(() => convertWikilinksToMarkdown(parsedMarkdown.body), [parsedMarkdown.body]);
+  const bodyStartOffset = content.length - parsedMarkdown.body.length;
+  const sourcePositionPlugin = useMemo(
+    () => createMarkdownSourcePositionPlugin(parsedMarkdown.body, bodyStartOffset),
+    [bodyStartOffset, parsedMarkdown.body],
+  );
+  const sourceBreaksPlugin = useMemo(
+    () => createRemarkSourceBreaksPlugin(parsedMarkdown.body),
+    [parsedMarkdown.body],
+  );
+  const wikilinkPlugin = useMemo(
+    () => createRemarkWikilinkPlugin(parsedMarkdown.body),
+    [parsedMarkdown.body],
+  );
   const taskCheckboxes = useMemo(() => findMarkdownTaskCheckboxes(content), [content]);
   const taskMetadataPlugin = useMemo(() => createTaskMetadataPlugin(taskCheckboxes), [taskCheckboxes]);
   const blockDocument = useMemo(() => parseMarkdownBlocks(content), [content]);
@@ -112,6 +129,7 @@ export function MarkdownViewer() {
     if (fileChanged) {
       setDraft(content);
       setIsEditing(false);
+      setEditCursorOffset(null);
       setHasRemoteUpdate(false);
       setNeedsAuthReconnect(false);
       setHasFailedSave(false);
@@ -208,6 +226,17 @@ export function MarkdownViewer() {
     if (linkedFile) {
       selectFile(linkedFile);
     }
+  }
+
+  function handleViewerTextClick(event: MouseEvent<HTMLElement>) {
+    if (event.button !== 0 || !isOnline || isSaving || isSavingTask) return;
+    const offset = getMarkdownClickOffset(event.currentTarget, event, content);
+    if (offset === null) return;
+
+    setDraft(content);
+    setEditCursorOffset(offset);
+    setSaveError(null);
+    setIsEditing(true);
   }
 
   async function handleSave() {
@@ -386,6 +415,7 @@ export function MarkdownViewer() {
   function handleCancel() {
     setDraft(content);
     setIsEditing(false);
+    setEditCursorOffset(null);
     setHasRemoteUpdate(false);
     setNeedsAuthReconnect(false);
     setHasFailedSave(false);
@@ -468,6 +498,7 @@ export function MarkdownViewer() {
                 type="button"
                 onClick={() => {
                   setDraft(content);
+                  setEditCursorOffset(null);
                   setIsEditing(true);
                   setSaveError(null);
                 }}
@@ -553,6 +584,7 @@ export function MarkdownViewer() {
       {!isLoading && !error && isEditing && (
         <section className="editor-pane" aria-label="Raw markdown editor">
           <MarkdownEditor
+            initialCursorOffset={editCursorOffset}
             notes={notes}
             value={draft}
             onChange={setDraft}
@@ -570,7 +602,7 @@ export function MarkdownViewer() {
             onMove={(move) => void handleBlockMove(move)}
             scrollElementRef={viewerRef}
           >
-            <article className="markdown-body">
+            <article className="markdown-body" onClick={handleViewerTextClick}>
               <ReactMarkdown
                 components={{
                 p: ({ children, node, ...props }) => (
@@ -640,9 +672,16 @@ export function MarkdownViewer() {
                   );
                 },
               }}
-                remarkPlugins={[remarkGfm, remarkBreaks, blockMetadataPlugin, taskMetadataPlugin]}
+                remarkPlugins={[
+                  remarkGfm,
+                  wikilinkPlugin,
+                  sourceBreaksPlugin,
+                  sourcePositionPlugin,
+                  blockMetadataPlugin,
+                  taskMetadataPlugin,
+                ]}
               >
-                {markdownBody}
+                {parsedMarkdown.body}
               </ReactMarkdown>
             </article>
           </MarkdownBlockDndProvider>

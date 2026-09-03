@@ -228,9 +228,9 @@ function MarkdownBlockFrame({
 
   const frameClass = `markdown-block${isDragging ? ' dragging' : ''}${dropPlacement ? ` drop-${dropPlacement}` : ''}${className ? ` ${className}` : ''}`;
   if (asListItem) {
-    return <li {...props as HTMLAttributes<HTMLLIElement>} ref={elementRef as RefObject<HTMLLIElement>} className={frameClass}>{controls}{children}</li>;
+    return <li {...props as HTMLAttributes<HTMLLIElement>} data-markdown-block-source-start={block?.startOffset} ref={elementRef as RefObject<HTMLLIElement>} className={frameClass}>{controls}{children}</li>;
   }
-  return <div {...props as HTMLAttributes<HTMLDivElement>} ref={elementRef as RefObject<HTMLDivElement>} className={frameClass}>{controls}{children}</div>;
+  return <div {...props as HTMLAttributes<HTMLDivElement>} data-markdown-block-source-start={block?.startOffset} ref={elementRef as RefObject<HTMLDivElement>} className={frameClass}>{controls}{children}</div>;
 }
 
 function MarkdownOutdentTarget() {

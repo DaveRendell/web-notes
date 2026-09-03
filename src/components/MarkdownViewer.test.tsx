@@ -64,9 +64,10 @@ vi.mock('../lib/googleDrive', () => ({
   updateDriveFileText: mocks.updateDriveFileText,
 }));
 vi.mock('./MarkdownEditor', () => ({
-  MarkdownEditor: ({ value, onChange, onSave }: { value: string; onChange: (value: string) => void; onSave: () => void }) => (
+  MarkdownEditor: ({ initialCursorOffset, value, onChange, onSave }: { initialCursorOffset?: number | null; value: string; onChange: (value: string) => void; onSave: () => void }) => (
     <textarea
       aria-label="Markdown draft"
+      data-cursor-offset={initialCursorOffset ?? ''}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       onKeyDown={(event) => {
@@ -94,6 +95,35 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('MarkdownViewer cache conflicts', () => {
+  it('opens the editor at the clicked rendered source position, including frontmatter', () => {
+    mocks.content = '---\ntitle: Example\n---\n# Large heading';
+    const { container } = render(<MarkdownViewer />);
+    const sourceSpan = Array.from(container.querySelectorAll<HTMLElement>('[data-markdown-source-start]'))
+      .find((element) => element.textContent === 'Large heading')!;
+    const text = sourceSpan.firstChild!;
+    Object.defineProperty(document, 'caretPositionFromPoint', {
+      configurable: true,
+      value: () => ({ offsetNode: text, offset: 5 }),
+    });
+
+    fireEvent.click(sourceSpan, { button: 0, clientX: 20, clientY: 20 });
+
+    expect(screen.getByRole('textbox', { name: 'Markdown draft' }).getAttribute('data-cursor-offset')).toBe(
+      String(mocks.content.indexOf('Large') + 5),
+    );
+  });
+
+  it('keeps soft breaks and wikilink navigation interactive', () => {
+    mocks.content = 'First line\nsecond line\n\n[[Folder/Note|Linked note]]';
+    const { container } = render(<MarkdownViewer />);
+    const link = screen.getByRole('link', { name: 'Linked note' });
+
+    expect(container.querySelector('.markdown-body br')).not.toBeNull();
+    expect(link.getAttribute('href')).toBe('#wikilink=Folder%2FNote');
+    fireEvent.click(link);
+    expect(screen.queryByRole('textbox', { name: 'Markdown draft' })).toBeNull();
+  });
+
   it('renders one move handle per semantic Markdown block', () => {
     mocks.content = 'First line\nstill the same paragraph\n\n- task\n  - nested task\n';
     render(<MarkdownViewer />);

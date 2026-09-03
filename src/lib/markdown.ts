@@ -17,7 +17,6 @@ export type ParsedMarkdown = {
 };
 
 const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
-const WIKILINK_PATTERN = /!?\[\[([^\]\n]+)\]\]/g;
 const WIKILINK_HREF_PREFIX = '#wikilink=';
 const TASK_MARKER_PATTERN = /^(\s*(?:[-*+]|\d+[.)])\s+\[)( |x|X)(\])/;
 const markdownParser = unified().use(remarkParse).use(remarkGfm);
@@ -85,17 +84,6 @@ export function findLeadingEmoji(content: string): string | null {
     : null;
 }
 
-export function convertWikilinksToMarkdown(content: string) {
-  return content.replace(WIKILINK_PATTERN, (fullMatch, rawLink: string) => {
-    if (fullMatch.startsWith('!')) {
-      return fullMatch;
-    }
-
-    const { label, target } = parseWikilink(rawLink);
-    return `[${escapeMarkdownLinkText(label)}](${WIKILINK_HREF_PREFIX}${encodeURIComponent(target)})`;
-  });
-}
-
 export function getWikilinkTargetFromHref(href: string) {
   if (!href.startsWith(WIKILINK_HREF_PREFIX)) {
     return null;
@@ -138,18 +126,6 @@ export function toggleMarkdownTaskCheckbox(content: string, markerOffset: number
   }
 
   return `${content.slice(0, markerOffset)}${checked ? 'x' : ' '}${content.slice(markerOffset + 1)}`;
-}
-
-function parseWikilink(rawLink: string) {
-  const [rawTarget, rawLabel] = rawLink.split('|');
-  const target = rawTarget.trim();
-  const headingIndex = target.indexOf('#');
-  const targetWithoutHeading = headingIndex === -1 ? target : target.slice(0, headingIndex);
-
-  return {
-    target: targetWithoutHeading,
-    label: (rawLabel ?? getDefaultWikilinkLabel(targetWithoutHeading)).trim(),
-  };
 }
 
 type MarkdownNode = {
@@ -206,15 +182,6 @@ function findTaskMarkerOffset(content: string, nodeStartOffset: number) {
 function isTaskMarkerAtOffset(content: string, markerOffset: number) {
   const marker = content[markerOffset];
   return marker === ' ' || marker === 'x' || marker === 'X';
-}
-
-function getDefaultWikilinkLabel(target: string) {
-  const pathParts = target.split('/');
-  return pathParts[pathParts.length - 1] || target;
-}
-
-function escapeMarkdownLinkText(text: string) {
-  return text.replace(/([\\[\]])/g, '\\$1');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

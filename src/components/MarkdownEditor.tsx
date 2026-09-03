@@ -16,6 +16,7 @@ import { createWikilinkCompletionSource } from '../lib/wikilinkCompletion';
 import type { VaultNode } from '../types/vault';
 
 type MarkdownEditorProps = {
+  initialCursorOffset?: number | null;
   notes: VaultNode[];
   value: string;
   onChange: (value: string) => void;
@@ -23,7 +24,7 @@ type MarkdownEditorProps = {
   recentNotes: VaultNode[];
 };
 
-export function MarkdownEditor({ notes, value, onChange, onSave, recentNotes }: MarkdownEditorProps) {
+export function MarkdownEditor({ initialCursorOffset, notes, value, onChange, onSave, recentNotes }: MarkdownEditorProps) {
   const editorViewRef = useRef<EditorView | null>(null);
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
@@ -142,6 +143,14 @@ export function MarkdownEditor({ notes, value, onChange, onSave, recentNotes }: 
         onChange={onChange}
         onCreateEditor={(view) => {
           editorViewRef.current = view;
+          if (initialCursorOffset !== null && initialCursorOffset !== undefined) {
+            const cursor = Math.max(0, Math.min(initialCursorOffset, view.state.doc.length));
+            view.dispatch({
+              effects: EditorView.scrollIntoView(cursor, { y: 'center' }),
+              selection: { anchor: cursor },
+            });
+            window.requestAnimationFrame(() => view.focus());
+          }
         }}
         value={value}
       />

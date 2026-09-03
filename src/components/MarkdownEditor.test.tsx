@@ -65,6 +65,28 @@ describe('MarkdownEditor formatting controls', () => {
     expect(wasNotCancelled).toBe(false);
     expect(onSave).toHaveBeenCalledOnce();
   });
+
+  it('focuses the editor and places the initial cursor at the source offset', async () => {
+    const onChange = vi.fn();
+    Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: () => [] });
+    const { container } = render(
+      <MarkdownEditor
+        initialCursorOffset={2}
+        notes={[]}
+        value="body"
+        onChange={onChange}
+        onSave={vi.fn()}
+        recentNotes={[]}
+      />,
+    );
+
+    await waitFor(() => expect(document.activeElement).toBe(container.querySelector('.cm-content')));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bold' }));
+
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    expect(onChange.mock.calls.at(-1)?.[0]).toBe('bo****dy');
+  });
 });
 
 function renderEditor(onChange = vi.fn(), onSave = vi.fn()) {
