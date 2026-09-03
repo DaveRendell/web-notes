@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   content: 'original body',
   deleteNote: vi.fn(),
   ensureAccessToken: vi.fn(() => Promise.resolve('valid-token')),
+  isOnline: true,
   renameNote: vi.fn(),
   setContent: vi.fn(),
   storeSavedNote: vi.fn(),
@@ -37,7 +38,7 @@ vi.mock('../contexts/VaultContext', () => ({
     cacheNoteIcon: mocks.cacheNoteIcon,
     deleteNote: mocks.deleteNote,
     favoriteNoteIds: [],
-    isOnline: true,
+    isOnline: mocks.isOnline,
     renameNote: mocks.renameNote,
     resolveWikilink: () => null,
     selectFile: vi.fn(),
@@ -83,6 +84,7 @@ import { MarkdownViewer } from './MarkdownViewer';
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.content = 'original body';
+  mocks.isOnline = true;
   mocks.updateDriveFileText.mockResolvedValue({
     ...selectedFile.source,
     modifiedTime: 'saved',
@@ -92,6 +94,61 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('MarkdownViewer cache conflicts', () => {
+  it('renders one move handle per semantic Markdown block', () => {
+    mocks.content = 'First line\nstill the same paragraph\n\n- task\n  - nested task\n';
+    render(<MarkdownViewer />);
+
+    expect(screen.getAllByRole('button', { name: 'Move block' })).toHaveLength(3);
+  });
+
+  it('adds handles to quotes, code blocks, tables, and thematic breaks', () => {
+    mocks.content = '> quote\n\n```js\ncode();\n```\n\n| A |\n| - |\n| B |\n\n---\n';
+    render(<MarkdownViewer />);
+
+    expect(screen.getAllByRole('button', { name: 'Move block' })).toHaveLength(4);
+  });
+
+  it('optimistically reorders blocks from the accessible move menu', async () => {
+    mocks.content = 'Alpha\n\nBeta\n';
+    render(<MarkdownViewer />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Move block' })[0]);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Move down' }));
+
+    expect(mocks.cacheContent).toHaveBeenCalledWith('Beta\n\nAlpha\n');
+    expect(screen.getByRole('status').textContent).toContain('Saving...');
+    await waitFor(() => expect(mocks.updateDriveFileText).toHaveBeenCalledWith(
+      'valid-token',
+      'note',
+      'Beta\n\nAlpha\n',
+    ));
+    expect(mocks.cacheContent).toHaveBeenLastCalledWith('Beta\n\nAlpha\n', 'saved');
+  });
+
+  it('deletes a block from the grabber menu and saves optimistically', async () => {
+    mocks.content = 'Alpha\n\nBeta\n';
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
+    render(<MarkdownViewer />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Move block' })[0]);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete block' }));
+
+    expect(confirm).toHaveBeenCalledWith('Delete this block?');
+    expect(mocks.cacheContent).toHaveBeenCalledWith('Beta\n');
+    await waitFor(() => expect(mocks.updateDriveFileText).toHaveBeenCalledWith('valid-token', 'note', 'Beta\n'));
+    expect(mocks.cacheContent).toHaveBeenLastCalledWith('Beta\n', 'saved');
+    confirm.mockRestore();
+  });
+
+  it('rolls an optimistic block move back when Drive rejects it', async () => {
+    mocks.content = 'Alpha\n\nBeta\n';
+    mocks.updateDriveFileText.mockRejectedValueOnce(new Error('Move failed'));
+    render(<MarkdownViewer />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Move block' })[0]);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Move down' }));
+
+    await waitFor(() => expect(mocks.setContent).toHaveBeenCalledWith('Alpha\n\nBeta\n'));
+    expect(screen.getByText('Move failed')).not.toBeNull();
+  });
+
   it('combines optional frontmatter properties and note controls above the note', () => {
     mocks.content = '---\ntitle: Test note\n---\nBody';
     const { container } = render(<MarkdownViewer />);

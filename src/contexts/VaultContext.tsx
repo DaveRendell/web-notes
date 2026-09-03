@@ -460,9 +460,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       const updatedNote = createVaultNode(file, getParentPath(note.path));
       setTree((currentTree) => replaceNodeInTree(currentTree, updatedNote));
 
-      if (selectedFile?.id === note.id) {
-        setSelectedFile(updatedNote);
-      }
+      setSelectedFile((currentFile) => currentFile?.id === note.id ? updatedNote : currentFile);
 
       if (accountId && selectedVault) {
         void putNoteContent({
@@ -475,7 +473,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [accountId, selectedFile?.id, selectedVault, setTree],
+    [accountId, selectedVault, setTree],
   );
 
   useEffect(() => {

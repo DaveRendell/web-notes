@@ -11,6 +11,7 @@ import {
   MouseEvent,
   ReactElement,
   ReactNode,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -32,9 +33,18 @@ import {
   parseMarkdownWithFrontmatter,
   toggleMarkdownTaskCheckbox,
 } from '../lib/markdown';
+import {
+  deleteMarkdownBlock,
+  moveMarkdownBlock,
+  parseMarkdownBlocks,
+  type MarkdownBlock,
+  type MarkdownBlockMove,
+} from '../lib/markdownBlocks';
+import { putNoteContent } from '../lib/vaultCache';
 import { FrontmatterProperties } from './FrontmatterProperties';
 import { MarkdownEditor } from './MarkdownEditor';
 import { AnimatedPopover } from './AnimatedPopover';
+import { MarkdownBlockDndProvider, MarkdownBlockListItem, MarkdownBlockShell } from './MarkdownBlockDnd';
 
 export function MarkdownViewer() {
   const { accessToken, accountId, ensureAccessToken, invalidateAccessToken } = useAuth();
@@ -61,8 +71,8 @@ export function MarkdownViewer() {
   );
   const viewerRef = useRef<HTMLElement>(null);
   const noteMenuRef = useRef<HTMLDivElement>(null);
-  const isTaskSaveInFlightRef = useRef(false);
-  const isSaveInFlightRef = useRef(false);
+  const isNoteMutationInFlightRef = useRef(false);
+  const selectedFileRef = useRef(selectedFile);
   const [draft, setDraft] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const draftRef = useRef(draft);
@@ -80,10 +90,13 @@ export function MarkdownViewer() {
   const markdownBody = useMemo(() => convertWikilinksToMarkdown(parsedMarkdown.body), [parsedMarkdown.body]);
   const taskCheckboxes = useMemo(() => findMarkdownTaskCheckboxes(content), [content]);
   const taskMetadataPlugin = useMemo(() => createTaskMetadataPlugin(taskCheckboxes), [taskCheckboxes]);
+  const blockDocument = useMemo(() => parseMarkdownBlocks(content), [content]);
+  const blockMetadataPlugin = useMemo(() => createBlockMetadataPlugin(blockDocument.blocks), [blockDocument.blocks]);
   const hasUnsavedChanges = draft !== content;
 
   draftRef.current = draft;
   isEditingRef.current = isEditing;
+  selectedFileRef.current = selectedFile;
 
   useEffect(() => {
     if (!accessToken || !selectedFile || isLoading || error) return;
@@ -106,7 +119,7 @@ export function MarkdownViewer() {
       return;
     }
 
-    if (isSaveInFlightRef.current) return;
+    if (isNoteMutationInFlightRef.current) return;
 
     if (isEditingRef.current) {
       if (content !== previousContent && draftRef.current !== previousContent) {
@@ -198,14 +211,15 @@ export function MarkdownViewer() {
   }
 
   async function handleSave() {
-    if (!accessToken || !selectedFile || !isOnline || isSaveInFlightRef.current) return;
+    if (!accessToken || !selectedFile || !isOnline || isNoteMutationInFlightRef.current) return;
     if (!hasUnsavedChanges && !hasFailedSave) {
       setIsEditing(false);
       return;
     }
 
     const nextContent = draft;
-    isSaveInFlightRef.current = true;
+    const note = selectedFile;
+    isNoteMutationInFlightRef.current = true;
     setIsSaving(true);
     setHasFailedSave(false);
     setSaveError(null);
@@ -214,18 +228,21 @@ export function MarkdownViewer() {
 
     try {
       const validAccessToken = await ensureAccessToken();
-      const updatedFile = await updateDriveFileText(validAccessToken, selectedFile.id, nextContent);
+      const updatedFile = await updateDriveFileText(validAccessToken, note.id, nextContent);
 
-      cacheContent(nextContent, updatedFile.modifiedTime);
-      storeSavedNote(selectedFile, updatedFile, nextContent);
-      setHasRemoteUpdate(false);
-      setNeedsAuthReconnect(false);
-      setHasFailedSave(false);
-      setSaveError(null);
+      if (selectedFileRef.current?.id === note.id) {
+        cacheContent(nextContent, updatedFile.modifiedTime);
+        setHasRemoteUpdate(false);
+        setNeedsAuthReconnect(false);
+        setHasFailedSave(false);
+        setSaveError(null);
+      }
+      storeSavedNote(note, updatedFile, nextContent);
     } catch (requestError) {
+      if (selectedFileRef.current?.id !== note.id) return;
+
       setIsEditing(true);
       setHasFailedSave(true);
-
       if (isGoogleDriveAuthError(requestError)) {
         invalidateAccessToken();
         setNeedsAuthReconnect(true);
@@ -234,7 +251,7 @@ export function MarkdownViewer() {
         setSaveError(requestError instanceof Error ? requestError.message : 'Failed to save markdown file.');
       }
     } finally {
-      isSaveInFlightRef.current = false;
+      isNoteMutationInFlightRef.current = false;
       setIsSaving(false);
     }
   }
@@ -245,7 +262,7 @@ export function MarkdownViewer() {
       return;
     }
 
-    if (isTaskSaveInFlightRef.current) {
+    if (isNoteMutationInFlightRef.current) {
       logTaskDebug('toggle skipped: save already in flight', taskCheckbox);
       return;
     }
@@ -267,24 +284,26 @@ export function MarkdownViewer() {
       return;
     }
 
-    isTaskSaveInFlightRef.current = true;
+    isNoteMutationInFlightRef.current = true;
+    const note = selectedFile;
     setIsSavingTask(true);
     setContent(nextContent);
     setSaveError(null);
 
     try {
       const validAccessToken = await ensureAccessToken();
-      const updatedFile = await updateDriveFileText(validAccessToken, selectedFile.id, nextContent);
-      cacheContent(nextContent, updatedFile.modifiedTime);
-      storeSavedNote(selectedFile, updatedFile, nextContent);
+      const updatedFile = await updateDriveFileText(validAccessToken, note.id, nextContent);
+      if (selectedFileRef.current?.id === note.id) cacheContent(nextContent, updatedFile.modifiedTime);
+      storeSavedNote(note, updatedFile, nextContent);
       logTaskDebug('toggle saved', {
         note: selectedFile.path,
         nextChecked: checked,
         task: taskCheckbox,
       });
     } catch (requestError) {
-      setContent(content);
+      if (selectedFileRef.current?.id !== note.id) return;
 
+      setContent(content);
       if (isGoogleDriveAuthError(requestError)) {
         invalidateAccessToken();
         setSaveError('Google Drive access expired. Select the checkbox again to reconnect and retry.');
@@ -294,10 +313,75 @@ export function MarkdownViewer() {
 
       logTaskDebug('toggle save failed', requestError);
     } finally {
-      isTaskSaveInFlightRef.current = false;
+      isNoteMutationInFlightRef.current = false;
       setIsSavingTask(false);
     }
   }
+
+  const persistOptimisticBlockContent = useCallback(async (nextContent: string) => {
+    if (!accessToken || !selectedFile || !selectedVault || !isOnline || isNoteMutationInFlightRef.current) return;
+    const previousContent = content;
+    const note = selectedFile;
+    const vault = selectedVault;
+    isNoteMutationInFlightRef.current = true;
+    setIsSaving(true);
+    setSaveError(null);
+    cacheContent(nextContent);
+
+    try {
+      const validAccessToken = await ensureAccessToken();
+      const updatedFile = await updateDriveFileText(validAccessToken, note.id, nextContent);
+      if (selectedFileRef.current?.id === note.id) {
+        cacheContent(nextContent, updatedFile.modifiedTime);
+      }
+      storeSavedNote(note, updatedFile, nextContent);
+    } catch (requestError) {
+      if (accountId) {
+        await putNoteContent({
+          accountId,
+          vaultId: vault.id,
+          fileId: note.id,
+          content: previousContent,
+          modifiedTime: note.source.modifiedTime,
+          cachedAt: Date.now(),
+        });
+      }
+      if (selectedFileRef.current?.id === note.id) {
+        setContent(previousContent);
+        if (isGoogleDriveAuthError(requestError)) {
+          invalidateAccessToken();
+          setSaveError('Google Drive access expired. Reconnect and try changing the block again.');
+        } else {
+          setSaveError(requestError instanceof Error ? requestError.message : 'Failed to update Markdown block.');
+        }
+      }
+    } finally {
+      isNoteMutationInFlightRef.current = false;
+      setIsSaving(false);
+    }
+  }, [
+    accessToken,
+    accountId,
+    cacheContent,
+    content,
+    ensureAccessToken,
+    invalidateAccessToken,
+    isOnline,
+    selectedFile,
+    selectedVault,
+    setContent,
+    storeSavedNote,
+  ]);
+
+  const handleBlockMove = useCallback(async (move: MarkdownBlockMove) => {
+    const result = moveMarkdownBlock(blockDocument, move);
+    if (result.changed) await persistOptimisticBlockContent(result.content);
+  }, [blockDocument, persistOptimisticBlockContent]);
+
+  const handleBlockDelete = useCallback(async (blockId: string) => {
+    const result = deleteMarkdownBlock(blockDocument, blockId);
+    if (result.changed) await persistOptimisticBlockContent(result.content);
+  }, [blockDocument, persistOptimisticBlockContent]);
 
   function handleCancel() {
     setDraft(content);
@@ -479,9 +563,51 @@ export function MarkdownViewer() {
       )}
       {!isLoading && !error && !isEditing && (
         <div className="note-view">
-          <article className="markdown-body">
-            <ReactMarkdown
-              components={{
+          <MarkdownBlockDndProvider
+            disabled={!isOnline || isLoading || isRefreshing || isSaving || isSavingTask}
+            document={blockDocument}
+            onDelete={(blockId) => void handleBlockDelete(blockId)}
+            onMove={(move) => void handleBlockMove(move)}
+            scrollElementRef={viewerRef}
+          >
+            <article className="markdown-body">
+              <ReactMarkdown
+                components={{
+                p: ({ children, node, ...props }) => (
+                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}>
+                    <p {...props}>{children}</p>
+                  </MarkdownBlockShell>
+                ),
+                h1: ({ children, node, ...props }) => (
+                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><h1 {...props}>{children}</h1></MarkdownBlockShell>
+                ),
+                h2: ({ children, node, ...props }) => (
+                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><h2 {...props}>{children}</h2></MarkdownBlockShell>
+                ),
+                h3: ({ children, node, ...props }) => (
+                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><h3 {...props}>{children}</h3></MarkdownBlockShell>
+                ),
+                h4: ({ children, node, ...props }) => (
+                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><h4 {...props}>{children}</h4></MarkdownBlockShell>
+                ),
+                h5: ({ children, node, ...props }) => (
+                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><h5 {...props}>{children}</h5></MarkdownBlockShell>
+                ),
+                h6: ({ children, node, ...props }) => (
+                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><h6 {...props}>{children}</h6></MarkdownBlockShell>
+                ),
+                blockquote: ({ children, node, ...props }) => (
+                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><blockquote {...props}>{children}</blockquote></MarkdownBlockShell>
+                ),
+                table: ({ children, node, ...props }) => (
+                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><table {...props}>{children}</table></MarkdownBlockShell>
+                ),
+                hr: ({ node, ...props }) => (
+                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><hr {...props} /></MarkdownBlockShell>
+                ),
+                pre: ({ children, node, ...props }) => (
+                  <MarkdownBlockShell blockId={getMarkdownPreBlockId(node)}><pre {...props}>{children}</pre></MarkdownBlockShell>
+                ),
                 a: ({ href, children }) => {
                   const wikilinkTarget = href ? getWikilinkTargetFromHref(href) : null;
                   const linkedFile = wikilinkTarget ? resolveWikilink(wikilinkTarget) : null;
@@ -501,7 +627,7 @@ export function MarkdownViewer() {
                   const taskCheckbox = getTaskCheckboxFromNode(node);
 
                   return (
-                    <li {...props}>
+                    <MarkdownBlockListItem {...props} blockId={getMarkdownBlockId(node)}>
                       {taskCheckbox
                         ? injectTaskCheckboxHandler(children, {
                             isOnline,
@@ -510,15 +636,16 @@ export function MarkdownViewer() {
                             taskCheckbox,
                           })
                         : children}
-                    </li>
+                    </MarkdownBlockListItem>
                   );
                 },
               }}
-              remarkPlugins={[remarkGfm, remarkBreaks, taskMetadataPlugin]}
-            >
-              {markdownBody}
-            </ReactMarkdown>
-          </article>
+                remarkPlugins={[remarkGfm, remarkBreaks, blockMetadataPlugin, taskMetadataPlugin]}
+              >
+                {markdownBody}
+              </ReactMarkdown>
+            </article>
+          </MarkdownBlockDndProvider>
         </div>
       )}
     </main>
@@ -570,6 +697,56 @@ function createTaskMetadataPlugin(taskCheckboxes: MarkdownTaskCheckbox[]): Plugi
       });
     });
   };
+}
+
+function createBlockMetadataPlugin(blocks: MarkdownBlock[]): Plugin<[], Root> {
+  return () => (tree) => {
+    let blockIndex = 0;
+
+    function markNode(node: Root['children'][number] | ListItem) {
+      const block = blocks[blockIndex];
+      blockIndex += 1;
+      if (!block) return;
+      node.data = {
+        ...node.data,
+        hProperties: {
+          ...node.data?.hProperties,
+          dataMarkdownBlockId: block.id,
+        },
+      };
+    }
+
+    function visitContainer(parent: Root | ListItem) {
+      let skippedLead = false;
+      for (const node of parent.children) {
+        if (node.type === 'list') {
+          for (const item of node.children) {
+            markNode(item);
+            visitContainer(item);
+          }
+          continue;
+        }
+        if (parent.type === 'listItem' && !skippedLead) {
+          skippedLead = true;
+          continue;
+        }
+        if (node.type === 'definition' || node.type === 'yaml') continue;
+        markNode(node);
+      }
+    }
+
+    visitContainer(tree);
+  };
+}
+
+function getMarkdownBlockId(node: Element | undefined) {
+  const blockId = node?.properties?.dataMarkdownBlockId;
+  return typeof blockId === 'string' ? blockId : null;
+}
+
+function getMarkdownPreBlockId(node: Element | undefined) {
+  const codeNode = node?.children.find((child): child is Element => child.type === 'element' && child.tagName === 'code');
+  return getMarkdownBlockId(codeNode);
 }
 
 function getTaskCheckboxFromNode(node: Element | undefined): MarkdownTaskCheckbox | null {

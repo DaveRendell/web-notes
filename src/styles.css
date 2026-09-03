@@ -1150,7 +1150,184 @@ button {
 
 .markdown-body {
   width: min(100%, 880px);
-  padding: 28px;
+  padding: 28px 28px 28px 48px;
+}
+
+.markdown-block {
+  position: relative;
+  transition: opacity 0.1s ease-out, background-color 0.1s ease-out;
+}
+
+.markdown-block.dragging {
+  opacity: 0.42;
+}
+
+.markdown-block::before,
+.markdown-block::after {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: transparent;
+  content: "";
+  pointer-events: none;
+}
+
+.markdown-block::before {
+  top: -3px;
+}
+
+.markdown-block::after {
+  bottom: -3px;
+}
+
+.markdown-block.drop-before::before,
+.markdown-block.drop-after::after {
+  background: #3478a7;
+}
+
+.markdown-block.drop-nest {
+  border-radius: 5px;
+  background: #e7f1f8;
+  box-shadow: inset 0 0 0 2px #3478a7;
+}
+
+.markdown-block-controls {
+  position: absolute;
+  z-index: 8;
+  top: 0;
+  left: -34px;
+  display: flex;
+  opacity: 0;
+  transition: opacity 0.1s ease-out;
+}
+
+li.markdown-block > .markdown-block-controls {
+  left: -44px;
+}
+
+.markdown-block:hover > .markdown-block-controls,
+.markdown-block:focus-within > .markdown-block-controls,
+.markdown-block.dragging > .markdown-block-controls {
+  opacity: 1;
+}
+
+.markdown-block:has(.markdown-block:hover) > .markdown-block-controls,
+.markdown-block:has(.markdown-block:focus-within) > .markdown-block-controls {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.markdown-block-handle {
+  display: inline-flex;
+  width: 28px;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #697180;
+  cursor: grab;
+}
+
+.markdown-block-handle:hover,
+.markdown-block-handle:focus-visible {
+  background: #e7edf2;
+  color: #183f59;
+  outline: none;
+}
+
+.markdown-block-handle:active {
+  cursor: grabbing;
+}
+
+.markdown-block-handle:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.markdown-block-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 2px);
+  left: 0;
+  min-width: 145px;
+  overflow: hidden;
+  padding: 4px;
+  border: 1px solid #dfe3ea;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgb(15 23 33 / 18%);
+}
+
+.markdown-block-menu button {
+  display: grid;
+  width: 100%;
+  min-height: 32px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #303640;
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.markdown-block-menu button:hover,
+.markdown-block-menu button:focus-visible {
+  background: #eef3f7;
+  color: #183f59;
+  outline: none;
+}
+
+.markdown-block-menu button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.markdown-block-menu button.danger {
+  color: #b42318;
+}
+
+.markdown-block-menu button.danger:hover,
+.markdown-block-menu button.danger:focus-visible {
+  background: #fde7e7;
+  color: #8f1c14;
+}
+
+.markdown-outdent-target {
+  position: fixed;
+  z-index: 25;
+  top: 50%;
+  left: max(8px, calc(var(--sidebar-width, 280px) + 8px));
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 9px;
+  border-radius: 5px;
+  background: #eef3f7;
+  box-shadow: 0 4px 14px rgb(15 23 33 / 16%);
+  color: #3b4655;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.markdown-outdent-target.active {
+  background: #d8ebf8;
+  box-shadow: inset 0 0 0 2px #3478a7, 0 4px 14px rgb(15 23 33 / 16%);
+}
+
+.workspace.sidebar-collapsed .markdown-outdent-target {
+  left: 8px;
 }
 
 .frontmatter-panel {
@@ -1511,6 +1688,54 @@ button {
   background: #171c22;
 }
 
+[data-theme="dark"] .markdown-block.drop-nest {
+  background: #263d50;
+  box-shadow: inset 0 0 0 2px #8ab7dc;
+}
+
+[data-theme="dark"] .markdown-block.drop-before::before,
+[data-theme="dark"] .markdown-block.drop-after::after {
+  background: #8ab7dc;
+}
+
+[data-theme="dark"] .markdown-block-handle {
+  color: #9ba8b7;
+}
+
+[data-theme="dark"] .markdown-block-handle:hover,
+[data-theme="dark"] .markdown-block-handle:focus-visible {
+  background: #263d50;
+  color: #dceefa;
+}
+
+[data-theme="dark"] .markdown-block-menu,
+[data-theme="dark"] .markdown-outdent-target {
+  border-color: #3a4655;
+  background: #171c22;
+  color: #d6dde6;
+}
+
+[data-theme="dark"] .markdown-block-menu button {
+  color: #d6dde6;
+}
+
+[data-theme="dark"] .markdown-block-menu button:hover,
+[data-theme="dark"] .markdown-block-menu button:focus-visible,
+[data-theme="dark"] .markdown-outdent-target.active {
+  background: #263d50;
+  color: #dceefa;
+}
+
+[data-theme="dark"] .markdown-block-menu button.danger {
+  color: #ffb4ab;
+}
+
+[data-theme="dark"] .markdown-block-menu button.danger:hover,
+[data-theme="dark"] .markdown-block-menu button.danger:focus-visible {
+  background: #4b2428;
+  color: #ffd8d3;
+}
+
 [data-theme="dark"] .header-menu-popover {
   border-color: #3a4655;
   background: #171c22;
@@ -1813,6 +2038,16 @@ button {
   }
 
   .markdown-body {
-    padding: 20px;
+    padding: 20px 20px 20px 42px;
+  }
+
+  .markdown-outdent-target {
+    left: 8px;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .markdown-block > .markdown-block-controls {
+    opacity: 1;
   }
 }
