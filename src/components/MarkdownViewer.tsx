@@ -71,6 +71,7 @@ export function MarkdownViewer() {
   const previousFileIdRef = useRef(selectedFile?.id);
   const [hasRemoteUpdate, setHasRemoteUpdate] = useState(false);
   const [needsAuthReconnect, setNeedsAuthReconnect] = useState(false);
+  const [hasFailedSave, setHasFailedSave] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingTask, setIsSavingTask] = useState(false);
@@ -100,6 +101,7 @@ export function MarkdownViewer() {
       setIsEditing(false);
       setHasRemoteUpdate(false);
       setNeedsAuthReconnect(false);
+      setHasFailedSave(false);
       setSaveError(null);
       return;
     }
@@ -197,26 +199,33 @@ export function MarkdownViewer() {
 
   async function handleSave() {
     if (!accessToken || !selectedFile || !isOnline || isSaveInFlightRef.current) return;
-    if (!hasUnsavedChanges) {
+    if (!hasUnsavedChanges && !hasFailedSave) {
       setIsEditing(false);
       return;
     }
 
+    const nextContent = draft;
     isSaveInFlightRef.current = true;
     setIsSaving(true);
+    setHasFailedSave(false);
     setSaveError(null);
+    cacheContent(nextContent);
+    setIsEditing(false);
 
     try {
       const validAccessToken = await ensureAccessToken();
-      const updatedFile = await updateDriveFileText(validAccessToken, selectedFile.id, draft);
+      const updatedFile = await updateDriveFileText(validAccessToken, selectedFile.id, nextContent);
 
-      cacheContent(draft, updatedFile.modifiedTime);
-      storeSavedNote(selectedFile, updatedFile, draft);
-      setIsEditing(false);
+      cacheContent(nextContent, updatedFile.modifiedTime);
+      storeSavedNote(selectedFile, updatedFile, nextContent);
       setHasRemoteUpdate(false);
       setNeedsAuthReconnect(false);
+      setHasFailedSave(false);
       setSaveError(null);
     } catch (requestError) {
+      setIsEditing(true);
+      setHasFailedSave(true);
+
       if (isGoogleDriveAuthError(requestError)) {
         invalidateAccessToken();
         setNeedsAuthReconnect(true);
@@ -295,6 +304,7 @@ export function MarkdownViewer() {
     setIsEditing(false);
     setHasRemoteUpdate(false);
     setNeedsAuthReconnect(false);
+    setHasFailedSave(false);
     setSaveError(null);
   }
 
@@ -343,13 +353,17 @@ export function MarkdownViewer() {
         properties={parsedMarkdown.frontmatter}
         actions={
           <>
-            {isEditing ? (
+            {isSaving ? (
+              <span className="note-save-status" role="status">
+                <Loader2 className="spin" size={16} />
+                Saving...
+              </span>
+            ) : isEditing ? (
               <div className="edit-actions">
                 <button
                   className="icon-text-button"
                   type="button"
                   onClick={handleCancel}
-                  disabled={isSaving}
                 >
                   <X size={16} />
                   Cancel
@@ -358,16 +372,10 @@ export function MarkdownViewer() {
                   className="primary-button compact"
                   type="button"
                   onClick={handleSave}
-                  disabled={isSaving || !hasUnsavedChanges || !isOnline}
+                  disabled={(!hasUnsavedChanges && !hasFailedSave) || !isOnline}
                 >
-                  {isSaving ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
-                  {isSaving
-                    ? needsAuthReconnect
-                      ? 'Reconnecting...'
-                      : 'Saving...'
-                    : needsAuthReconnect
-                      ? 'Reconnect & save'
-                      : 'Save'}
+                  <Check size={16} />
+                  {needsAuthReconnect ? 'Reconnect & save' : 'Save'}
                 </button>
               </div>
             ) : (
@@ -410,7 +418,7 @@ export function MarkdownViewer() {
                   type="button"
                   role="menuitem"
                   onClick={() => runNoteMenuAction(handleRenameNote)}
-                  disabled={!isOnline || isEditing}
+                  disabled={!isOnline || isEditing || isSaving}
                 >
                   <Pencil size={16} />
                   <span>Rename note</span>
@@ -420,7 +428,7 @@ export function MarkdownViewer() {
                   type="button"
                   role="menuitem"
                   onClick={() => runNoteMenuAction(handleDeleteNote)}
-                  disabled={!isOnline || isEditing}
+                  disabled={!isOnline || isEditing || isSaving}
                 >
                   <Trash2 size={16} />
                   <span>Delete note</span>
@@ -497,7 +505,7 @@ export function MarkdownViewer() {
                       {taskCheckbox
                         ? injectTaskCheckboxHandler(children, {
                             isOnline,
-                            isSavingTask,
+                            isSavingTask: isSaving || isSavingTask,
                             onToggle: (checked) => void handleTaskToggle(taskCheckbox, checked),
                             taskCheckbox,
                           })

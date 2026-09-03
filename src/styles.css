@@ -1213,6 +1213,17 @@ button {
   margin-left: auto;
 }
 
+.note-save-status {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  color: #697180;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .frontmatter-table {
   width: 100%;
   border-collapse: collapse;
@@ -1413,6 +1424,7 @@ button {
 [data-theme="dark"] .empty-state,
 [data-theme="dark"] .muted-text,
 [data-theme="dark"] .status-row,
+[data-theme="dark"] .note-save-status,
 [data-theme="dark"] .breadcrumb,
 [data-theme="dark"] .frontmatter-summary,
 [data-theme="dark"] .frontmatter-table th,

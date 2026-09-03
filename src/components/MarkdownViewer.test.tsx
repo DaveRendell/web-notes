@@ -171,4 +171,48 @@ describe('MarkdownViewer cache conflicts', () => {
     await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Markdown draft' })).toBeNull());
     expect(screen.getByRole('button', { name: 'Edit' })).not.toBeNull();
   });
+
+  it('caches the edited content and shows a header spinner while Drive saves', async () => {
+    let resolveSave: ((value: typeof selectedFile.source) => void) | undefined;
+    mocks.updateDriveFileText.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveSave = resolve;
+      }),
+    );
+    render(<MarkdownViewer />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Markdown draft' }), {
+      target: { value: 'optimistic body' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(screen.queryByRole('textbox', { name: 'Markdown draft' })).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain('Saving...');
+    expect(mocks.cacheContent).toHaveBeenCalledWith('optimistic body');
+
+    resolveSave?.({ ...selectedFile.source, modifiedTime: 'saved' });
+
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    expect(mocks.cacheContent).toHaveBeenLastCalledWith('optimistic body', 'saved');
+  });
+
+  it('reopens the editor with the optimistic draft when saving fails', async () => {
+    mocks.updateDriveFileText.mockRejectedValueOnce(new Error('Drive write failed'));
+    render(<MarkdownViewer />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Markdown draft' }), {
+      target: { value: 'preserved draft' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect((screen.getByRole('textbox', { name: 'Markdown draft' }) as HTMLTextAreaElement).value).toBe(
+        'preserved draft',
+      ),
+    );
+    expect(screen.getByText('Drive write failed')).not.toBeNull();
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(false);
+  });
 });
