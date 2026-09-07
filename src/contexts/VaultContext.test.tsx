@@ -119,7 +119,7 @@ describe('VaultContext cache mutations', () => {
 
     act(() => result.current.reorderFavorite('second', 'first', 'before'));
     expect(result.current.favoriteNoteIds).toEqual(['second', 'first']);
-    expect(JSON.parse(localStorage.getItem('vault-web-viewer:favorite-notes') ?? '{}')).toEqual({
+    expect(JSON.parse(localStorage.getItem('web-notes:favorite-notes') ?? '{}')).toEqual({
       vault: ['second', 'first'],
     });
 

@@ -1,6 +1,8 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
+import { readMigratedStorage } from '../lib/browserStorage';
 
-const THEME_KEY = 'vault-web-viewer:theme';
+const THEME_KEY = 'web-notes:theme';
+const LEGACY_THEME_KEY = 'vault-web-viewer:theme';
 
 type Theme = 'light' | 'dark';
 
@@ -41,7 +43,7 @@ export function useTheme() {
 }
 
 function readStoredTheme(): Theme {
-  const storedTheme = localStorage.getItem(THEME_KEY);
+  const storedTheme = readMigratedStorage(localStorage, THEME_KEY, LEGACY_THEME_KEY);
 
   if (storedTheme === 'light' || storedTheme === 'dark') {
     return storedTheme;

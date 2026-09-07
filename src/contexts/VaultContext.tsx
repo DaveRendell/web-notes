@@ -24,13 +24,17 @@ import {
   findVaultNodeParentId,
   sortVaultNodes,
 } from '../lib/vaultTree';
+import { readMigratedStorage, removeMigratedStorage } from '../lib/browserStorage';
 import { DriveFile } from '../types/drive';
 import { VaultNode } from '../types/vault';
 import { useAuth } from './AuthContext';
 
-const SELECTED_VAULT_KEY = 'vault-web-viewer:selected-vault';
-const RECENT_NOTES_KEY = 'vault-web-viewer:recent-notes';
-const FAVORITE_NOTES_KEY = 'vault-web-viewer:favorite-notes';
+const SELECTED_VAULT_KEY = 'web-notes:selected-vault';
+const LEGACY_SELECTED_VAULT_KEY = 'vault-web-viewer:selected-vault';
+const RECENT_NOTES_KEY = 'web-notes:recent-notes';
+const LEGACY_RECENT_NOTES_KEY = 'vault-web-viewer:recent-notes';
+const FAVORITE_NOTES_KEY = 'web-notes:favorite-notes';
+const LEGACY_FAVORITE_NOTES_KEY = 'vault-web-viewer:favorite-notes';
 const MAX_RECENT_NOTES = 25;
 
 type StoredVault = {
@@ -116,7 +120,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearVault = useCallback(() => {
-    localStorage.removeItem(SELECTED_VAULT_KEY);
+    removeMigratedStorage(localStorage, SELECTED_VAULT_KEY, LEGACY_SELECTED_VAULT_KEY);
     setSelectedVault(null);
     setSelectedFile(null);
     setRecentNoteIds([]);
@@ -559,7 +563,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    document.title = selectedFile ? stripMarkdownExtension(selectedFile.name) : 'Vault Web Viewer';
+    document.title = selectedFile ? stripMarkdownExtension(selectedFile.name) : 'Web Notes';
   }, [selectedFile]);
 
   const value = useMemo(
@@ -789,7 +793,7 @@ export function useVault() {
 }
 
 function readStoredVault(): StoredVault | null {
-  const storedValue = localStorage.getItem(SELECTED_VAULT_KEY);
+  const storedValue = readMigratedStorage(localStorage, SELECTED_VAULT_KEY, LEGACY_SELECTED_VAULT_KEY);
 
   if (!storedValue) {
     return null;
@@ -798,7 +802,7 @@ function readStoredVault(): StoredVault | null {
   try {
     return JSON.parse(storedValue) as StoredVault;
   } catch {
-    localStorage.removeItem(SELECTED_VAULT_KEY);
+    removeMigratedStorage(localStorage, SELECTED_VAULT_KEY, LEGACY_SELECTED_VAULT_KEY);
     return null;
   }
 }
@@ -807,7 +811,7 @@ function readRecentNoteIds(vaultId: string | null): string[] {
   if (!vaultId) return [];
 
   try {
-    const storedValue = localStorage.getItem(RECENT_NOTES_KEY);
+    const storedValue = readMigratedStorage(localStorage, RECENT_NOTES_KEY, LEGACY_RECENT_NOTES_KEY);
     if (!storedValue) return [];
 
     const recentNotesByVault = JSON.parse(storedValue) as Record<string, unknown>;
@@ -817,7 +821,7 @@ function readRecentNoteIds(vaultId: string | null): string[] {
       ? storedIds.filter((id): id is string => typeof id === 'string').slice(0, MAX_RECENT_NOTES)
       : [];
   } catch {
-    localStorage.removeItem(RECENT_NOTES_KEY);
+    removeMigratedStorage(localStorage, RECENT_NOTES_KEY, LEGACY_RECENT_NOTES_KEY);
     return [];
   }
 }
@@ -828,7 +832,7 @@ function writeRecentNoteIds(vaultId: string | null, noteIds: string[]) {
   let recentNotesByVault: Record<string, string[]> = {};
 
   try {
-    const storedValue = localStorage.getItem(RECENT_NOTES_KEY);
+    const storedValue = readMigratedStorage(localStorage, RECENT_NOTES_KEY, LEGACY_RECENT_NOTES_KEY);
     if (storedValue) {
       const parsedValue = JSON.parse(storedValue) as unknown;
       if (parsedValue && typeof parsedValue === 'object' && !Array.isArray(parsedValue)) {
@@ -847,7 +851,7 @@ function readFavoriteNoteIds(vaultId: string | null): string[] {
   if (!vaultId) return [];
 
   try {
-    const storedValue = localStorage.getItem(FAVORITE_NOTES_KEY);
+    const storedValue = readMigratedStorage(localStorage, FAVORITE_NOTES_KEY, LEGACY_FAVORITE_NOTES_KEY);
     if (!storedValue) return [];
 
     const favoriteNotesByVault = JSON.parse(storedValue) as Record<string, unknown>;
@@ -856,7 +860,7 @@ function readFavoriteNoteIds(vaultId: string | null): string[] {
       ? storedIds.filter((id): id is string => typeof id === 'string')
       : [];
   } catch {
-    localStorage.removeItem(FAVORITE_NOTES_KEY);
+    removeMigratedStorage(localStorage, FAVORITE_NOTES_KEY, LEGACY_FAVORITE_NOTES_KEY);
     return [];
   }
 }
@@ -867,7 +871,7 @@ function writeFavoriteNoteIds(vaultId: string | null, noteIds: string[]) {
   let favoriteNotesByVault: Record<string, string[]> = {};
 
   try {
-    const storedValue = localStorage.getItem(FAVORITE_NOTES_KEY);
+    const storedValue = readMigratedStorage(localStorage, FAVORITE_NOTES_KEY, LEGACY_FAVORITE_NOTES_KEY);
     if (storedValue) {
       const parsedValue = JSON.parse(storedValue) as unknown;
       if (parsedValue && typeof parsedValue === 'object' && !Array.isArray(parsedValue)) {

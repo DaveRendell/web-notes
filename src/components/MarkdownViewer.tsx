@@ -727,7 +727,7 @@ export function MarkdownViewer() {
   );
 }
 
-const TASK_DEBUG_KEY = 'vault-web-viewer:debug-tasks';
+const TASK_DEBUG_KEY = 'web-notes:debug-tasks';
 
 function isTaskDebugEnabled() {
   return localStorage.getItem(TASK_DEBUG_KEY) === 'true';

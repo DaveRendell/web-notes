@@ -3,6 +3,7 @@ import { CSSProperties, KeyboardEvent, PointerEvent, useEffect, useRef, useState
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useVault } from '../contexts/VaultContext';
+import { readMigratedStorage } from '../lib/browserStorage';
 import { AnimatedPopover } from './AnimatedPopover';
 import { MarkdownViewer } from './MarkdownViewer';
 import { NoteSearch } from './NoteSearch';
@@ -63,10 +64,10 @@ export function AppShell() {
     return (
       <main className="login-screen">
         <section className="login-panel" aria-labelledby="login-title">
-          <p className="eyebrow">Obsidian Drive Reader</p>
-          <h1 id="login-title">Vault Web Viewer</h1>
+          <p className="eyebrow">Google Drive Markdown</p>
+          <h1 id="login-title">Web Notes</h1>
           <p className="login-copy">
-            Sign in with Google to browse a Drive folder as an Obsidian vault and render markdown files.
+            Sign in with Google to browse and edit Markdown notes stored in a Drive folder.
           </p>
           <button className="primary-button" type="button" onClick={signIn} disabled={status === 'loading'}>
             {status === 'loading' ? 'Connecting...' : 'Sign in with Google'}
@@ -114,8 +115,10 @@ export function AppShell() {
   );
 }
 
-const SIDEBAR_WIDTH_KEY = 'vault-web-viewer:sidebar-width';
-const SIDEBAR_COLLAPSED_KEY = 'vault-web-viewer:sidebar-collapsed';
+const SIDEBAR_WIDTH_KEY = 'web-notes:sidebar-width';
+const LEGACY_SIDEBAR_WIDTH_KEY = 'vault-web-viewer:sidebar-width';
+const SIDEBAR_COLLAPSED_KEY = 'web-notes:sidebar-collapsed';
+const LEGACY_SIDEBAR_COLLAPSED_KEY = 'vault-web-viewer:sidebar-collapsed';
 const DEFAULT_SIDEBAR_WIDTH = 320;
 const MIN_SIDEBAR_WIDTH = 220;
 const MAX_SIDEBAR_WIDTH = 640;
@@ -196,14 +199,14 @@ function ResizableWorkspace({ isSidebarCollapsed }: { isSidebarCollapsed: boolea
 }
 
 function readSidebarWidth() {
-  const storedWidth = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+  const storedWidth = Number(readMigratedStorage(localStorage, SIDEBAR_WIDTH_KEY, LEGACY_SIDEBAR_WIDTH_KEY));
   return Number.isFinite(storedWidth) && storedWidth > 0
     ? clampSidebarWidth(storedWidth)
     : DEFAULT_SIDEBAR_WIDTH;
 }
 
 function readSidebarCollapsed() {
-  return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+  return readMigratedStorage(localStorage, SIDEBAR_COLLAPSED_KEY, LEGACY_SIDEBAR_COLLAPSED_KEY) === 'true';
 }
 
 function clampSidebarWidth(width: number) {

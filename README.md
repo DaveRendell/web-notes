@@ -1,6 +1,6 @@
-# Vault Web Viewer
+# Web Notes
 
-A static React SPA for browsing an Obsidian vault stored in Google Drive.
+A static React SPA for browsing and editing Markdown notes stored in Google Drive.
 
 ## Setup
 

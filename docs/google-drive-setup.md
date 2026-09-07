@@ -66,7 +66,7 @@ https://your-github-username.github.io
 https://your-custom-domain.example
 ```
 
-Use only the origin: scheme, hostname, and optional port. Do not include a path like `/vault_web_viewer`.
+Use only the origin: scheme, hostname, and optional port. Do not include a path like `/web-notes`.
 
 ## Authorized Redirect URIs
 

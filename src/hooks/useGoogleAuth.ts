@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { GoogleTokenClient } from '../types/google';
 import { getDriveAccountId } from '../lib/googleDrive';
 import { deleteAccountCache } from '../lib/vaultCache';
+import { readMigratedStorage, removeMigratedStorage } from '../lib/browserStorage';
 
 const GOOGLE_IDENTITY_SCRIPT = 'https://accounts.google.com/gsi/client';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
-const STORED_TOKEN_KEY = 'vault-web-viewer:google-access-token';
+const STORED_TOKEN_KEY = 'web-notes:google-access-token';
+const LEGACY_STORED_TOKEN_KEY = 'vault-web-viewer:google-access-token';
 const LEGACY_AUTO_RECONNECT_KEY = 'vault-web-viewer:auto-reconnect-google';
 const TOKEN_EXPIRY_BUFFER_MS = 60_000;
 const DEFAULT_TOKEN_LIFETIME_MS = 55 * 60 * 1000;
@@ -253,7 +255,7 @@ export function useGoogleAuth() {
 }
 
 function readStoredToken(): StoredToken | null {
-  const storedValue = sessionStorage.getItem(STORED_TOKEN_KEY);
+  const storedValue = readMigratedStorage(sessionStorage, STORED_TOKEN_KEY, LEGACY_STORED_TOKEN_KEY);
 
   if (!storedValue) {
     return null;
@@ -263,13 +265,13 @@ function readStoredToken(): StoredToken | null {
     const storedToken = JSON.parse(storedValue) as StoredToken;
 
     if (storedToken.scope !== DRIVE_SCOPE || storedToken.expiresAt <= Date.now() + TOKEN_EXPIRY_BUFFER_MS) {
-      sessionStorage.removeItem(STORED_TOKEN_KEY);
+      removeMigratedStorage(sessionStorage, STORED_TOKEN_KEY, LEGACY_STORED_TOKEN_KEY);
       return null;
     }
 
     return storedToken;
   } catch {
-    sessionStorage.removeItem(STORED_TOKEN_KEY);
+    removeMigratedStorage(sessionStorage, STORED_TOKEN_KEY, LEGACY_STORED_TOKEN_KEY);
     return null;
   }
 }
@@ -290,7 +292,7 @@ function storeToken(storedToken: StoredToken) {
 }
 
 function clearStoredToken() {
-  sessionStorage.removeItem(STORED_TOKEN_KEY);
+  removeMigratedStorage(sessionStorage, STORED_TOKEN_KEY, LEGACY_STORED_TOKEN_KEY);
 }
 
 function loadGoogleIdentityScript() {
