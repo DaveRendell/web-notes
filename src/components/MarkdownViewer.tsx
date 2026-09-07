@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Check, Edit3, EllipsisVertical, FileText, Loader2, Pencil, Star, StarOff, Trash2, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Edit3, EllipsisVertical, FileText, Loader2, Pencil, Star, StarOff, Trash2, X } from 'lucide-react';
 import {
   Children,
   ChangeEvent,
@@ -45,6 +45,7 @@ import {
   type MarkdownBlockMove,
 } from '../lib/markdownBlocks';
 import { putNoteContent } from '../lib/vaultCache';
+import { getNoteSequenceNavigation } from '../lib/noteSequence';
 import { FrontmatterProperties } from './FrontmatterProperties';
 import { MarkdownEditor } from './MarkdownEditor';
 import { AnimatedPopover } from './AnimatedPopover';
@@ -73,7 +74,7 @@ export function MarkdownViewer() {
     selectedVault?.id ?? null,
     selectedFile,
   );
-  const viewerRef = useRef<HTMLElement>(null);
+  const noteContentRef = useRef<HTMLDivElement>(null);
   const noteMenuRef = useRef<HTMLDivElement>(null);
   const isNoteMutationInFlightRef = useRef(false);
   const selectedFileRef = useRef(selectedFile);
@@ -109,6 +110,10 @@ export function MarkdownViewer() {
   const taskMetadataPlugin = useMemo(() => createTaskMetadataPlugin(taskCheckboxes), [taskCheckboxes]);
   const blockDocument = useMemo(() => parseMarkdownBlocks(content), [content]);
   const blockMetadataPlugin = useMemo(() => createBlockMetadataPlugin(blockDocument.blocks), [blockDocument.blocks]);
+  const sequenceNavigation = useMemo(
+    () => selectedFile ? getNoteSequenceNavigation(selectedFile, notes) : null,
+    [notes, selectedFile],
+  );
   const hasUnsavedChanges = draft !== content;
 
   draftRef.current = draft;
@@ -157,7 +162,7 @@ export function MarkdownViewer() {
   }, [content, selectedFile?.id]);
 
   useEffect(() => {
-    viewerRef.current?.scrollTo({ top: 0 });
+    noteContentRef.current?.scrollTo({ top: 0 });
     setIsNoteMenuOpen(false);
   }, [selectedFile?.id]);
 
@@ -460,11 +465,37 @@ export function MarkdownViewer() {
   }
 
   return (
-    <main className="viewer" ref={viewerRef}>
+    <main className="viewer">
       <FrontmatterProperties
         key={selectedFile.id}
         error={parsedMarkdown.frontmatterError}
         properties={parsedMarkdown.frontmatter}
+        navigation={sequenceNavigation && (sequenceNavigation.previous || sequenceNavigation.next) ? (
+          <nav className="note-sequence-navigation" aria-label="Sequential notes">
+            <button
+              className="note-sequence-button"
+              type="button"
+              onClick={() => sequenceNavigation.previous && selectFile(sequenceNavigation.previous)}
+              disabled={!sequenceNavigation.previous}
+              aria-label={`Previous note: ${sequenceNavigation.previousNumber}`}
+              title={sequenceNavigation.previous?.path ?? `No note for ${sequenceNavigation.previousNumber}`}
+            >
+              <ChevronLeft size={16} />
+              <span>{sequenceNavigation.previousNumber}</span>
+            </button>
+            <button
+              className="note-sequence-button"
+              type="button"
+              onClick={() => sequenceNavigation.next && selectFile(sequenceNavigation.next)}
+              disabled={!sequenceNavigation.next}
+              aria-label={`Next note: ${sequenceNavigation.nextNumber}`}
+              title={sequenceNavigation.next?.path ?? `No note for ${sequenceNavigation.nextNumber}`}
+            >
+              <span>{sequenceNavigation.nextNumber}</span>
+              <ChevronRight size={16} />
+            </button>
+          </nav>
+        ) : undefined}
         actions={
           <>
             {isSaving ? (
@@ -554,6 +585,10 @@ export function MarkdownViewer() {
         }
       />
 
+      <div
+        className={`note-content-area${isEditing ? ' editing' : ''}`}
+        ref={noteContentRef}
+      >
       {isLoading && (
         <div className="status-row viewer-status">
           <Loader2 className="spin" size={16} />
@@ -600,7 +635,7 @@ export function MarkdownViewer() {
             document={blockDocument}
             onDelete={(blockId) => void handleBlockDelete(blockId)}
             onMove={(move) => void handleBlockMove(move)}
-            scrollElementRef={viewerRef}
+            scrollElementRef={noteContentRef}
           >
             <article className="markdown-body" onClick={handleViewerTextClick}>
               <ReactMarkdown
@@ -687,6 +722,7 @@ export function MarkdownViewer() {
           </MarkdownBlockDndProvider>
         </div>
       )}
+      </div>
     </main>
   );
 }

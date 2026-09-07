@@ -1038,11 +1038,26 @@ button {
 }
 
 .viewer {
+  display: flex;
   min-width: 0;
   min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fbfcfd;
+}
+
+.note-content-area {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
   overflow: auto;
   overscroll-behavior: contain;
-  background: #fbfcfd;
+}
+
+.note-content-area.editing {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .edit-actions {
@@ -1054,7 +1069,9 @@ button {
 
 .editor-pane {
   display: flex;
-  min-height: calc(100vh - 114px);
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
   padding: 0;
   background: #ffffff;
 }
@@ -1063,6 +1080,7 @@ button {
   display: flex;
   width: 100%;
   min-width: 0;
+  min-height: 0;
   flex-direction: column;
 }
 
@@ -1107,12 +1125,14 @@ button {
   flex: 1;
   width: 100%;
   min-width: 0;
+  min-height: 0;
   border-top: 1px solid #edf0f4;
   font-size: 0.95rem;
 }
 
 .markdown-editor .cm-editor {
-  min-height: calc(100vh - 152px);
+  height: 100%;
+  min-height: 0;
 }
 
 .markdown-editor .cm-scroller {
@@ -1368,12 +1388,16 @@ li.markdown-block > .markdown-block-controls {
 }
 
 .note-toolbar-row {
-  display: flex;
+  display: grid;
   min-height: 42px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   padding: 6px 14px;
+}
+
+.note-toolbar-leading {
+  min-width: 0;
 }
 
 .frontmatter-summary {
@@ -1388,6 +1412,12 @@ li.markdown-block > .markdown-block-controls {
   cursor: pointer;
   font: inherit;
   font-weight: 700;
+}
+
+.frontmatter-summary span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .frontmatter-summary:hover {
@@ -1414,7 +1444,53 @@ li.markdown-block > .markdown-block-controls {
 }
 
 .note-toolbar-actions {
-  margin-left: auto;
+  min-width: 0;
+}
+
+.note-toolbar-controls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.note-sequence-navigation {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid #dfe3ea;
+  border-radius: 6px;
+}
+
+.note-sequence-button {
+  display: inline-flex;
+  min-width: 72px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 8px;
+  background: transparent;
+  color: #3b4655;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.note-sequence-button + .note-sequence-button {
+  border-left: 1px solid #dfe3ea;
+}
+
+.note-sequence-button:hover:not(:disabled),
+.note-sequence-button:focus-visible {
+  background: #eef3f7;
+  color: #183f59;
+  outline: none;
+}
+
+.note-sequence-button:disabled {
+  color: #a0a7b1;
+  cursor: default;
 }
 
 .note-save-status {
@@ -1893,6 +1969,25 @@ li.markdown-block > .markdown-block-controls {
   color: #dceefa;
 }
 
+[data-theme="dark"] .note-sequence-navigation,
+[data-theme="dark"] .note-sequence-button + .note-sequence-button {
+  border-color: #3a4655;
+}
+
+[data-theme="dark"] .note-sequence-button {
+  color: #d6dde6;
+}
+
+[data-theme="dark"] .note-sequence-button:hover:not(:disabled),
+[data-theme="dark"] .note-sequence-button:focus-visible {
+  background: #263d50;
+  color: #dceefa;
+}
+
+[data-theme="dark"] .note-sequence-button:disabled {
+  color: #697583;
+}
+
 [data-theme="dark"] .markdown-body code {
   background: #26323d;
 }
@@ -2077,6 +2172,21 @@ li.markdown-block > .markdown-block-controls {
 
   .markdown-outdent-target {
     left: 8px;
+  }
+}
+
+@media (max-width: 520px) {
+  .note-toolbar-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .note-toolbar-leading:empty {
+    display: none;
+  }
+
+  .note-toolbar-controls {
+    grid-column: 1;
+    flex-wrap: wrap;
   }
 }
 

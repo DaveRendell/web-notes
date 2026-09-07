@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   ensureAccessToken: vi.fn(() => Promise.resolve('valid-token')),
   isOnline: true,
   renameNote: vi.fn(),
+  notes: [] as VaultNode[],
+  selectFile: vi.fn(),
   setContent: vi.fn(),
   storeSavedNote: vi.fn(),
   toggleFavorite: vi.fn(),
@@ -39,9 +41,10 @@ vi.mock('../contexts/VaultContext', () => ({
     deleteNote: mocks.deleteNote,
     favoriteNoteIds: [],
     isOnline: mocks.isOnline,
+    notes: mocks.notes,
     renameNote: mocks.renameNote,
     resolveWikilink: () => null,
-    selectFile: vi.fn(),
+    selectFile: mocks.selectFile,
     selectedFile,
     selectedVault: { id: 'vault', name: 'My vault' },
     storeSavedNote: mocks.storeSavedNote,
@@ -84,8 +87,11 @@ import { MarkdownViewer } from './MarkdownViewer';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  selectedFile.name = 'Note.md';
+  selectedFile.path = 'Note.md';
   mocks.content = 'original body';
   mocks.isOnline = true;
+  mocks.notes = [selectedFile];
   mocks.updateDriveFileText.mockResolvedValue({
     ...selectedFile.source,
     modifiedTime: 'saved',
@@ -185,8 +191,11 @@ describe('MarkdownViewer cache conflicts', () => {
 
     const noteView = container.querySelector('.note-view');
     const properties = container.querySelector('.frontmatter-panel');
+    const contentArea = container.querySelector('.note-content-area');
     const article = container.querySelector('.markdown-body');
     expect(properties?.parentElement).toBe(container.querySelector('.viewer'));
+    expect(contentArea?.parentElement).toBe(container.querySelector('.viewer'));
+    expect(properties?.nextElementSibling).toBe(contentArea);
     expect(article?.parentElement).toBe(noteView);
     expect(article?.contains(properties)).toBe(false);
     expect(screen.queryByRole('heading', { name: 'Note' })).toBeNull();
@@ -200,6 +209,34 @@ describe('MarkdownViewer cache conflicts', () => {
     expect(screen.getByRole('region', { name: 'Note controls' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: /propert/i })).toBeNull();
     expect(screen.getByRole('button', { name: 'Edit' })).not.toBeNull();
+  });
+
+  it('shows cached sequential notes and keeps a missing direction disabled', () => {
+    const previous = {
+      ...selectedFile,
+      id: 'previous',
+      name: 'Note 2024.md',
+      path: 'Archive/2024/Note 2024.md',
+    };
+    Object.assign(selectedFile, { name: 'Note 2025.md', path: 'Archive/2025/Note 2025.md' });
+    mocks.notes = [previous, selectedFile];
+
+    render(<MarkdownViewer />);
+
+    const previousButton = screen.getByRole('button', { name: 'Previous note: 2024' });
+    const nextButton = screen.getByRole('button', { name: 'Next note: 2026' });
+    const toolbarControls = previousButton.closest('.note-toolbar-controls');
+    expect(previousButton.textContent).toContain('2024');
+    expect(nextButton.textContent).toContain('2026');
+    expect(toolbarControls?.querySelector('.note-toolbar-navigation')?.nextElementSibling)
+      .toBe(toolbarControls?.querySelector('.note-toolbar-actions'));
+    expect((previousButton as HTMLButtonElement).disabled).toBe(false);
+    expect((nextButton as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(previousButton);
+    expect(mocks.selectFile).toHaveBeenCalledWith(previous);
+
+    Object.assign(selectedFile, { name: 'Note.md', path: 'Note.md' });
   });
 
   it('offers favourite, rename, and delete actions in the note menu', () => {

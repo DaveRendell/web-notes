@@ -5,28 +5,34 @@ import { FrontmatterProperty } from '../lib/markdown';
 type FrontmatterPropertiesProps = {
   actions: ReactNode;
   error: string | null;
+  navigation?: ReactNode;
   properties: FrontmatterProperty[];
 };
 
-export function FrontmatterProperties({ actions, error, properties }: FrontmatterPropertiesProps) {
+export function FrontmatterProperties({ actions, error, navigation, properties }: FrontmatterPropertiesProps) {
   const [isOpen, setIsOpen] = useState(false);
   const hasProperties = Boolean(error) || properties.length > 0;
 
   return (
     <section className="frontmatter-panel" aria-label="Note controls">
       <div className="note-toolbar-row">
-        {hasProperties && (
-          <button
-            className="frontmatter-summary"
-            type="button"
-            onClick={() => setIsOpen((current) => !current)}
-            aria-expanded={isOpen}
-          >
-            <ChevronRight className={isOpen ? 'open' : ''} size={16} />
-            <span>{getSummaryLabel(properties.length, error)}</span>
-          </button>
-        )}
-        <div className="note-toolbar-actions">{actions}</div>
+        <div className="note-toolbar-leading">
+          {hasProperties && (
+            <button
+              className="frontmatter-summary"
+              type="button"
+              onClick={() => setIsOpen((current) => !current)}
+              aria-expanded={isOpen}
+            >
+              <ChevronRight className={isOpen ? 'open' : ''} size={16} />
+              <span>{getSummaryLabel(properties.length, error)}</span>
+            </button>
+          )}
+        </div>
+        <div className="note-toolbar-controls">
+          {navigation && <div className="note-toolbar-navigation">{navigation}</div>}
+          <div className="note-toolbar-actions">{actions}</div>
+        </div>
       </div>
       {hasProperties && isOpen && (
         error ? (
