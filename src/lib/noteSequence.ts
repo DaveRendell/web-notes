@@ -21,9 +21,9 @@ export function getNoteSequenceNavigation(
 
   return {
     previousNumber,
-    previous: notesByPath.get(currentNote.path.replaceAll(number, previousNumber)) ?? null,
+    previous: notesByPath.get(replaceNumber(currentNote.path, number, previousNumber)) ?? null,
     nextNumber,
-    next: notesByPath.get(currentNote.path.replaceAll(number, nextNumber)) ?? null,
+    next: notesByPath.get(replaceNumber(currentNote.path, number, nextNumber)) ?? null,
   };
 }
 
@@ -34,5 +34,11 @@ function getFirstNumber(title: string) {
 function offsetNumber(number: string, offset: bigint) {
   const result = BigInt(number) + offset;
   if (result < 0n) return result.toString();
-  return result.toString().padStart(number.length, '0');
+  return number.startsWith('0')
+    ? result.toString().padStart(number.length, '0')
+    : result.toString();
+}
+
+function replaceNumber(path: string, number: string, replacement: string) {
+  return path.replace(new RegExp(`(?<!\\d)${number}(?!\\d)`, 'g'), replacement);
 }

@@ -3,7 +3,7 @@ import type { VaultNode } from '../types/vault';
 import { getNoteSequenceNavigation } from './noteSequence';
 
 describe('getNoteSequenceNavigation', () => {
-  it('uses the last number in the title and replaces every occurrence in the path', () => {
+  it('uses the first number in the title and replaces every complete occurrence in the path', () => {
     const previous = note('previous', 'Media/2024/2024 Games.md');
     const current = note('current', 'Media/2025/2025 Games.md');
     const next = note('next', 'Media/2026/2026 Games.md');
@@ -38,6 +38,32 @@ describe('getNoteSequenceNavigation', () => {
       previousNumber: '008',
       next,
       nextNumber: '010',
+    });
+  });
+
+  it('does not add leading zeroes when a sequence crosses to fewer digits', () => {
+    const previous = note('previous', 'Journal/2021/Week 9 2021.md');
+    const current = note('current', 'Journal/2021/Week 10 2021.md');
+    const next = note('next', 'Journal/2021/Week 11 2021.md');
+
+    expect(getNoteSequenceNavigation(current, [previous, current, next])).toEqual({
+      previous,
+      previousNumber: '9',
+      next,
+      nextNumber: '11',
+    });
+  });
+
+  it('does not replace the sequence number inside a longer number', () => {
+    const previous = note('previous', 'Journal/2021/Week 19 2021.md');
+    const current = note('current', 'Journal/2021/Week 20 2021.md');
+    const next = note('next', 'Journal/2021/Week 21 2021.md');
+
+    expect(getNoteSequenceNavigation(current, [previous, current, next])).toEqual({
+      previous,
+      previousNumber: '19',
+      next,
+      nextNumber: '21',
     });
   });
 
