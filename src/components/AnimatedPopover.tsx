@@ -1,4 +1,6 @@
-import { HTMLAttributes, useLayoutEffect, useRef, useState } from 'react';
+import { HTMLAttributes, useEffect, useLayoutEffect, useRef, useState } from 'react';
+
+const FADE_OUT_DURATION_MS = 100;
 
 type AnimatedPopoverProps = HTMLAttributes<HTMLDivElement> & {
   isOpen: boolean;
@@ -14,6 +16,18 @@ export function AnimatedPopover({
 }: AnimatedPopoverProps) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<'bottom' | 'top'>('bottom');
+  const [isPresent, setIsPresent] = useState(isOpen);
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsPresent(true);
+      return;
+    }
+
+    if (!isPresent) return;
+    const timeout = window.setTimeout(() => setIsPresent(false), FADE_OUT_DURATION_MS);
+    return () => window.clearTimeout(timeout);
+  }, [isOpen, isPresent]);
 
   useLayoutEffect(() => {
     if (!isOpen) return;
@@ -38,6 +52,8 @@ export function AnimatedPopover({
       window.removeEventListener('scroll', updatePlacement, true);
     };
   }, [isOpen, placementGap]);
+
+  if (!isOpen && !isPresent) return null;
 
   return (
     <div

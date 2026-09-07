@@ -16,15 +16,15 @@ describe('getNoteSequenceNavigation', () => {
     });
   });
 
-  it('uses the final number when a title contains more than one', () => {
-    const current = note('current', 'Reports/2025/Quarter 2 2025.md');
-    const next = note('next', 'Reports/2026/Quarter 2 2026.md');
+  it('uses the first number when a title contains more than one', () => {
+    const current = note('current', 'Reports/12/Edition 12 for 2025.md');
+    const next = note('next', 'Reports/13/Edition 13 for 2025.md');
 
     expect(getNoteSequenceNavigation(current, [current, next])).toEqual({
       previous: null,
-      previousNumber: '2024',
+      previousNumber: '11',
       next,
-      nextNumber: '2026',
+      nextNumber: '13',
     });
   });
 

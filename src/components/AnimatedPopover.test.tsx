@@ -1,28 +1,33 @@
-import { cleanup, render } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { act, cleanup, render } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AnimatedPopover } from './AnimatedPopover';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe('AnimatedPopover placement', () => {
-  it('opens upward when there is not enough room below the trigger', () => {
-    const { container, rerender } = render(
-      <div>
-        <button type="button">Open</button>
-        <AnimatedPopover isOpen={false}>Menu</AnimatedPopover>
-      </div>,
-    );
-    const trigger = container.querySelector('button') as HTMLButtonElement;
-    const popover = container.querySelector('.dropdown-popover') as HTMLDivElement;
-    trigger.getBoundingClientRect = () => rect({ bottom: 790, top: 760 });
-    popover.getBoundingClientRect = () => rect({ height: 120 });
+  it('does not mount a menu that has never been opened', () => {
+    const { container } = render(<AnimatedPopover isOpen={false}>Menu</AnimatedPopover>);
+    expect(container.querySelector('.dropdown-popover')).toBeNull();
+  });
 
-    rerender(
+  it('opens upward, preserves placement during fade-out, then unmounts', () => {
+    vi.useFakeTimers();
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this instanceof HTMLButtonElement) return rect({ bottom: 790, top: 760 });
+      if (this.classList.contains('dropdown-popover')) return rect({ height: 120 });
+      return rect({});
+    });
+    const { container, rerender } = render(
       <div>
         <button type="button">Open</button>
         <AnimatedPopover isOpen>Menu</AnimatedPopover>
       </div>,
     );
+    const popover = container.querySelector('.dropdown-popover') as HTMLDivElement;
 
     expect(popover.dataset.placement).toBe('top');
 
@@ -35,6 +40,10 @@ describe('AnimatedPopover placement', () => {
 
     expect(popover.dataset.placement).toBe('top');
     expect(popover.classList.contains('dropdown-popover-closing')).toBe(true);
+
+    act(() => vi.advanceTimersByTime(100));
+    expect(container.querySelector('.dropdown-popover')).toBeNull();
+    rectSpy.mockRestore();
   });
 });
 

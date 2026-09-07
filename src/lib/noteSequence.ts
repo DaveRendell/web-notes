@@ -12,7 +12,7 @@ export function getNoteSequenceNavigation(
   currentNote: VaultNode,
   notes: VaultNode[],
 ): NoteSequenceNavigation | null {
-  const number = getLastNumber(getVaultNodeDisplayName(currentNote));
+  const number = getFirstNumber(getVaultNodeDisplayName(currentNote));
   if (!number) return null;
 
   const previousNumber = offsetNumber(number, -1n);
@@ -27,9 +27,8 @@ export function getNoteSequenceNavigation(
   };
 }
 
-function getLastNumber(title: string) {
-  const matches = title.match(/\d+/g);
-  return matches?.at(-1) ?? null;
+function getFirstNumber(title: string) {
+  return title.match(/\d+/)?.[0] ?? null;
 }
 
 function offsetNumber(number: string, offset: bigint) {

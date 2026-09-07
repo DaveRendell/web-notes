@@ -528,7 +528,8 @@ button {
 
 .files-section.is-open .sidebar-section-content {
   min-height: 0;
-  flex: 1;
+  flex: 1 1 0;
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .sidebar-section-header {
@@ -577,6 +578,25 @@ button {
   color: #183f59;
 }
 
+.sidebar-section-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.sidebar-section-title > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-section-refreshing {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: #49627f;
+}
+
 .sidebar-section-count {
   min-width: 20px;
   padding: 1px 5px;
@@ -622,16 +642,15 @@ button {
 }
 
 .files-section .sidebar-section-content-body {
-  height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  min-width: 0;
+  min-height: 0;
   padding-bottom: 4px;
-  scrollbar-gutter: stable;
 }
 
 .files-section.is-open .sidebar-section-content-inner {
-  height: 100%;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .favorite-notes-list {
@@ -1716,6 +1735,10 @@ li.markdown-block > .markdown-block-controls {
 
 [data-theme="dark"] .warning-text {
   color: #e5b568;
+}
+
+[data-theme="dark"] .sidebar-section-refreshing {
+  color: #8ab7dc;
 }
 
 [data-theme="dark"] .eyebrow,

@@ -50,6 +50,11 @@ beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
 describe('FileTree drag and drop', () => {
+  it('does not keep closed action menus in the scrollable tree layout', () => {
+    const { container } = render(<FileTree nodes={tree} />);
+    expect(container.querySelector('.dropdown-popover')).toBeNull();
+  });
+
   it('uses a cached emoji in place of the generic note icon', () => {
     const { container } = render(<FileTree nodes={tree} />);
     fireEvent.click(screen.getByRole('button', { name: 'Folder A' }));

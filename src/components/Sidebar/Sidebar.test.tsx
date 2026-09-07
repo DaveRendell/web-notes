@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   createFolder: vi.fn(),
   createNote: vi.fn(),
+  isRefreshing: false,
 }));
 
 vi.mock('../../contexts/VaultContext', () => ({
@@ -13,7 +14,7 @@ vi.mock('../../contexts/VaultContext', () => ({
     error: null,
     isLoading: false,
     isOnline: true,
-    isRefreshing: false,
+    isRefreshing: mocks.isRefreshing,
     refreshError: null,
     selectedVault: { id: 'vault', name: 'Vault' },
     tree: [{ id: 'note' }],
@@ -27,6 +28,7 @@ import { Sidebar } from './Sidebar';
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  mocks.isRefreshing = false;
 });
 
 describe('Sidebar files section', () => {
@@ -48,5 +50,17 @@ describe('Sidebar files section', () => {
     expect(filesSection?.classList.contains('is-open')).toBe(false);
     expect(screen.getByRole('button', { name: 'Add note' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Add folder' })).toBeTruthy();
+  });
+
+  it('shows refresh activity beside Files instead of inside the scrolling content', () => {
+    mocks.isRefreshing = true;
+    render(<Sidebar />);
+
+    const refreshStatus = screen.getByRole('status', { name: 'Refreshing from Google Drive' });
+    const filesHeader = screen.getByRole('button', { name: /Files/ }).closest('.sidebar-section-header');
+    const sectionContent = screen.getByText('File tree').closest('.sidebar-section-content');
+
+    expect(filesHeader?.contains(refreshStatus)).toBe(true);
+    expect(sectionContent?.contains(refreshStatus)).toBe(false);
   });
 });

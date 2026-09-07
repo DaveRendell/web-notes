@@ -45,6 +45,16 @@ export function Sidebar() {
       <CollapsibleSidebarSection
         className="files-section"
         headingId="files-heading"
+        indicator={!isLoading && isRefreshing ? (
+          <span
+            className="sidebar-section-refreshing"
+            role="status"
+            aria-label="Refreshing from Google Drive"
+            title="Refreshing from Google Drive"
+          >
+            <Loader2 className="spin" size={13} aria-hidden="true" />
+          </span>
+        ) : undefined}
         resetKey={selectedVault?.id}
         title="Files"
         actions={
@@ -77,12 +87,6 @@ export function Sidebar() {
           <div className="status-row">
             <Loader2 className="spin" size={16} />
             <span>Loading vault...</span>
-          </div>
-        )}
-        {!isLoading && isRefreshing && (
-          <div className="status-row sidebar-sync-status">
-            <Loader2 className="spin" size={16} />
-            <span>Refreshing from Google Drive...</span>
           </div>
         )}
         {refreshError && (

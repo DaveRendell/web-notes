@@ -7,6 +7,7 @@ type CollapsibleSidebarSectionProps = {
   className?: string;
   count?: number;
   headingId: string;
+  indicator?: ReactNode;
   resetKey?: string | null;
   title: string;
 };
@@ -17,6 +18,7 @@ export function CollapsibleSidebarSection({
   className,
   count,
   headingId,
+  indicator,
   resetKey,
   title,
 }: CollapsibleSidebarSectionProps) {
@@ -40,7 +42,10 @@ export function CollapsibleSidebarSection({
           aria-controls={`${headingId}-content`}
         >
           <ChevronRight className={isOpen ? 'chevron open' : 'chevron'} size={14} />
-          <span id={headingId}>{title}</span>
+          <span className="sidebar-section-title">
+            <span id={headingId}>{title}</span>
+            {indicator}
+          </span>
           {count !== undefined && count > 0 && <span className="sidebar-section-count">{count}</span>}
         </button>
         {actions && <div className="sidebar-section-actions">{actions}</div>}
