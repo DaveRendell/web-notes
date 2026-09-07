@@ -18,6 +18,7 @@ import {
   updateNoteContentVersion,
 } from '../lib/vaultCache';
 import { findLeadingEmoji } from '../lib/markdown';
+import { updatePageFavicon } from '../lib/pageFavicon';
 import {
   containsVaultNode,
   createVaultNode,
@@ -55,7 +56,6 @@ type VaultContextValue = {
   isLoading: boolean;
   isOnline: boolean;
   isRefreshing: boolean;
-  isFavoriteSyncing: boolean;
   moveNode: (node: VaultNode, destinationFolder: VaultNode | null) => Promise<VaultNode>;
   noteIcons: Record<string, string | null>;
   notes: VaultNode[];
@@ -87,7 +87,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const {
     favoriteNoteIds,
     favoriteSyncError,
-    isFavoriteSyncing,
     removeFavorites,
     reorderFavorite,
     toggleFavorite,
@@ -536,7 +535,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.title = selectedFile ? stripMarkdownExtension(selectedFile.name) : 'Web Notes';
-  }, [selectedFile]);
+    updatePageFavicon(selectedFile ? noteIcons[selectedFile.id] : null);
+  }, [noteIcons, selectedFile]);
 
   const value = useMemo(
     () => ({
@@ -553,7 +553,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       isLoading,
       isOnline,
       isRefreshing,
-      isFavoriteSyncing,
       moveNode,
       noteIcons,
       notes,
@@ -585,7 +584,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       isLoading,
       isOnline,
       isRefreshing,
-      isFavoriteSyncing,
       moveNode,
       noteIcons,
       notes,

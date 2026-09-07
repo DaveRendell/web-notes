@@ -29,7 +29,6 @@ export function useVaultFavorites({
   const initialEntry = readFavoriteCache(vaultId);
   const [favoriteNoteIds, setFavoriteNoteIds] = useState(initialEntry.favourites);
   const [favoriteSyncError, setFavoriteSyncError] = useState<string | null>(null);
-  const [isFavoriteSyncing, setIsFavoriteSyncing] = useState(false);
   const activeVaultIdRef = useRef(vaultId);
   const ensureAccessTokenRef = useRef(ensureAccessToken);
   const invalidateAccessTokenRef = useRef(invalidateAccessToken);
@@ -60,7 +59,6 @@ export function useVaultFavorites({
 
     const revision = revisionsRef.current.get(targetVaultId) ?? 0;
     if (activeVaultIdRef.current === targetVaultId) {
-      setIsFavoriteSyncing(true);
       setFavoriteSyncError(null);
     }
 
@@ -81,10 +79,6 @@ export function useVaultFavorites({
       if (activeVaultIdRef.current === targetVaultId) {
         setFavoriteSyncError(getSyncErrorMessage(error));
       }
-    } finally {
-      if (activeVaultIdRef.current === targetVaultId && !writeQueuesRef.current.has(targetVaultId)) {
-        setIsFavoriteSyncing(false);
-      }
     }
   }, [canSync, isOnline, withAccessToken]);
 
@@ -96,7 +90,6 @@ export function useVaultFavorites({
     if (!canSync || !isOnline) return;
 
     if (activeVaultIdRef.current === targetVaultId) {
-      setIsFavoriteSyncing(true);
       setFavoriteSyncError(null);
     }
 
@@ -139,7 +132,6 @@ export function useVaultFavorites({
       .finally(() => {
         if (writeQueuesRef.current.get(targetVaultId) === write) {
           writeQueuesRef.current.delete(targetVaultId);
-          if (activeVaultIdRef.current === targetVaultId) setIsFavoriteSyncing(false);
         }
       });
 
@@ -190,7 +182,6 @@ export function useVaultFavorites({
     favoriteNoteIdsRef.current = cached.favourites;
     setFavoriteNoteIds(cached.favourites);
     setFavoriteSyncError(null);
-    setIsFavoriteSyncing(false);
 
     if (!vaultId) return;
     if (cached.dirty) dirtyVaultsRef.current.add(vaultId);
@@ -221,7 +212,6 @@ export function useVaultFavorites({
   return {
     favoriteNoteIds,
     favoriteSyncError,
-    isFavoriteSyncing,
     removeFavorites,
     reorderFavorite,
     toggleFavorite,
