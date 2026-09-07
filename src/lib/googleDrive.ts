@@ -19,6 +19,12 @@ type ListChildrenOptions = {
   foldersOnly?: boolean;
 };
 
+type FindChildOptions = {
+  accessToken: string;
+  folderId: string;
+  name: string;
+};
+
 export class GoogleDriveError extends Error {
   constructor(
     message: string,
@@ -83,10 +89,70 @@ export async function getDriveFileText(accessToken: string, fileId: string): Pro
   return driveFetchText(`${DRIVE_API_ROOT}/files/${fileId}?alt=media`, accessToken);
 }
 
-export async function updateDriveFileText(
+export async function findDriveChildByName({
+  accessToken,
+  folderId,
+  name,
+}: FindChildOptions): Promise<DriveFile | null> {
+  const params = new URLSearchParams({
+    fields: 'files(id, name, mimeType, parents, modifiedTime, size)',
+    orderBy: 'modifiedTime desc',
+    pageSize: '1',
+    q: buildNamedChildQuery(folderId, name),
+    supportsAllDrives: 'true',
+    includeItemsFromAllDrives: 'true',
+  });
+  const response = await driveFetch<DriveListResponse>(
+    `${DRIVE_API_ROOT}/files?${params.toString()}`,
+    accessToken,
+  );
+
+  return response.files?.[0] ?? null;
+}
+
+export async function createDriveTextFile(
+  accessToken: string,
+  parentFolderId: string,
+  name: string,
+  content: string,
+  mimeType = 'text/plain',
+): Promise<DriveFile> {
+  const boundary = `web-notes-${crypto.randomUUID()}`;
+  const params = new URLSearchParams({
+    uploadType: 'multipart',
+    fields: 'id, name, mimeType, parents, modifiedTime, size',
+    supportsAllDrives: 'true',
+  });
+  const metadata = JSON.stringify({ mimeType, name, parents: [parentFolderId] });
+  const body = [
+    `--${boundary}`,
+    'Content-Type: application/json; charset=utf-8',
+    '',
+    metadata,
+    `--${boundary}`,
+    `Content-Type: ${mimeType}; charset=utf-8`,
+    '',
+    content,
+    `--${boundary}--`,
+    '',
+  ].join('\r\n');
+
+  return driveFetch<DriveFile>(
+    `https://www.googleapis.com/upload/drive/v3/files?${params.toString()}`,
+    accessToken,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+      body,
+    },
+  );
+}
+
+export async function updateDriveTextFile(
   accessToken: string,
   fileId: string,
   content: string,
+  mimeType = 'text/plain',
 ): Promise<DriveFile> {
   const params = new URLSearchParams({
     uploadType: 'media',
@@ -99,12 +165,18 @@ export async function updateDriveFileText(
     accessToken,
     {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'text/markdown; charset=utf-8',
-      },
+      headers: { 'Content-Type': `${mimeType}; charset=utf-8` },
       body: content,
     },
   );
+}
+
+export async function updateDriveFileText(
+  accessToken: string,
+  fileId: string,
+  content: string,
+): Promise<DriveFile> {
+  return updateDriveTextFile(accessToken, fileId, content, 'text/markdown');
 }
 
 export async function createDriveMarkdownFile(
@@ -223,6 +295,18 @@ function buildChildrenQuery(folderId: string, foldersOnly: boolean) {
   }
 
   return parts.join(' and ');
+}
+
+function buildNamedChildQuery(folderId: string, name: string) {
+  return [
+    `'${escapeDriveQueryValue(folderId)}' in parents`,
+    `name = '${escapeDriveQueryValue(name)}'`,
+    'trashed = false',
+  ].join(' and ');
+}
+
+function escapeDriveQueryValue(value: string) {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
 async function driveFetch<T>(url: string, accessToken: string, init: RequestInit = {}): Promise<T> {

@@ -768,6 +768,12 @@ button {
   font-size: 0.8rem;
 }
 
+.favorite-sync-error {
+  margin: 4px 4px 0 18px;
+  color: #a14444;
+  font-size: 0.75rem;
+}
+
 .compact-icon {
   width: 32px;
   min-height: 32px;
@@ -1731,6 +1737,10 @@ li.markdown-block > .markdown-block-controls {
 [data-theme="dark"] .sidebar-section-toggle,
 [data-theme="dark"] .favorite-notes-empty {
   color: #aab4c0;
+}
+
+[data-theme="dark"] .favorite-sync-error {
+  color: #e19595;
 }
 
 [data-theme="dark"] .warning-text {

@@ -35,6 +35,10 @@ The app keeps an account-scoped cache in the browser's IndexedDB storage:
 
 Cached Markdown is not encrypted by the app and relies on the security of the browser profile. Offline edits and queued writes are not supported.
 
+## Favourites
+
+Favourite note IDs and their order are stored in `.web-notes.json` at the root of the selected vault. This hidden settings file is created automatically and lets favourites follow the vault between browsers. It is not shown in the file picker. A small local copy keeps favourites visible while offline; changes made offline are synced when Drive becomes available again.
+
 ## Checks
 
 ```sh

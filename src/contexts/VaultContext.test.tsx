@@ -9,13 +9,17 @@ const mocks = vi.hoisted(() => ({
   createDriveMarkdownFile: vi.fn(),
   deleteDriveFile: vi.fn(),
   deleteNoteContent: vi.fn(),
+  ensureAccessToken: vi.fn(),
   getNoteIcons: vi.fn(),
+  loadDriveVaultSettings: vi.fn(),
   moveDriveFile: vi.fn(),
+  invalidateAccessToken: vi.fn(),
   putNoteContent: vi.fn(),
   putNoteIcon: vi.fn(),
   putVaultTree: vi.fn(),
   renameDriveFile: vi.fn(),
   renameDriveFolder: vi.fn(),
+  saveDriveVaultSettings: vi.fn(),
   updateNoteContentVersion: vi.fn(),
 }));
 
@@ -23,7 +27,8 @@ vi.mock('./AuthContext', () => ({
   useAuth: () => ({
     accessToken: 'token',
     accountId: 'account',
-    ensureAccessToken: () => Promise.resolve('valid-token'),
+    ensureAccessToken: mocks.ensureAccessToken,
+    invalidateAccessToken: mocks.invalidateAccessToken,
     isAccountResolved: true,
   }),
 }));
@@ -31,6 +36,9 @@ vi.mock('../lib/googleDrive', () => ({
   createDriveFolder: mocks.createDriveFolder,
   createDriveMarkdownFile: mocks.createDriveMarkdownFile,
   deleteDriveFile: mocks.deleteDriveFile,
+  isGoogleDriveAuthError: (error: unknown) => (
+    typeof error === 'object' && error !== null && 'status' in error && error.status === 401
+  ),
   moveDriveFile: mocks.moveDriveFile,
   renameDriveFile: mocks.renameDriveFile,
   renameDriveFolder: mocks.renameDriveFolder,
@@ -42,6 +50,14 @@ vi.mock('../lib/vaultCache', () => ({
   putNoteIcon: mocks.putNoteIcon,
   updateNoteContentVersion: mocks.updateNoteContentVersion,
 }));
+vi.mock('../lib/vaultSettings', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../lib/vaultSettings')>();
+  return {
+    ...original,
+    loadDriveVaultSettings: mocks.loadDriveVaultSettings,
+    saveDriveVaultSettings: mocks.saveDriveVaultSettings,
+  };
+});
 vi.mock('../hooks/useVaultTree', async () => {
   const React = await import('react');
   return {
@@ -64,6 +80,16 @@ import { useVault, VaultProvider } from './VaultContext';
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getNoteIcons.mockResolvedValue([]);
+  mocks.ensureAccessToken.mockResolvedValue('valid-token');
+  mocks.loadDriveVaultSettings.mockResolvedValue({
+    file: { id: 'settings', mimeType: 'application/json', name: '.web-notes.json' },
+    settings: { version: 1, favourites: [] },
+  });
+  mocks.saveDriveVaultSettings.mockResolvedValue({
+    id: 'settings',
+    mimeType: 'application/json',
+    name: '.web-notes.json',
+  });
   localStorage.clear();
   window.history.replaceState(null, '', window.location.pathname);
   localStorage.setItem('vault-web-viewer:selected-vault', JSON.stringify({ id: 'vault', name: 'My vault' }));
@@ -107,7 +133,7 @@ describe('VaultContext cache mutations', () => {
     expect(window.location.hash).toBe('#/note/Beta.md');
   });
 
-  it('persists and reorders favourites independently for the selected vault', () => {
+  it('persists and reorders favourites in the vault settings file', async () => {
     const wrapper = ({ children }: { children: ReactNode }) => <VaultProvider>{children}</VaultProvider>;
     const { result } = renderHook(() => useVault(), { wrapper });
 
@@ -119,12 +145,52 @@ describe('VaultContext cache mutations', () => {
 
     act(() => result.current.reorderFavorite('second', 'first', 'before'));
     expect(result.current.favoriteNoteIds).toEqual(['second', 'first']);
-    expect(JSON.parse(localStorage.getItem('web-notes:favorite-notes') ?? '{}')).toEqual({
-      vault: ['second', 'first'],
-    });
+    await waitFor(() => expect(mocks.saveDriveVaultSettings).toHaveBeenLastCalledWith(
+      'valid-token',
+      'vault',
+      'settings',
+      { version: 1, favourites: ['second', 'first'] },
+    ));
 
     act(() => result.current.toggleFavorite('second'));
     expect(result.current.favoriteNoteIds).toEqual(['first']);
+  });
+
+  it('loads remote favourites and refreshes them when the browser regains focus', async () => {
+    mocks.loadDriveVaultSettings
+      .mockResolvedValueOnce({
+        file: { id: 'settings', mimeType: 'application/json', name: '.web-notes.json' },
+        settings: { version: 1, favourites: ['first'] },
+      })
+      .mockResolvedValueOnce({
+        file: { id: 'settings', mimeType: 'application/json', name: '.web-notes.json' },
+        settings: { version: 1, favourites: ['second', 'first'] },
+      });
+    const wrapper = ({ children }: { children: ReactNode }) => <VaultProvider>{children}</VaultProvider>;
+    const { result } = renderHook(() => useVault(), { wrapper });
+
+    await waitFor(() => expect(result.current.favoriteNoteIds).toEqual(['first']));
+    act(() => window.dispatchEvent(new Event('focus')));
+    await waitFor(() => expect(result.current.favoriteNoteIds).toEqual(['second', 'first']));
+  });
+
+  it('reconnects and retries when the favourites token has expired', async () => {
+    mocks.loadDriveVaultSettings
+      .mockRejectedValueOnce(Object.assign(new Error('Expired'), { status: 401 }))
+      .mockResolvedValueOnce({
+        file: { id: 'settings', mimeType: 'application/json', name: '.web-notes.json' },
+        settings: { version: 1, favourites: ['note'] },
+      });
+    mocks.ensureAccessToken
+      .mockResolvedValueOnce('expired-token')
+      .mockResolvedValueOnce('refreshed-token');
+    const wrapper = ({ children }: { children: ReactNode }) => <VaultProvider>{children}</VaultProvider>;
+    const { result } = renderHook(() => useVault(), { wrapper });
+
+    await waitFor(() => expect(result.current.favoriteNoteIds).toEqual(['note']));
+    expect(mocks.invalidateAccessToken).toHaveBeenCalledOnce();
+    expect(mocks.loadDriveVaultSettings).toHaveBeenNthCalledWith(1, 'expired-token', 'vault');
+    expect(mocks.loadDriveVaultSettings).toHaveBeenNthCalledWith(2, 'refreshed-token', 'vault');
   });
 
   it('creates folders at the vault root and inside existing folders', async () => {

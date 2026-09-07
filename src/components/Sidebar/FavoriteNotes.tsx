@@ -3,7 +3,7 @@ import {
   dropTargetForElements,
   monitorForElements,
 } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
-import { FileText, GripVertical, StarOff } from 'lucide-react';
+import { FileText, GripVertical, LoaderCircle, StarOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useVault } from '../../contexts/VaultContext';
 import { getVaultNodeDisplayName } from '../../lib/vaultTree';
@@ -16,6 +16,8 @@ const FAVORITE_DROP_TYPE = 'favorite-destination';
 export function FavoriteNotes() {
   const {
     favoriteNotes,
+    favoriteSyncError,
+    isFavoriteSyncing,
     noteIcons,
     reorderFavorite,
     selectFile,
@@ -50,6 +52,9 @@ export function FavoriteNotes() {
       className="favorite-notes"
       count={favoriteNotes.length}
       headingId="favorite-notes-heading"
+      indicator={isFavoriteSyncing ? (
+        <LoaderCircle className="spinner sidebar-section-refreshing" size={12} aria-label="Syncing favourites" />
+      ) : undefined}
       resetKey={selectedVault?.id}
       title="Favourites"
     >
@@ -71,6 +76,7 @@ export function FavoriteNotes() {
           ))}
         </ul>
       )}
+      {favoriteSyncError && <p className="favorite-sync-error" role="status">{favoriteSyncError}</p>}
     </CollapsibleSidebarSection>
   );
 }
