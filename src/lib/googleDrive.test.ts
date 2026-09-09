@@ -1,7 +1,43 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createDriveTextFile, findDriveChildByName, getDriveImage, moveDriveFile, updateDriveTextFile, uploadDriveImage } from './googleDrive';
+import { createDriveTextFile, findDriveChildByName, getDriveImage, listDriveChildren, moveDriveFile, updateDriveTextFile, uploadDriveImage } from './googleDrive';
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe('Drive listing integrity', () => {
+  const file = { id: 'note', name: 'Note.md', mimeType: 'text/markdown' };
+  it('collects all pages, filters hidden files, and forwards cancellation', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ files: [file], nextPageToken: 'next' }))
+      .mockResolvedValueOnce(Response.json({ files: [{ ...file, name: '.hidden' }] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const signal = new AbortController().signal;
+    expect(await listDriveChildren({ accessToken: 'token', folderId: 'root', signal })).toEqual([file]);
+    expect(fetchMock.mock.calls[0][1].signal).toBe(signal);
+    expect(new URL(fetchMock.mock.calls[1][0]).searchParams.get('pageToken')).toBe('next');
+  });
+  it.each([null, { files: {} }, { files: [null] }, { files: [{ id: 'bad' }] }, { nextPageToken: 42 }])(
+    'rejects malformed listings instead of allowing cache pruning (%j)', async (body) => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(body)));
+      await expect(listDriveChildren({ accessToken: 'token', folderId: 'root' })).rejects.toThrow('invalid file listing');
+    },
+  );
+  it('rejects repeated pagination tokens', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(Response.json({ nextPageToken: 'same' }))));
+    await expect(listDriveChildren({ accessToken: 'token', folderId: 'root' })).rejects.toThrow('repeated listing page');
+  });
+  it('does not fetch when already aborted', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(listDriveChildren({ accessToken: 'token', folderId: 'root', signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('reports a useful error for malformed error payloads', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ error: { message: {} } }, { status: 503 })));
+    await expect(listDriveChildren({ accessToken: 'token', folderId: 'root' })).rejects.toThrow('Google Drive request failed with 503');
+  });
+});
 
 describe('Drive images', () => {
   it('downloads image bytes with authentication', async () => {

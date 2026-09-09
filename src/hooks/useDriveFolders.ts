@@ -10,14 +10,17 @@ export function useDriveFolders(accessToken: string | null, folderId: string | n
   useEffect(() => {
     if (!accessToken || !folderId) {
       setFolders([]);
+      setIsLoading(false);
+      setError(null);
       return;
     }
 
     const controller = new AbortController();
     setIsLoading(true);
+    setFolders([]);
     setError(null);
 
-    listDriveChildren({ accessToken, folderId, foldersOnly: true })
+    listDriveChildren({ accessToken, folderId, foldersOnly: true, signal: controller.signal })
       .then((items) => {
         if (!controller.signal.aborted) {
           setFolders(items);

@@ -17,6 +17,7 @@ type ListChildrenOptions = {
   accessToken: string;
   folderId: string;
   foldersOnly?: boolean;
+  signal?: AbortSignal;
 };
 
 type FindChildOptions = {
@@ -55,11 +56,14 @@ export async function listDriveChildren({
   accessToken,
   folderId,
   foldersOnly = false,
+  signal,
 }: ListChildrenOptions): Promise<DriveFile[]> {
   const files: DriveFile[] = [];
+  const seenPageTokens = new Set<string>();
   let pageToken: string | undefined;
 
   do {
+    signal?.throwIfAborted();
     const params = new URLSearchParams({
       fields: 'nextPageToken, files(id, name, mimeType, parents, modifiedTime, size)',
       orderBy: 'folder,name_natural',
@@ -76,10 +80,26 @@ export async function listDriveChildren({
     const response = await driveFetch<DriveListResponse>(
       `${DRIVE_API_ROOT}/files?${params.toString()}`,
       accessToken,
+      { signal },
     );
 
+    // Never turn a malformed or partial listing into a successful empty tree:
+    // callers use complete listings to prune their local caches.
+    if (!response || typeof response !== 'object'
+      || (response.files !== undefined && (!Array.isArray(response.files)
+        || !response.files.every((file) => file && typeof file.id === 'string'
+          && typeof file.name === 'string' && typeof file.mimeType === 'string')))
+      || (response.nextPageToken !== undefined && typeof response.nextPageToken !== 'string')) {
+      throw new GoogleDriveError('Google Drive returned an invalid file listing. Please try again.');
+    }
     files.push(...(response.files ?? []));
     pageToken = response.nextPageToken;
+    if (pageToken) {
+      if (seenPageTokens.has(pageToken)) {
+        throw new GoogleDriveError('Google Drive returned a repeated listing page. Please try again.');
+      }
+      seenPageTokens.add(pageToken);
+    }
   } while (pageToken);
 
   return files.filter((file) => !file.name.startsWith('.'));
@@ -315,7 +335,7 @@ export async function deleteDriveFile(accessToken: string, fileId: string): Prom
 }
 
 function buildChildrenQuery(folderId: string, foldersOnly: boolean) {
-  const parts = [`'${folderId.replace(/'/g, "\\'")}' in parents`, 'trashed = false'];
+  const parts = [`'${escapeDriveQueryValue(folderId)}' in parents`, 'trashed = false'];
 
   if (foldersOnly) {
     parts.push(`mimeType = '${GOOGLE_FOLDER_MIME_TYPE}'`);
@@ -383,7 +403,9 @@ async function driveFetchEmpty(url: string, accessToken: string, init: RequestIn
 async function getErrorMessage(response: Response) {
   try {
     const body = (await response.json()) as { error?: { message?: string } };
-    return body.error?.message ?? `Google Drive request failed with ${response.status}`;
+    const message = body?.error?.message;
+    return typeof message === 'string' && message.trim()
+      ? message : `Google Drive request failed with ${response.status}`;
   } catch {
     return `Google Drive request failed with ${response.status}`;
   }
