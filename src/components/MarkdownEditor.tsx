@@ -4,7 +4,8 @@ import { markdown } from '@codemirror/lang-markdown';
 import { EditorView, keymap } from '@codemirror/view';
 import { Bold, Italic, Link, List, ListOrdered, ListTodo, Strikethrough } from 'lucide-react';
 import { type MouseEvent, useMemo, useRef } from 'react';
-import { createEmojiCompletionSource } from '../lib/emojiCompletion';
+import { createEmojiCompletionSource, type EmojiCompletion } from '../lib/emojiCompletion';
+import { getTwemojiUrl } from '../lib/twemoji';
 import {
   insertMarkdownLink,
   type MarkdownFormat,
@@ -32,6 +33,18 @@ export function MarkdownEditor({ initialCursorOffset, notes, value, onChange, on
   const editorCompletions = useMemo(
     () => autocompletion({
       override: [createWikilinkCompletionSource(notes, recentNotes), createEmojiCompletionSource()],
+      addToOptions: [{
+        position: 40,
+        render: (completion) => {
+          const emoji = (completion as EmojiCompletion).emoji;
+          if (!emoji) return null;
+          const image = document.createElement('img');
+          image.alt = '';
+          image.className = 'twemoji completion-twemoji';
+          image.src = getTwemojiUrl(emoji) ?? '';
+          return image;
+        },
+      }],
     }),
     [notes, recentNotes],
   );

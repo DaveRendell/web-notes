@@ -59,7 +59,7 @@ describe('FileTree drag and drop', () => {
     const { container } = render(<FileTree nodes={tree} />);
     fireEvent.click(screen.getByRole('button', { name: 'Folder A' }));
 
-    expect(container.querySelector('.note-emoji')?.textContent).toBe('📝');
+    expect(container.querySelector<HTMLImageElement>('.note-emoji .twemoji')?.src).toMatch(/\/1f4dd\.svg$/);
   });
 
   it('keeps folder actions in a compact overflow menu', () => {

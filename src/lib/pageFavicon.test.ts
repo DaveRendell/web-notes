@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createEmojiFaviconDataUrl, updatePageFavicon } from './pageFavicon';
+import { createEmojiFaviconUrl, updatePageFavicon } from './pageFavicon';
 
 beforeEach(() => {
   document.head.innerHTML = '<link rel="icon" type="image/svg+xml" href="/favicon.svg">';
@@ -10,18 +10,18 @@ afterEach(() => {
 });
 
 describe('page favicon', () => {
-  it('creates an encoded SVG favicon containing the complete emoji', () => {
-    const dataUrl = createEmojiFaviconDataUrl('👩🏽‍💻');
+  it('creates a version-pinned Twemoji favicon URL for the complete emoji', () => {
+    const url = createEmojiFaviconUrl('👩🏽‍💻');
 
-    expect(dataUrl).toMatch(/^data:image\/svg\+xml,/);
-    expect(decodeURIComponent(dataUrl.split(',')[1])).toContain('👩🏽‍💻');
+    expect(url).toContain('twemoji@v17.0.2');
+    expect(url).toMatch(/\/1f469-1f3fd-200d-1f4bb\.svg$/);
   });
 
   it('uses a note emoji and restores the original favicon afterward', () => {
     updatePageFavicon('📚');
     const favicon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
 
-    expect(favicon?.getAttribute('href')).toContain(encodeURIComponent('📚'));
+    expect(favicon?.getAttribute('href')).toMatch(/\/1f4da\.svg$/);
 
     updatePageFavicon(null);
     expect(favicon?.getAttribute('href')).toBe('/favicon.svg');
@@ -31,8 +31,6 @@ describe('page favicon', () => {
     document.head.innerHTML = '';
     updatePageFavicon('🎯');
 
-    expect(document.querySelector('link[rel~="icon"]')?.getAttribute('href')).toContain(
-      encodeURIComponent('🎯'),
-    );
+    expect(document.querySelector('link[rel~="icon"]')?.getAttribute('href')).toMatch(/\/1f3af\.svg$/);
   });
 });

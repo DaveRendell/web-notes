@@ -1,8 +1,13 @@
 import {
   Cell,
+  IS_BOLD,
+  IS_CODE,
+  IS_ITALIC,
+  IS_STRIKETHROUGH,
   addComposerChild$,
   addExportVisitor$,
   addImportVisitor$,
+  addLexicalNode$,
   addMdastExtension$,
   addNestedEditorChild$,
   addTableCellEditorChild$,
@@ -39,14 +44,18 @@ import {
   TextNode,
   type LexicalEditor,
 } from 'lexical';
-import type { Parent, Text } from 'mdast';
+import type { Parent, RootContent, Text } from 'mdast';
 import type { Extension as FromMarkdownExtension } from 'mdast-util-from-markdown';
 import type { Handle, Options as ToMarkdownExtension } from 'mdast-util-to-markdown';
+import type { Literal } from 'unist';
 import { useEffect, useMemo, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { searchEmoji } from '../lib/emojiCompletion';
+import { splitEmojiText } from '../lib/twemoji';
 import { getNoteSuggestions, getNoteTitle } from '../lib/noteSearch';
 import type { VaultNode } from '../types/vault';
+import { $createRichEmojiNode, $isRichEmojiNode, RichEmojiNode } from './RichEmojiNode';
+import { Twemoji, TwemojiText } from './Twemoji';
 
 type WikiLinkMdastNode = Parent & {
   type: 'wikiLink';
@@ -55,12 +64,20 @@ type WikiLinkMdastNode = Parent & {
   children: Text[];
 };
 
+type EmojiMdastNode = Omit<Literal, 'data'> & {
+  type: 'emoji';
+  value: string;
+  data?: Text['data'];
+};
+
 declare module 'mdast' {
   interface PhrasingContentMap {
+    emoji: EmojiMdastNode;
     wikiLink: WikiLinkMdastNode;
   }
 
   interface RootContentMap {
+    emoji: EmojiMdastNode;
     wikiLink: WikiLinkMdastNode;
   }
 }
@@ -81,8 +98,9 @@ export const richEditorEnhancementsPlugin = realmPlugin<RichEditorEnhancementsPa
       [notes$]: params?.notes ?? [],
       [recentNotes$]: params?.recentNotes ?? [],
       [addMdastExtension$]: wikiLinkFromMarkdownExtension,
-      [addImportVisitor$]: MdastWikiLinkVisitor,
-      [addExportVisitor$]: LexicalWikiLinkVisitor,
+      [addLexicalNode$]: RichEmojiNode,
+      [addImportVisitor$]: [MdastWikiLinkVisitor, MdastEmojiVisitor],
+      [addExportVisitor$]: [LexicalWikiLinkVisitor, LexicalEmojiVisitor],
       [addToMarkdownExtension$]: wikiLinkToMarkdownExtension,
       [addComposerChild$]: RichEditorCompletions,
       [addNestedEditorChild$]: RichEditorCompletions,
@@ -109,6 +127,17 @@ const MdastWikiLinkVisitor: MdastImportVisitor<WikiLinkMdastNode> = {
   },
 };
 
+const MdastEmojiVisitor: MdastImportVisitor<EmojiMdastNode> = {
+  testNode: 'emoji',
+  visitNode({ actions, mdastNode }) {
+    actions.addAndStepInto($createRichEmojiNode(
+      mdastNode.value,
+      actions.getParentFormatting(),
+      actions.getParentStyle(),
+    ));
+  },
+};
+
 const LexicalWikiLinkVisitor: LexicalExportVisitor<LinkNode, WikiLinkMdastNode> = {
   priority: 100,
   testLexicalNode: (node): node is LinkNode => $isLinkNode(node) && node.getURL().startsWith(WIKILINK_URL_PREFIX),
@@ -128,12 +157,58 @@ const LexicalWikiLinkVisitor: LexicalExportVisitor<LinkNode, WikiLinkMdastNode> 
   },
 };
 
+const LexicalEmojiVisitor: LexicalExportVisitor<RichEmojiNode, RootContent> = {
+  shouldJoin(previous, current) {
+    return previous.type === current.type && ['text', 'emphasis', 'strong', 'delete'].includes(current.type);
+  },
+  join<T extends RootContent>(previous: T, current: T): T {
+    if (previous.type === 'text' && current.type === 'text') {
+      return { type: 'text', value: previous.value + current.value } as T;
+    }
+    if ('children' in previous && 'children' in current) {
+      return { ...previous, children: [...previous.children, ...current.children] } as T;
+    }
+    return current;
+  },
+  testLexicalNode: $isRichEmojiNode,
+  visitLexicalNode({ actions, lexicalNode, mdastParent }) {
+    const format = lexicalNode.getFormat();
+    let parent = mdastParent;
+    if (format & IS_ITALIC) parent = actions.appendToParent(parent, { type: 'emphasis', children: [] }) as Parent;
+    if (format & IS_BOLD) parent = actions.appendToParent(parent, { type: 'strong', children: [] }) as Parent;
+    if (format & IS_STRIKETHROUGH) parent = actions.appendToParent(parent, { type: 'delete', children: [] }) as Parent;
+    actions.appendToParent(parent, format & IS_CODE
+      ? { type: 'inlineCode', value: lexicalNode.getEmoji() }
+      : { type: 'text', value: lexicalNode.getEmoji() });
+  },
+};
+
 const wikiLinkFromMarkdownExtension: FromMarkdownExtension = {
   transforms: [(tree) => {
     transformWikiLinkText(tree);
+    transformEmojiText(tree);
     return tree;
   }],
 };
+
+function transformEmojiText(parent: Parent) {
+  for (let index = 0; index < parent.children.length; index += 1) {
+    const node = parent.children[index];
+    if (node.type === 'text') {
+      const parts = splitEmojiText(node.value);
+      if (parts.some((part) => part.emoji)) {
+        const replacements = parts.map((part): Text | EmojiMdastNode => ({
+          type: part.emoji ? 'emoji' : 'text',
+          value: part.text,
+        }));
+        parent.children.splice(index, 1, ...replacements);
+        index += replacements.length - 1;
+      }
+      continue;
+    }
+    if ('children' in node && Array.isArray(node.children)) transformEmojiText(node);
+  }
+}
 
 const wikiLinkHandler: Handle = (node: WikiLinkMdastNode) => {
   const alias = node.alias?.trim();
@@ -215,7 +290,7 @@ function decodeWikiLinkUrl(url: string) {
   };
 }
 
-class CompletionOption<T> extends MenuOption {
+class CompletionOption<T extends object> extends MenuOption {
   constructor(
     key: string,
     readonly item: T,
@@ -232,6 +307,7 @@ function RichEditorCompletions() {
       <WikiLinkTextTransform />
       <WikiLinkTypeahead />
       <EmojiTypeahead />
+      <EmojiTextTransform />
     </>
   );
 }
@@ -273,7 +349,7 @@ function EmojiTypeahead() {
   const [query, setQuery] = useState<string | null>(null);
   const options = useMemo(
     () => query === null ? [] : searchEmoji(query, MAX_RESULTS).map((entry) => (
-      new CompletionOption(entry.emoji, entry, `${entry.emoji} :${entry.name}:`)
+      new CompletionOption(entry.emoji, entry, `:${entry.name}:`)
     )),
     [query],
   );
@@ -285,7 +361,7 @@ function EmojiTypeahead() {
       onQueryChange={setQuery}
       onSelectOption={(option, queryNode, closeMenu) => {
         if (!queryNode) return;
-        const emoji = $createTextNode(option.item.emoji);
+        const emoji = $createRichEmojiNode(option.item.emoji);
         removeFollowingClosingText(queryNode, ':');
         queryNode.replace(emoji);
         emoji.selectEnd();
@@ -324,6 +400,24 @@ function WikiLinkTextTransform() {
   return null;
 }
 
+function EmojiTextTransform() {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => editor.registerNodeTransform(TextNode, (node) => {
+    if (editor.isComposing() || node.hasFormat('code')) return;
+    const parts = splitEmojiText(node.getTextContent());
+    if (!parts.some((part) => part.emoji)) return;
+
+    const replacements = parts.map((part) => part.emoji
+      ? $createRichEmojiNode(part.text, node.getFormat(), node.getStyle())
+      : $createTextNode(part.text).setFormat(node.getFormat()).setStyle(node.getStyle()));
+    node.replace(replacements[0]);
+    for (let index = 1; index < replacements.length; index += 1) replacements[index - 1].insertAfter(replacements[index]);
+  }), [editor]);
+
+  return null;
+}
+
 function removeFollowingClosingText(queryNode: TextNode, closing: string) {
   const nextSibling = queryNode.getNextSibling();
   if (!(nextSibling instanceof TextNode)) return;
@@ -334,7 +428,7 @@ function removeFollowingClosingText(queryNode: TextNode, closing: string) {
   else nextSibling.remove();
 }
 
-function renderCompletionMenu<T>(
+function renderCompletionMenu<T extends object>(
   anchorRef: RefObject<HTMLElement | null>,
   props: Parameters<MenuRenderFn<CompletionOption<T>>>[1],
 ) {
@@ -353,7 +447,10 @@ function renderCompletionMenu<T>(
           role="option"
           type="button"
         >
-          <span>{option.label}</span>
+          <span>
+            {'emoji' in option.item && typeof option.item.emoji === 'string' && <Twemoji emoji={option.item.emoji} hidden />}
+            <TwemojiText text={option.label} />
+          </span>
           {option.detail && <small>{option.detail}</small>}
         </button>
       ))}

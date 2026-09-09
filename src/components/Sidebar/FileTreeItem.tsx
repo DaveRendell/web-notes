@@ -17,6 +17,7 @@ import { useVault } from '../../contexts/VaultContext';
 import { getVaultNodeDisplayName } from '../../lib/vaultTree';
 import { VaultNode } from '../../types/vault';
 import { AnimatedPopover } from '../AnimatedPopover';
+import { Twemoji } from '../Twemoji';
 import { FileTreeList } from './FileTree';
 import {
   getVaultDragData,
@@ -228,7 +229,7 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
           {isFolder ? (
             <Folder size={16} />
           ) : noteEmoji ? (
-            <span className="note-emoji" aria-hidden="true">{noteEmoji}</span>
+            <span className="note-emoji"><Twemoji emoji={noteEmoji} hidden /></span>
           ) : (
             <FileText size={16} />
           )}

@@ -15,6 +15,8 @@ export type EmojiSearchEntry = {
   name: string;
 };
 
+export type EmojiCompletion = Completion & { emoji: string };
+
 const emojiSearchEntries: EmojiSearchEntry[] = Object.entries(emojiKeywords).map(([emoji, keywords]) => ({
   emoji,
   keywords: keywords.map(normalizeKeyword),
@@ -58,7 +60,7 @@ function getSearchScore(entry: EmojiSearchEntry, query: string) {
   return 0;
 }
 
-function createCompletion(entry: EmojiSearchEntry): Completion {
+function createCompletion(entry: EmojiSearchEntry): EmojiCompletion {
   return {
     apply(view, completion, from, to) {
       const closingColon = view.state.sliceDoc(to, to + 1) === ':' ? 1 : 0;
@@ -69,7 +71,8 @@ function createCompletion(entry: EmojiSearchEntry): Completion {
         userEvent: 'input.complete',
       });
     },
-    displayLabel: `${entry.emoji} :${entry.name}:`,
+    displayLabel: `:${entry.name}:`,
+    emoji: entry.emoji,
     label: entry.name,
     type: 'emoji',
   };

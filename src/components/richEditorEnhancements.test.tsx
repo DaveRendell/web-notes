@@ -5,6 +5,7 @@ import {
   MDXEditor,
   type MDXEditorMethods,
   addComposerChild$,
+  headingsPlugin,
   linkPlugin,
   listsPlugin,
   realmPlugin,
@@ -69,6 +70,25 @@ describe('rich editor enhancements', () => {
     expect(editorRef.current?.getMarkdown()).toBe(
       'See [[Folder/Note]] and [[People/Ada|Ada Lovelace]].',
     );
+  });
+
+  it('renders compound emoji as Twemoji without changing Markdown or formatting', async () => {
+    const editorRef = createRef<MDXEditorMethods>();
+    const { container } = render(
+      <MDXEditor
+        ref={editorRef}
+        markdown={'# 👩🏽‍💻 Notes\n\n**Important 📝 text**'}
+        plugins={[
+          headingsPlugin(),
+          linkPlugin(),
+          listsPlugin(),
+          richEditorEnhancementsPlugin({ notes: [], recentNotes: [] }),
+        ]}
+      />,
+    );
+
+    await waitFor(() => expect(container.querySelectorAll('.rich-emoji-node .twemoji')).toHaveLength(2));
+    expect(editorRef.current?.getMarkdown()).toBe('# 👩🏽‍💻 Notes\n\n**Important 📝 text**');
   });
 
   it('uses Ctrl+L to create and then toggle a checklist item', async () => {

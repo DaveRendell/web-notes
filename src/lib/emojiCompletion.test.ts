@@ -19,10 +19,11 @@ describe('emoji completion', () => {
     const keywordResult = await complete('Drink :coffee');
 
     expect(exactResult?.options[0]).toEqual(expect.objectContaining({
-      displayLabel: '🚀 :rocket:',
+      displayLabel: ':rocket:',
+      emoji: '🚀',
       label: 'rocket',
     }));
-    expect(keywordResult?.options.some((option) => option.displayLabel?.startsWith('☕ '))).toBe(true);
+    expect(keywordResult?.options.some((option) => 'emoji' in option && option.emoji === '☕')).toBe(true);
     expect(keywordResult?.options.length).toBeLessThanOrEqual(8);
   });
 

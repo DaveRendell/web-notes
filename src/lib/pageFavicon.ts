@@ -1,3 +1,5 @@
+import { getTwemojiUrl } from './twemoji';
+
 const DEFAULT_FAVICON_PATH = `${import.meta.env.BASE_URL}favicon.svg`;
 const DEFAULT_HREF_ATTRIBUTE = 'data-web-notes-default-href';
 
@@ -6,13 +8,16 @@ export function updatePageFavicon(emoji: string | null | undefined) {
   const defaultHref = favicon.getAttribute(DEFAULT_HREF_ATTRIBUTE) ?? DEFAULT_FAVICON_PATH;
 
   if (emoji) {
-    favicon.setAttribute('href', createEmojiFaviconDataUrl(emoji));
+    favicon.setAttribute('href', createEmojiFaviconUrl(emoji));
   } else {
     favicon.setAttribute('href', defaultHref);
   }
 }
 
-export function createEmojiFaviconDataUrl(emoji: string) {
+export function createEmojiFaviconUrl(emoji: string) {
+  const imageUrl = getTwemojiUrl(emoji);
+  if (imageUrl) return imageUrl;
+
   const svg = [
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">',
     `<text y=".9em" font-size="90">${escapeXml(emoji)}</text>`,

@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useVault } from '../../contexts/VaultContext';
 import { getVaultNodeDisplayName } from '../../lib/vaultTree';
 import type { VaultNode } from '../../types/vault';
+import { Twemoji } from '../Twemoji';
 import { CollapsibleSidebarSection } from './CollapsibleSidebarSection';
 
 const FAVORITE_DRAG_TYPE = 'favorite-note';
@@ -133,7 +134,7 @@ function FavoriteNote({ note, emoji, isSelected, isDragging, dropPlacement, onOp
         onClick={onOpen}
         title={note.path}
       >
-        {emoji ? <span className="note-emoji" aria-hidden="true">{emoji}</span> : <FileText size={15} />}
+        {emoji ? <span className="note-emoji"><Twemoji emoji={emoji} hidden /></span> : <FileText size={15} />}
         <span>{getVaultNodeDisplayName(note)}</span>
       </button>
       <button className="favorite-remove" type="button" onClick={onRemove} aria-label={`Remove ${getVaultNodeDisplayName(note)} from favourites`}>

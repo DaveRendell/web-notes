@@ -41,7 +41,7 @@ describe('FavoriteNotes', () => {
     render(<FavoriteNotes />);
 
     expect(screen.getByRole('button', { name: 'One' })).toBeTruthy();
-    expect(screen.getByText('⭐')).toBeTruthy();
+    expect(document.querySelector<HTMLImageElement>('.note-emoji .twemoji')?.src).toMatch(/\/2b50\.svg$/);
     fireEvent.click(screen.getByRole('button', { name: /Favourites/ }));
     expect(screen.queryByRole('button', { name: 'One' })).toBeNull();
   });

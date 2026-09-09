@@ -332,6 +332,26 @@ button {
   line-height: 1;
 }
 
+.twemoji {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin: 0 0.04em;
+  vertical-align: -0.1em;
+  object-fit: contain;
+}
+
+.note-emoji .twemoji {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  vertical-align: middle;
+}
+
+.rich-emoji-node {
+  display: inline;
+}
+
 .primary-button {
   display: inline-flex;
   align-items: center;
@@ -1521,6 +1541,13 @@ button {
 
 .markdown-editor .cm-completionIcon-emoji {
   display: none;
+}
+
+.markdown-editor .completion-twemoji {
+  width: 18px;
+  height: 18px;
+  margin: 0 7px 0 0;
+  vertical-align: middle;
 }
 
 .markdown-editor .cm-completionDetail {
