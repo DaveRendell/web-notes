@@ -60,3 +60,18 @@ npm test
 npm run lint
 npm run build
 ```
+
+Run all three with `npm run check`. GitHub Actions runs these checks and the browser smoke suite on pull requests and pushes to `main`.
+
+### Browser checks
+
+```sh
+npx playwright install chromium
+npm run test:browser
+# Interactive runner for inspecting the site and stepping through tests:
+npm run test:browser:ui
+```
+
+The Playwright suite starts its own Vite server on port 4173 and uses an isolated browser with a fake Drive session and intercepted Google requests. No real credentials, OAuth popup, or Drive writes are involved. Fixtures live in `e2e/vault.spec.ts`; extend them when adding browser regressions. The suite covers rich-text rendering, source-mode switching, search/navigation/history, autosaving, and cached rendering during a Drive outage. It is separate from Vitest so browser tests never accidentally run in jsdom. Worker counts are bounded (four for unit tests, two for browser tests) to avoid overloading local machines and CI.
+
+Failures retain screenshots and traces in `test-results/`; inspect them with `npx playwright show-report` or `npx playwright show-trace <trace.zip>`. CI uploads failure reports for seven days. On Linux, browser installation may also require `npx playwright install --with-deps chromium`.

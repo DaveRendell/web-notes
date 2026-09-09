@@ -56,7 +56,9 @@ describe('cache connection lifecycle', () => {
     const old = await getVaultCacheDatabase();
     const nativeDatabase = unwrap(old);
     const closed = new Promise<void>((resolve) => nativeDatabase.addEventListener('close', () => resolve(), { once: true }));
-    forceCloseDatabase(nativeDatabase);
+    // fake-indexeddb's declaration incorrectly accepts the constructor type;
+    // its runtime API takes an open database instance.
+    forceCloseDatabase(nativeDatabase as unknown as Parameters<typeof forceCloseDatabase>[0]);
     await closed;
     const fresh = await getVaultCacheDatabase();
     expect(fresh).not.toBe(old);
