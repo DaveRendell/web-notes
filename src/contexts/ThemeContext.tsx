@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
-import { readMigratedStorage } from '../lib/browserStorage';
+import { readMigratedStorage, safeLocalStorage as localStorage } from '../lib/browserStorage';
 
 const THEME_KEY = 'web-notes:theme';
 const LEGACY_THEME_KEY = 'vault-web-viewer:theme';

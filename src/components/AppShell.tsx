@@ -3,7 +3,7 @@ import { CSSProperties, KeyboardEvent, PointerEvent, useEffect, useRef, useState
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useVault } from '../contexts/VaultContext';
-import { readMigratedStorage } from '../lib/browserStorage';
+import { readMigratedStorage, safeLocalStorage as localStorage } from '../lib/browserStorage';
 import { AnimatedPopover } from './AnimatedPopover';
 import { MarkdownViewer } from './MarkdownViewer';
 import { ImageViewer } from './ImageViewer';

@@ -29,7 +29,7 @@ import {
   findVaultNodeParentId,
   sortVaultNodes,
 } from '../lib/vaultTree';
-import { readMigratedStorage, removeMigratedStorage } from '../lib/browserStorage';
+import { readMigratedStorage, removeMigratedStorage, safeLocalStorage as localStorage } from '../lib/browserStorage';
 import { DriveFile } from '../types/drive';
 import { VaultNode } from '../types/vault';
 import { useAuth } from './AuthContext';

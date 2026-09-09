@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { safeLocalStorage as localStorage } from '../lib/browserStorage';
 import { isGoogleDriveAuthError } from '../lib/googleDrive';
 import { createVaultSettings, loadDriveVaultSettings, saveDriveVaultSettings } from '../lib/vaultSettings';
 

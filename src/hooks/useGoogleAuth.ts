@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { GoogleTokenClient } from '../types/google';
 import { getDriveAccountId } from '../lib/googleDrive';
 import { deleteAccountCache } from '../lib/vaultCache';
-import { readMigratedStorage, removeMigratedStorage } from '../lib/browserStorage';
+import { readMigratedStorage, removeMigratedStorage, safeLocalStorage as localStorage, safeSessionStorage as sessionStorage } from '../lib/browserStorage';
 
 const GOOGLE_IDENTITY_SCRIPT = 'https://accounts.google.com/gsi/client';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
