@@ -69,7 +69,7 @@ type VaultContextValue = {
   selectVault: (folder: Pick<DriveFile, 'id' | 'name'>) => void;
   selectedFile: VaultNode | null;
   selectedVault: StoredVault | null;
-  storeSavedNote: (note: VaultNode, file: DriveFile, content: string) => void;
+  storeSavedNote: (note: VaultNode, file: DriveFile, content?: string) => void;
   toggleFavorite: (noteId: string) => void;
   tree: VaultNode[];
 };
@@ -431,13 +431,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   );
 
   const storeSavedNote = useCallback(
-    (note: VaultNode, file: DriveFile, nextContent: string) => {
+    (note: VaultNode, file: DriveFile, nextContent?: string) => {
       const updatedNote = createVaultNode(file, getParentPath(note.path));
       setTree((currentTree) => replaceNodeInTree(currentTree, updatedNote));
 
       setSelectedFile((currentFile) => currentFile?.id === note.id ? updatedNote : currentFile);
 
-      if (accountId && selectedVault) {
+      if (accountId && selectedVault && nextContent !== undefined) {
         void putNoteContent({
           accountId,
           vaultId: selectedVault.id,

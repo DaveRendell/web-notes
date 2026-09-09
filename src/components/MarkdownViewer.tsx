@@ -13,6 +13,11 @@ import { NoteEditorShell, type NoteEditorMode } from './NoteEditorShell';
 
 const RICH_AUTOSAVE_DELAY_MS = 1000;
 
+type QueuedNoteSave = {
+  content: string;
+  note: NonNullable<ReturnType<typeof useVault>['selectedFile']>;
+};
+
 export function MarkdownViewer() {
   const { accessToken, accountId, ensureAccessToken, invalidateAccessToken } = useAuth();
   const {
@@ -30,7 +35,7 @@ export function MarkdownViewer() {
     toggleFavorite,
   } = useVault();
   const selectedVaultId = selectedVault?.id ?? null;
-  const { cacheContent, content, error, isLoading, isRefreshing, refreshError } = useMarkdownFile(
+  const { cacheContent, content, error, isLoading, isRefreshing, refreshError, setContent } = useMarkdownFile(
     accessToken,
     accountId,
     selectedVaultId,
@@ -39,6 +44,9 @@ export function MarkdownViewer() {
   const noteContentRef = useRef<HTMLDivElement>(null);
   const noteMenuRef = useRef<HTMLDivElement>(null);
   const isSaveInFlightRef = useRef(false);
+  const queuedSavesRef = useRef(new Map<string, QueuedNoteSave>());
+  const processSaveQueueRef = useRef<() => void>(() => undefined);
+  const acceptedContentUpdateRef = useRef<{ content: string; fileId: string } | null>(null);
   const selectedFileRef = useRef(selectedFile);
   const draftRef = useRef('');
   const previousContentRef = useRef(content);
@@ -62,6 +70,74 @@ export function MarkdownViewer() {
   draftRef.current = draft;
   selectedFileRef.current = selectedFile;
 
+  const cacheLocalDraft = useCallback((note: QueuedNoteSave['note'], nextContent: string) => {
+    if (!accountId || !selectedVaultId) return;
+    void putNoteContent({
+      accountId,
+      vaultId: selectedVaultId,
+      fileId: note.id,
+      content: nextContent,
+      cachedAt: Date.now(),
+    });
+  }, [accountId, selectedVaultId]);
+
+  const queueNoteSave = useCallback((note: QueuedNoteSave['note'], nextContent: string) => {
+    queuedSavesRef.current.set(note.id, { content: nextContent, note });
+    cacheLocalDraft(note, nextContent);
+    setIsSaving(true);
+    processSaveQueueRef.current();
+  }, [cacheLocalDraft]);
+
+  processSaveQueueRef.current = () => {
+    if (isSaveInFlightRef.current) return;
+    const queued = queuedSavesRef.current.entries().next().value as [string, QueuedNoteSave] | undefined;
+    if (!queued) {
+      setIsSaving(false);
+      return;
+    }
+
+    const [noteId, save] = queued;
+    queuedSavesRef.current.delete(noteId);
+    isSaveInFlightRef.current = true;
+    setIsSaving(true);
+
+    void (async () => {
+      try {
+        const validAccessToken = await ensureAccessToken();
+        const updatedFile = await updateDriveFileText(validAccessToken, save.note.id, save.content);
+        const newerSave = queuedSavesRef.current.get(save.note.id);
+
+        // Always advance the Drive metadata, but never let an older response replace a
+        // newer local draft in IndexedDB.
+        storeSavedNote(save.note, updatedFile, newerSave ? undefined : save.content);
+        if (selectedFileRef.current?.id === save.note.id && !newerSave && draftRef.current === save.content) {
+          acceptedContentUpdateRef.current = { content: save.content, fileId: save.note.id };
+          setContent(save.content);
+          setHasRemoteUpdate(false);
+          setNeedsAuthReconnect(false);
+          setHasFailedSave(false);
+          setSaveError(null);
+        }
+      } catch (requestError) {
+        if (isGoogleDriveAuthError(requestError)) invalidateAccessToken();
+        if (selectedFileRef.current?.id === save.note.id) {
+          setHasFailedSave(true);
+          if (isGoogleDriveAuthError(requestError)) {
+            setNeedsAuthReconnect(true);
+            setSaveError('Google Drive access expired. Reconnect to retry; your changes are preserved locally.');
+          } else {
+            setSaveError(requestError instanceof Error ? requestError.message : 'Failed to save markdown file.');
+          }
+        } else {
+          console.warn('Could not save the note before navigation; the draft remains in the local cache.', requestError);
+        }
+      } finally {
+        isSaveInFlightRef.current = false;
+        processSaveQueueRef.current();
+      }
+    })();
+  };
+
   useEffect(() => {
     if (!accessToken || !selectedFile || isLoading || error) return;
     cacheNoteIcon(selectedFile.id, content);
@@ -83,30 +159,9 @@ export function MarkdownViewer() {
         accessToken &&
         accountId &&
         selectedVaultId &&
-        isOnline &&
-        !isSaveInFlightRef.current
+        isOnline
       ) {
-        isSaveInFlightRef.current = true;
-        void (async () => {
-          try {
-            await putNoteContent({
-              accountId,
-              vaultId: selectedVaultId,
-              fileId: previousFile.id,
-              content: departingDraft,
-              cachedAt: Date.now(),
-            });
-            const validAccessToken = await ensureAccessToken();
-            const updatedFile = await updateDriveFileText(validAccessToken, previousFile.id, departingDraft);
-            storeSavedNote(previousFile, updatedFile, departingDraft);
-          } catch (requestError) {
-            if (isGoogleDriveAuthError(requestError)) invalidateAccessToken();
-            console.warn('Could not save the note before navigation; the draft remains in the local cache.', requestError);
-          } finally {
-            isSaveInFlightRef.current = false;
-            setIsSaving(false);
-          }
-        })();
+        queueNoteSave(previousFile, departingDraft);
       }
 
       setDraft(content);
@@ -115,11 +170,19 @@ export function MarkdownViewer() {
       setNeedsAuthReconnect(false);
       setHasFailedSave(false);
       setSaveError(null);
-      setIsSaving(isSaveInFlightRef.current);
+      setIsSaving(isSaveInFlightRef.current || queuedSavesRef.current.size > 0);
       return;
     }
 
     if (isSaveInFlightRef.current) return;
+
+    const acceptedUpdate = acceptedContentUpdateRef.current;
+    if (acceptedUpdate && acceptedUpdate.fileId === selectedFile?.id && acceptedUpdate.content === content) {
+      acceptedContentUpdateRef.current = null;
+      setDraft(content);
+      setHasRemoteUpdate(false);
+      return;
+    }
 
     if (content !== previousContent && draftRef.current !== previousContent) {
       setHasRemoteUpdate(true);
@@ -132,12 +195,11 @@ export function MarkdownViewer() {
     accessToken,
     accountId,
     content,
-    ensureAccessToken,
-    invalidateAccessToken,
     isOnline,
+    queueNoteSave,
+    selectedFile,
     selectedFile?.id,
     selectedVaultId,
-    storeSavedNote,
   ]);
 
   useEffect(() => {
@@ -165,58 +227,26 @@ export function MarkdownViewer() {
   }, [isNoteMenuOpen]);
 
   const persistDraft = useCallback(async (returnToRich = false) => {
-    if (!accessToken || !selectedFile || !isOnline || isSaveInFlightRef.current) return;
+    if (!accessToken || !selectedFile || !isOnline) return;
     if (!hasUnsavedChanges && !hasFailedSave) {
       if (returnToRich) setEditorMode('rich');
       return;
     }
 
     const nextContent = draftRef.current;
-    const note = selectedFile;
-    isSaveInFlightRef.current = true;
-    setIsSaving(true);
     setHasFailedSave(false);
     setSaveError(null);
     cacheContent(nextContent);
     if (returnToRich) setEditorMode('rich');
-
-    try {
-      const validAccessToken = await ensureAccessToken();
-      const updatedFile = await updateDriveFileText(validAccessToken, note.id, nextContent);
-
-      if (selectedFileRef.current?.id === note.id) {
-        cacheContent(nextContent, updatedFile.modifiedTime);
-        setHasRemoteUpdate(false);
-        setNeedsAuthReconnect(false);
-        setHasFailedSave(false);
-        setSaveError(null);
-      }
-      storeSavedNote(note, updatedFile, nextContent);
-    } catch (requestError) {
-      if (selectedFileRef.current?.id === note.id) {
-        setHasFailedSave(true);
-        if (isGoogleDriveAuthError(requestError)) {
-          invalidateAccessToken();
-          setNeedsAuthReconnect(true);
-          setSaveError('Google Drive access expired. Reconnect to retry; your changes are preserved locally.');
-        } else {
-          setSaveError(requestError instanceof Error ? requestError.message : 'Failed to save markdown file.');
-        }
-      }
-    } finally {
-      isSaveInFlightRef.current = false;
-      setIsSaving(false);
-    }
+    queueNoteSave(selectedFile, nextContent);
   }, [
     accessToken,
     cacheContent,
-    ensureAccessToken,
     hasFailedSave,
     hasUnsavedChanges,
-    invalidateAccessToken,
     isOnline,
+    queueNoteSave,
     selectedFile,
-    storeSavedNote,
   ]);
 
   useEffect(() => {
@@ -238,6 +268,12 @@ export function MarkdownViewer() {
 
   function handleDraftChange(nextDraft: string) {
     setDraft(nextDraft);
+    if (selectedFile) {
+      cacheLocalDraft(selectedFile, nextDraft);
+      if (isSaveInFlightRef.current || queuedSavesRef.current.has(selectedFile.id)) {
+        queuedSavesRef.current.set(selectedFile.id, { content: nextDraft, note: selectedFile });
+      }
+    }
     if (nextDraft !== draftRef.current) {
       setHasFailedSave(false);
       setNeedsAuthReconnect(false);
@@ -419,7 +455,7 @@ export function MarkdownViewer() {
         {!isLoading && !error && (
           <section className="editor-pane" aria-label="Note editor">
             <NoteEditorShell
-              blockMovementDisabled={isSaving || !isOnline}
+              blockMovementDisabled={!isOnline}
               key={selectedFile.id}
               mode={editorMode}
               notes={notes}

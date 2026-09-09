@@ -212,7 +212,7 @@ function MarkdownBlockFrame({
         aria-expanded={isMenuOpen}
         aria-haspopup="menu"
         onClick={() => setIsMenuOpen((open) => !open)}
-        title={context.disabled ? 'Block movement is unavailable while this note is read-only or saving' : 'Drag or choose how to move block'}
+        title={context.disabled ? 'Block movement is unavailable while this note is read-only' : 'Drag or choose how to move block'}
       >
         <GripVertical size={16} />
       </button>

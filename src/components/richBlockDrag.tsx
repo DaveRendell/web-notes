@@ -243,7 +243,7 @@ function RichBlockDrag() {
           disabled={disabled}
           onClick={() => setIsMenuOpen((open) => !open)}
           ref={handleRef}
-          title={disabled ? 'Block movement is unavailable while this note is read-only or saving' : 'Drag or choose how to move block'}
+          title={disabled ? 'Block movement is unavailable while this note is read-only' : 'Drag or choose how to move block'}
           type="button"
         >
           <GripVertical size={16} />

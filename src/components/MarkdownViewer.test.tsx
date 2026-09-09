@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   storeSavedNote: vi.fn(),
   toggleFavorite: vi.fn(),
   updateDriveFileText: vi.fn(),
+  putNoteContent: vi.fn(() => Promise.resolve()),
 }));
 
 const selectedFile: VaultNode = {
@@ -70,8 +71,13 @@ vi.mock('../lib/googleDrive', () => ({
   updateDriveFileText: mocks.updateDriveFileText,
 }));
 
+vi.mock('../lib/vaultCache', () => ({
+  putNoteContent: mocks.putNoteContent,
+}));
+
 vi.mock('./NoteEditorShell', () => ({
-  NoteEditorShell: ({ mode, onBlur, onChange, onSave, readOnly, value }: {
+  NoteEditorShell: ({ blockMovementDisabled, mode, onBlur, onChange, onSave, readOnly, value }: {
+    blockMovementDisabled: boolean;
     mode: 'rich' | 'source';
     onBlur: () => void;
     onChange: (value: string) => void;
@@ -81,6 +87,7 @@ vi.mock('./NoteEditorShell', () => ({
   }) => (
     <textarea
       aria-label={mode === 'rich' ? 'Rich note' : 'Markdown draft'}
+      data-block-movement-disabled={blockMovementDisabled}
       onBlur={onBlur}
       onChange={(event) => onChange(event.target.value)}
       onKeyDown={(event) => {
@@ -138,6 +145,80 @@ describe('MarkdownViewer rich editing', () => {
     fireEvent.blur(editor);
 
     await waitFor(() => expect(mocks.updateDriveFileText).toHaveBeenCalledWith('valid-token', 'note', 'save on blur'));
+  });
+
+  it('keeps local block and checkbox changes enabled and coalesces them while saving', async () => {
+    let finishFirstSave!: (value: typeof selectedFile.source) => void;
+    mocks.updateDriveFileText
+      .mockReturnValueOnce(new Promise((resolve) => { finishFirstSave = resolve; }))
+      .mockResolvedValueOnce({ ...selectedFile.source, modifiedTime: 'newest' });
+    render(<MarkdownViewer />);
+    const editor = screen.getByRole('textbox', { name: 'Rich note' });
+
+    fireEvent.change(editor, { target: { value: '- [ ] first' } });
+    fireEvent.blur(editor);
+    await waitFor(() => expect(mocks.updateDriveFileText).toHaveBeenCalledTimes(1));
+
+    expect((editor as HTMLTextAreaElement).readOnly).toBe(false);
+    expect(editor.getAttribute('data-block-movement-disabled')).toBe('false');
+
+    fireEvent.change(editor, { target: { value: '- [x] first\n\nMoved block' } });
+    expect(mocks.putNoteContent).toHaveBeenLastCalledWith(expect.objectContaining({
+      content: '- [x] first\n\nMoved block',
+      fileId: 'note',
+    }));
+
+    finishFirstSave({ ...selectedFile.source, modifiedTime: 'first-save' });
+    await waitFor(() => expect(mocks.updateDriveFileText).toHaveBeenNthCalledWith(
+      2,
+      'valid-token',
+      'note',
+      '- [x] first\n\nMoved block',
+    ));
+    await waitFor(() => expect(mocks.storeSavedNote).toHaveBeenLastCalledWith(
+      selectedFile,
+      expect.objectContaining({ modifiedTime: 'newest' }),
+      '- [x] first\n\nMoved block',
+    ));
+    expect(mocks.storeSavedNote).toHaveBeenCalledWith(
+      selectedFile,
+      expect.objectContaining({ modifiedTime: 'first-save' }),
+      undefined,
+    );
+    expect(screen.queryByText(/changed in Google Drive/)).toBeNull();
+  });
+
+  it('saves the newest departing draft when navigation happens during an older save', async () => {
+    let finishFirstSave!: (value: typeof selectedFile.source) => void;
+    mocks.updateDriveFileText
+      .mockReturnValueOnce(new Promise((resolve) => { finishFirstSave = resolve; }))
+      .mockResolvedValueOnce({ ...selectedFile.source, modifiedTime: 'departing-saved' });
+    const { rerender } = render(<MarkdownViewer />);
+    const editor = screen.getByRole('textbox', { name: 'Rich note' });
+
+    fireEvent.change(editor, { target: { value: 'first version' } });
+    fireEvent.blur(editor);
+    await waitFor(() => expect(mocks.updateDriveFileText).toHaveBeenCalledTimes(1));
+    fireEvent.change(editor, { target: { value: 'newest departing version' } });
+
+    mocks.selectedFile = {
+      ...selectedFile,
+      id: 'next-note',
+      name: 'Next.md',
+      path: 'Next.md',
+      source: { ...selectedFile.source, id: 'next-note', name: 'Next.md' },
+    };
+    mocks.content = 'next body';
+    rerender(<MarkdownViewer />);
+    finishFirstSave({ ...selectedFile.source, modifiedTime: 'first-save' });
+
+    await waitFor(() => expect(mocks.updateDriveFileText).toHaveBeenNthCalledWith(
+      2,
+      'valid-token',
+      'note',
+      'newest departing version',
+    ));
+    expect((screen.getByRole('textbox', { name: 'Rich note' }) as HTMLTextAreaElement).value).toBe('next body');
   });
 
   it('places saving status before sequential navigation and the fixed mode switch', async () => {
