@@ -32,6 +32,7 @@ import type { VaultNode } from '../types/vault';
 import { richEditorEnhancementsPlugin } from './richEditorEnhancements';
 import { richBlockDragPlugin } from './richBlockDrag';
 import { richEditorIcon } from './richEditorIcons';
+import { RichInsertImageButton } from './RichInsertImageButton';
 
 type RichMarkdownEditorProps = {
   markdown: string;
@@ -81,6 +82,7 @@ export default function RichMarkdownEditor({ markdown, blockMovementDisabled = f
           <Separator />
           <ListsToggle options={['bullet', 'number', 'check']} />
           <CreateLink />
+          <RichInsertImageButton pasteTarget={shellRef} disabled={readOnly} />
           <InsertTable />
           <InsertCodeBlock />
           <InsertThematicBreak />

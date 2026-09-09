@@ -1,5 +1,6 @@
 import { AppShell } from './components/AppShell';
+import { ImageProvider } from './contexts/ImageContext';
 
 export function App() {
-  return <AppShell />;
+  return <ImageProvider><AppShell /></ImageProvider>;
 }

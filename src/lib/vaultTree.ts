@@ -75,5 +75,7 @@ function getVaultNodeType(file: DriveFile): VaultNodeType {
     return 'markdown';
   }
 
+  if (file.mimeType.startsWith('image/') || /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)$/i.test(file.name)) return 'image';
+
   return 'other';
 }

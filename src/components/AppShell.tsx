@@ -6,6 +6,7 @@ import { useVault } from '../contexts/VaultContext';
 import { readMigratedStorage } from '../lib/browserStorage';
 import { AnimatedPopover } from './AnimatedPopover';
 import { MarkdownViewer } from './MarkdownViewer';
+import { ImageViewer } from './ImageViewer';
 import { NoteSearch } from './NoteSearch';
 import { Sidebar } from './Sidebar/Sidebar';
 import { VaultPicker } from './VaultPicker';
@@ -193,9 +194,14 @@ function ResizableWorkspace({ isSidebarCollapsed }: { isSidebarCollapsed: boolea
         tabIndex={0}
         title="Drag to resize; double-click to reset"
       />
-      <MarkdownViewer />
+      <SelectedFileViewer />
     </div>
   );
+}
+
+function SelectedFileViewer() {
+  const { selectedFile } = useVault();
+  return selectedFile?.type === 'image' ? <ImageViewer /> : <MarkdownViewer />;
 }
 
 function readSidebarWidth() {

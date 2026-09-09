@@ -89,6 +89,29 @@ export async function getDriveFileText(accessToken: string, fileId: string): Pro
   return driveFetchText(`${DRIVE_API_ROOT}/files/${fileId}?alt=media`, accessToken);
 }
 
+export async function getDriveImage(accessToken: string, fileId: string): Promise<Blob> {
+  const response = await fetch(`${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) throw new GoogleDriveError(await getErrorMessage(response), response.status);
+  return response.blob();
+}
+
+export async function uploadDriveImage(accessToken: string, parentId: string, file: File): Promise<DriveFile> {
+  if (!file.type.startsWith('image/')) throw new Error('Choose an image file.');
+  if (file.size > 20 * 1024 * 1024) throw new Error('Images must be smaller than 20 MB.');
+  const boundary = `web-notes-${crypto.randomUUID()}`;
+  const body = new Blob([
+    `--${boundary}\r\nContent-Type: application/json; charset=utf-8\r\n\r\n`,
+    JSON.stringify({ name: file.name, mimeType: file.type, parents: [parentId] }),
+    `\r\n--${boundary}\r\nContent-Type: ${file.type}\r\n\r\n`, file,
+    `\r\n--${boundary}--\r\n`,
+  ]);
+  return driveFetch<DriveFile>(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,mimeType,parents,modifiedTime,size`, accessToken, {
+    method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body,
+  });
+}
+
 export async function findDriveChildByName({
   accessToken,
   folderId,
@@ -249,12 +272,16 @@ export async function renameDriveFolder(
   folderId: string,
   name: string,
 ): Promise<DriveFile> {
+  return renameDriveItem(accessToken, folderId, name);
+}
+
+export async function renameDriveItem(accessToken: string, fileId: string, name: string): Promise<DriveFile> {
   const params = new URLSearchParams({
     fields: 'id, name, mimeType, parents, modifiedTime, size',
     supportsAllDrives: 'true',
   });
 
-  return driveFetch<DriveFile>(`${DRIVE_API_ROOT}/files/${folderId}?${params.toString()}`, accessToken, {
+  return driveFetch<DriveFile>(`${DRIVE_API_ROOT}/files/${fileId}?${params.toString()}`, accessToken, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json; charset=utf-8',

@@ -1,13 +1,16 @@
-import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useVaultTree } from '../hooks/useVaultTree';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useVaultFavorites } from '../hooks/useVaultFavorites';
 import {
   createDriveFolder,
+  uploadDriveImage,
   createDriveMarkdownFile,
+  isGoogleDriveAuthError,
   deleteDriveFile,
   moveDriveFile,
   renameDriveFolder,
+  renameDriveItem,
   renameDriveFile,
 } from '../lib/googleDrive';
 import {
@@ -43,6 +46,9 @@ type StoredVault = {
 };
 
 type VaultContextValue = {
+  renameImage: (image: VaultNode, name: string) => Promise<void>;
+  deleteImage: (image: VaultNode) => Promise<void>;
+  uploadImage: (file: File) => Promise<VaultNode>;
   cacheNoteIcon: (fileId: string, content: string) => void;
   clearVault: () => void;
   createFolder: (parentFolder: VaultNode | null, name: string) => Promise<VaultNode>;
@@ -84,6 +90,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [routePath, setRoutePath] = useState(() => getNotePathFromHash());
   const [noteIcons, setNoteIcons] = useState<Record<string, string | null>>({});
   const isOnline = useOnlineStatus();
+  const imageUploadScope = `${accountId}:${selectedVault?.id}`;
+  const imageUploadScopeRef = useRef(imageUploadScope);
+  imageUploadScopeRef.current = imageUploadScope;
   const {
     favoriteNoteIds,
     favoriteSyncError,
@@ -204,6 +213,31 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [accessToken, accountId, ensureAccessToken, isOnline, selectFile, selectedVault, setTree],
   );
 
+  const uploadImage = useCallback(async (image: File) => {
+    if (!selectedVault || !isOnline) throw new Error('Connect to Drive before uploading an image.');
+    const parentId = selectedFile ? findVaultNodeParentId(tree, selectedFile.id) : null;
+    const parent = parentId ? findVaultNode(tree, parentId) : null;
+    const siblings = parent?.children ?? tree;
+    let name = image.name;
+    let suffix = 2;
+    const dot = image.name.lastIndexOf('.');
+    const stem = dot > 0 ? image.name.slice(0, dot) : image.name;
+    const extension = dot > 0 ? image.name.slice(dot) : '';
+    while (siblings.some((node) => node.name === name)) name = `${stem} (${suffix++})${extension}`;
+    const upload = new File([image], name, { type: image.type });
+    let file: DriveFile;
+    try { file = await uploadDriveImage(await ensureAccessToken(), parentId ?? selectedVault.id, upload); }
+    catch (error) {
+      if (!isGoogleDriveAuthError(error)) throw error;
+      invalidateAccessToken();
+      file = await uploadDriveImage(await ensureAccessToken(), parentId ?? selectedVault.id, upload);
+    }
+    if (imageUploadScopeRef.current !== imageUploadScope) throw new Error('Image uploaded to the previous vault. Reopen that vault to see it.');
+    const node = createVaultNode(file, parent?.path ?? '');
+    setTree((current) => addNodeToTree(current, parentId, node));
+    return node;
+  }, [ensureAccessToken, imageUploadScope, invalidateAccessToken, isOnline, selectedFile, selectedVault, setTree, tree]);
+
   const createFolder = useCallback(
     async (parentFolder: VaultNode | null, name: string) => {
       if (!accessToken || !selectedVault) {
@@ -251,6 +285,31 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     },
     [accessToken, accountId, ensureAccessToken, isOnline, selectFile, selectedFile?.id, selectedVault, setTree],
   );
+
+  const renameImage = useCallback(async (image: VaultNode, name: string) => {
+    if (!accessToken || !isOnline) throw new Error('Reconnect to Drive before renaming an image.');
+    const current = findVaultNode(tree, image.id);
+    if (current?.type !== 'image') throw new Error('This image is no longer in the vault.');
+    const trimmed = name.trim();
+    if (!trimmed || trimmed.startsWith('.') || /[/\\]/.test(trimmed)) throw new Error('Enter a filename without slashes or a leading dot.');
+    const extension = current.name.match(/\.[^.]+$/)?.[0] ?? '';
+    const filename = extension && !trimmed.toLowerCase().endsWith(extension.toLowerCase()) ? `${trimmed}${extension}` : trimmed;
+    // The generic metadata rename preserves image extensions (the note helper adds .md).
+    const file = await renameDriveItem(await ensureAccessToken(), current.id, filename);
+    if (imageUploadScopeRef.current !== imageUploadScope) return;
+    setTree((nodes) => {
+      const live = findVaultNode(nodes, current.id);
+      return live ? replaceNodeInTree(nodes, createVaultNode(file, getParentPath(live.path))) : nodes;
+    });
+  }, [accessToken, ensureAccessToken, imageUploadScope, isOnline, setTree, tree]);
+
+  const deleteImage = useCallback(async (image: VaultNode) => {
+    if (!accessToken || !isOnline) throw new Error('Reconnect to Drive before deleting an image.');
+    if (findVaultNode(tree, image.id)?.type !== 'image') throw new Error('This image is no longer in the vault.');
+    await deleteDriveFile(await ensureAccessToken(), image.id);
+    if (imageUploadScopeRef.current !== imageUploadScope) return;
+    setTree((nodes) => removeNodeFromTree(nodes, image.id));
+  }, [accessToken, ensureAccessToken, imageUploadScope, isOnline, setTree, tree]);
 
   const renameFolder = useCallback(
     async (folder: VaultNode, name: string) => {
@@ -540,6 +599,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
+      renameImage,
+      deleteImage,
+      uploadImage,
       cacheNoteIcon,
       clearVault,
       createFolder,
@@ -571,6 +633,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       tree,
     }),
     [
+      renameImage,
+      deleteImage,
+      uploadImage,
       clearVault,
       cacheNoteIcon,
       createFolder,
@@ -620,7 +685,7 @@ function createVaultIndex(nodes: VaultNode[]): VaultIndex {
   };
 
   for (const node of flattenVaultTree(nodes)) {
-    if (node.type !== 'markdown') continue;
+    if (node.type !== 'markdown' && node.type !== 'image') continue;
 
     index.byId.set(node.id, node);
     index.byPath.set(normalizeWikilinkTarget(node.path), node);

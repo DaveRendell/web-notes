@@ -1,7 +1,33 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createDriveTextFile, findDriveChildByName, moveDriveFile, updateDriveTextFile } from './googleDrive';
+import { createDriveTextFile, findDriveChildByName, getDriveImage, moveDriveFile, updateDriveTextFile, uploadDriveImage } from './googleDrive';
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe('Drive images', () => {
+  it('downloads image bytes with authentication', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('image bytes'));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await (await getDriveImage('token', 'image')).text()).toBe('image bytes');
+    expect(fetchMock.mock.calls[0][0]).toContain('alt=media');
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer token');
+  });
+  it('uploads binary multipart data and returns metadata', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: 'image', name: 'photo.png' })));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await uploadDriveImage('token', 'parent', new File(['bytes'], 'photo.png', { type: 'image/png' }))).toEqual({ id: 'image', name: 'photo.png' });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain('uploadType=multipart');
+    expect(init.body).toBeInstanceOf(Blob);
+    expect(new Headers(init.headers).get('Authorization')).toBe('Bearer token');
+  });
+  it('rejects non-images before issuing a request and propagates auth errors', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(uploadDriveImage('token', 'parent', new File(['x'], 'note.txt', { type: 'text/plain' }))).rejects.toThrow('Choose an image');
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(getDriveImage('token', 'id')).rejects.toMatchObject({ status: 401 });
+  });
+});
 
 describe('moveDriveFile', () => {
   it('moves an item between Drive parents and requests refreshed metadata', async () => {

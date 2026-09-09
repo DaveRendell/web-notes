@@ -1,4 +1,4 @@
-import { ImageOff } from 'lucide-react';
+import { NoteImage } from './NoteImage';
 import { $applyNodeReplacement, DecoratorNode, type LexicalNode, type NodeKey, type SerializedLexicalNode, type Spread } from 'lexical';
 import type { ReactNode } from 'react';
 
@@ -43,20 +43,8 @@ export class RichImageNode extends DecoratorNode<ReactNode> {
   }
 
   decorate() {
-    const label = getImageLabel(this.__source);
     return (
-      <span
-        aria-label={`${this.__altText || label}: image unavailable`}
-        className="rich-image-placeholder"
-        role="img"
-        title={this.__title ?? this.__source}
-      >
-        <ImageOff aria-hidden="true" size={26} />
-        <span>
-          <strong>Image unavailable</strong>
-          <small>{label}</small>
-        </span>
-      </span>
+      <NoteImage source={this.__source} alt={this.__altText} title={this.__title} />
     );
   }
 

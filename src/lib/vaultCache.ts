@@ -210,7 +210,7 @@ function isVaultNode(value: unknown): value is VaultNode {
     typeof value.name === 'string' &&
     typeof value.path === 'string' &&
     typeof value.mimeType === 'string' &&
-    (value.type === 'folder' || value.type === 'markdown' || value.type === 'other') &&
+    (value.type === 'folder' || value.type === 'markdown' || value.type === 'image' || value.type === 'other') &&
     (value.children === undefined || (Array.isArray(value.children) && value.children.every(isVaultNode))) &&
     typeof value.source.id === 'string' &&
     typeof value.source.name === 'string' &&

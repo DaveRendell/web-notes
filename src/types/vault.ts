@@ -1,6 +1,6 @@
 import { DriveFile } from './drive';
 
-export type VaultNodeType = 'folder' | 'markdown' | 'other';
+export type VaultNodeType = 'folder' | 'markdown' | 'image' | 'other';
 
 export type VaultNode = {
   id: string;

@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   putVaultTree: vi.fn(),
   renameDriveFile: vi.fn(),
   renameDriveFolder: vi.fn(),
+  renameDriveItem: vi.fn(),
+  uploadDriveImage: vi.fn(),
   saveDriveVaultSettings: vi.fn(),
   updateNoteContentVersion: vi.fn(),
 }));
@@ -42,6 +44,8 @@ vi.mock('../lib/googleDrive', () => ({
   moveDriveFile: mocks.moveDriveFile,
   renameDriveFile: mocks.renameDriveFile,
   renameDriveFolder: mocks.renameDriveFolder,
+  renameDriveItem: mocks.renameDriveItem,
+  uploadDriveImage: mocks.uploadDriveImage,
 }));
 vi.mock('../lib/vaultCache', () => ({
   deleteNoteContent: mocks.deleteNoteContent,
@@ -103,6 +107,28 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
+
+it('renames and deletes an image, reconciles selection, and retains state on failure', async () => {
+  const original = { id: 'image', name: 'photo.png', mimeType: 'image/png', parents: ['vault'], modifiedTime: 'one' };
+  mocks.uploadDriveImage.mockResolvedValue(original);
+  mocks.renameDriveItem.mockResolvedValue({ ...original, name: 'Renamed.png', modifiedTime: 'two' });
+  const wrapper = ({ children }: { children: ReactNode }) => <VaultProvider>{children}</VaultProvider>;
+  const { result } = renderHook(() => useVault(), { wrapper });
+  let image!: VaultNode;
+  await act(async () => { image = await result.current.uploadImage(new File(['bytes'], 'photo.png', { type: 'image/png' })); });
+  act(() => result.current.selectFile(image));
+  await act(async () => { await result.current.renameImage(image, 'Renamed'); });
+  expect(mocks.renameDriveItem).toHaveBeenCalledWith('valid-token', 'image', 'Renamed.png');
+  expect(result.current.tree[0].name).toBe('Renamed.png');
+  expect(result.current.selectedFile?.name).toBe('Renamed.png');
+  expect(window.location.hash).toContain('Renamed.png');
+  mocks.deleteDriveFile.mockRejectedValueOnce(new Error('Denied'));
+  await act(async () => { await expect(result.current.deleteImage(image)).rejects.toThrow('Denied'); });
+  expect(result.current.tree).toHaveLength(1);
+  await act(async () => { await result.current.deleteImage(image); });
+  expect(result.current.tree).toHaveLength(0);
+  expect(result.current.selectedFile).toBeNull();
+});
 
 describe('VaultContext cache mutations', () => {
   it('updates the selected note for browser back and forward navigation', async () => {

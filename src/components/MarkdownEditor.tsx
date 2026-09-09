@@ -15,6 +15,7 @@ import {
 } from '../lib/markdownFormatting';
 import { createWikilinkCompletionSource } from '../lib/wikilinkCompletion';
 import type { VaultNode } from '../types/vault';
+import { InsertImageButton } from './InsertImageButton';
 
 type MarkdownEditorProps = {
   initialCursorOffset?: number | null;
@@ -28,6 +29,8 @@ type MarkdownEditorProps = {
 
 export function MarkdownEditor({ initialCursorOffset, notes, value, onChange, onSave, readOnly = false, recentNotes }: MarkdownEditorProps) {
   const editorViewRef = useRef<EditorView | null>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const imageSelectionRef = useRef<{ from: number; to: number } | null>(null);
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
   const editorCompletions = useMemo(
@@ -72,7 +75,7 @@ export function MarkdownEditor({ initialCursorOffset, notes, value, onChange, on
   }
 
   return (
-    <div className="markdown-editor-shell">
+    <div className="markdown-editor-shell" ref={shellRef}>
       <div className="markdown-format-toolbar" role="toolbar" aria-label="Text formatting">
         <button
           type="button"
@@ -143,6 +146,17 @@ export function MarkdownEditor({ initialCursorOffset, notes, value, onChange, on
         >
           <Link size={16} />
         </button>
+        <InsertImageButton pasteTarget={shellRef} disabled={readOnly} onOpen={() => {
+          imageSelectionRef.current = editorViewRef.current?.state.selection.main ?? null;
+        }} onInsert={(text) => {
+          const view = editorViewRef.current;
+          if (!view) return;
+          const range = imageSelectionRef.current ?? view.state.selection.main;
+          const from = Math.min(range.from, view.state.doc.length);
+          const to = Math.min(range.to, view.state.doc.length);
+          view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length } });
+          view.focus();
+        }} />
       </div>
       <CodeMirror
         basicSetup={{

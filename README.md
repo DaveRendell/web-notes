@@ -43,6 +43,16 @@ Cached Markdown is not encrypted by the app and relies on the security of the br
 
 Favourite note IDs and their order are stored in `.web-notes.json` at the root of the selected vault. This hidden settings file is created automatically and lets favourites follow the vault between browsers. It is not shown in the file picker. A small local copy keeps favourites visible while offline; changes made offline are synced when Drive becomes available again.
 
+## Images
+
+Both editor toolbars have an **Insert image** button. Use an HTTP/HTTPS image URL, choose an existing vault image, or upload an image (up to 20 MB) to the current note’s folder. Uploads with an existing filename get a numbered suffix. Inserted vault images use vault-root paths; existing note-relative Markdown image paths are also supported.
+
+Pasting a clipboard image into either editor starts the same upload flow automatically, shows upload progress, and inserts the image once uploaded. Ordinary text paste is unchanged. The image viewer header displays the filename, image type, and file size.
+
+Image action menus in the file picker and image viewer offer Rename and Delete. Renaming preserves the image extension; deletion requires confirmation. These actions update the cached file tree after Drive confirms success, but do not rewrite image references in notes.
+
+Image files appear in the file picker and open in an image viewer. Private vault images are fetched using Drive authentication, never public sharing links. Missing or unsupported images display a placeholder without hiding the note. External images contact their host without sending a referrer. Image bytes are not stored in the offline IndexedDB cache; uploads require an internet connection. Moving or renaming an image does not rewrite existing Markdown references.
+
 ## Checks
 
 ```sh

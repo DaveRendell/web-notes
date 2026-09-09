@@ -1386,6 +1386,20 @@ button {
   vertical-align: middle;
 }
 
+.note-image { display: block; max-width: 100%; height: auto; }
+.image-viewer-content { flex: 1; min-height: 0; overflow: auto; padding: 24px; }
+.image-viewer-header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; flex-shrink: 0; border-bottom: 1px solid #8883; }
+.image-viewer-header > svg { flex-shrink: 0; }
+.image-viewer-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.image-viewer-details { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 12px; margin-left: auto; font-size: 0.85rem; opacity: 0.7; flex-shrink: 0; }
+.image-viewer-content .note-image { margin: 0 auto; }
+.image-dialog { width: min(460px, 90vw); max-height: 85vh; overflow: auto; border: 0; border-radius: 12px; padding: 24px; background: #fff; color: #202938; pointer-events: auto; }
+.image-dialog::backdrop { background: #0006; }
+.image-dialog form, .image-dialog label { display: flex; flex-direction: column; gap: 10px; }
+.image-dialog form { gap: 18px; }
+.image-dialog input, .image-dialog select { min-width: 0; padding: 8px; color: inherit; background: transparent; border: 1px solid #8886; border-radius: 6px; }
+[data-theme="dark"] .image-dialog { background: #202938; color: #eee; }
+
 .rich-image-placeholder {
   display: flex;
   min-height: 88px;

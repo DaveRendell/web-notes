@@ -4,6 +4,7 @@ import {
   EllipsisVertical,
   FilePlus2,
   FileText,
+  Image,
   Folder,
   FolderPlus,
   GripVertical,
@@ -17,6 +18,7 @@ import { useVault } from '../../contexts/VaultContext';
 import { getVaultNodeDisplayName } from '../../lib/vaultTree';
 import { VaultNode } from '../../types/vault';
 import { AnimatedPopover } from '../AnimatedPopover';
+import { ImageActionItems } from '../ImageActionItems';
 import { Twemoji } from '../Twemoji';
 import { FileTreeList } from './FileTree';
 import {
@@ -117,7 +119,7 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
       return;
     }
 
-    if (node.type === 'markdown') {
+    if (node.type === 'markdown' || node.type === 'image') {
       selectFile(node);
     }
   }
@@ -228,6 +230,8 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
           )}
           {isFolder ? (
             <Folder size={16} />
+          ) : node.type === 'image' ? (
+            <Image size={16} />
           ) : noteEmoji ? (
             <span className="note-emoji"><Twemoji emoji={noteEmoji} hidden /></span>
           ) : (
@@ -235,7 +239,7 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
           )}
           <span>{displayName}</span>
         </button>
-        {isMovable && (
+        {(isMovable || node.type === 'image') && (
           <div className="tree-actions" ref={menuRef}>
             <button
               className="tree-action"
@@ -249,6 +253,7 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
               <EllipsisVertical size={14} />
             </button>
             <AnimatedPopover className="tree-action-menu" isOpen={isMenuOpen} placementGap={2} role="menu">
+              {node.type === 'image' && <ImageActionItems image={node} onClose={() => setIsMenuOpen(false)} />}
               {isFolder && (
                 <>
                   <button type="button" role="menuitem" onClick={() => runMenuAction(handleCreateChildNote)} disabled={!isOnline}>
