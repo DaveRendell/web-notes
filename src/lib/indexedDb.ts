@@ -58,9 +58,12 @@ let databasePromise: Promise<IDBPDatabase<VaultCacheSchema>> | null = null;
 
 export function getVaultCacheDatabase() {
   if (!databasePromise) {
-    databasePromise = openVaultCacheDatabase();
+    const openingDatabase = openVaultCacheDatabase(() => {
+      // An older connection must never clear a newer singleton.
+      if (databasePromise === openingDatabase) databasePromise = null;
+    });
+    databasePromise = openingDatabase;
 
-    const openingDatabase = databasePromise;
     void openingDatabase.catch(() => {
       if (databasePromise === openingDatabase) databasePromise = null;
     });
@@ -69,8 +72,21 @@ export function getVaultCacheDatabase() {
   return databasePromise;
 }
 
-async function openVaultCacheDatabase() {
+async function openVaultCacheDatabase(invalidate: () => void) {
   const database = await openDB<VaultCacheSchema>(VAULT_CACHE_DATABASE_NAME, VAULT_CACHE_DATABASE_VERSION, {
+    blocking(_currentVersion, _blockedVersion, event) {
+      // Release this tab's connection immediately so another tab can upgrade
+      // or delete the cache. Existing transactions are allowed to finish.
+      (event.target as IDBDatabase).close();
+      invalidate();
+    },
+    terminated() {
+      invalidate();
+      console.warn('[vault cache] Database connection closed unexpectedly; the next cache operation will reconnect.');
+    },
+    blocked() {
+      console.warn('[vault cache] Database upgrade is waiting for another tab to release its connection.');
+    },
     upgrade(database) {
       if (!database.objectStoreNames.contains('vaults')) {
         const vaultStore = database.createObjectStore('vaults', { keyPath: ['accountId', 'vaultId'] });
