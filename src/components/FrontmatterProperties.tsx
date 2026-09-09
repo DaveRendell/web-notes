@@ -7,9 +7,10 @@ type FrontmatterPropertiesProps = {
   error: string | null;
   navigation?: ReactNode;
   properties: FrontmatterProperty[];
+  status?: ReactNode;
 };
 
-export function FrontmatterProperties({ actions, error, navigation, properties }: FrontmatterPropertiesProps) {
+export function FrontmatterProperties({ actions, error, navigation, properties, status }: FrontmatterPropertiesProps) {
   const [isOpen, setIsOpen] = useState(false);
   const hasProperties = Boolean(error) || properties.length > 0;
 
@@ -30,6 +31,7 @@ export function FrontmatterProperties({ actions, error, navigation, properties }
           )}
         </div>
         <div className="note-toolbar-controls">
+          {status}
           {navigation && <div className="note-toolbar-navigation">{navigation}</div>}
           <div className="note-toolbar-actions">{actions}</div>
         </div>

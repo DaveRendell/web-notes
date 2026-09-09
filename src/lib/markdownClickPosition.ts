@@ -1,4 +1,5 @@
 import { decodeNamedCharacterReference } from 'decode-named-character-reference';
+import type {} from 'mdast-util-to-hast';
 import type { Code, InlineCode, Link, Nodes, Root, Text } from 'mdast';
 import type { Plugin } from 'unified';
 import type { Point } from 'unist';

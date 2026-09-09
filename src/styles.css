@@ -1109,6 +1109,324 @@ button {
   flex-direction: column;
 }
 
+.note-editor-shell,
+.rich-markdown-editor-shell,
+.rich-markdown-editor {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.editor-mode-switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: #eef2f6;
+}
+
+.editor-mode-switch button {
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: 4px;
+  background: transparent;
+  color: #647180;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.editor-mode-switch .editor-mode-icon-button {
+  display: inline-flex;
+  width: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 0;
+}
+
+.editor-mode-switch button:hover,
+.editor-mode-switch button:focus-visible {
+  background: #e0e8ef;
+  color: #183f59;
+  outline: none;
+}
+
+.editor-mode-switch button.active {
+  background: #ffffff;
+  color: #183f59;
+  box-shadow: 0 1px 3px rgb(15 23 33 / 14%);
+}
+
+.editor-mode-notice {
+  min-width: 0;
+  overflow: hidden;
+  color: #8a5d16;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-mode-fallback {
+  padding: 8px 12px;
+  border-bottom: 1px solid #edf0f4;
+  background: #fff8e8;
+}
+
+.editor-loading {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  color: #647180;
+}
+
+.rich-markdown-editor {
+  position: relative;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.rich-markdown-editor-shell [class*='_toolbarRoot_'],
+.rich-markdown-toolbar {
+  position: absolute;
+  z-index: 30;
+  top: 0;
+  right: 0;
+  left: 0;
+  min-height: 38px;
+  flex-wrap: wrap;
+  border: 0;
+  border-bottom: 1px solid #edf0f4;
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: 0 5px 14px rgb(15 23 33 / 10%);
+  transform: translateY(0);
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+
+.rich-markdown-editor-shell :where([class*='_toolbarToggleItem_'], [class*='_toolbarButton_']) {
+  display: inline-flex;
+  min-width: 30px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+}
+
+.rich-block-controls {
+  position: fixed;
+  z-index: 40;
+  top: 0;
+  left: 0;
+  display: flex;
+}
+
+.rich-block-handle {
+  display: inline-flex;
+  width: 28px;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #697180;
+  cursor: grab;
+}
+
+.rich-block-handle:hover,
+.rich-block-handle:focus-visible {
+  background: #e7edf2;
+  color: #183f59;
+  outline: none;
+}
+
+.rich-block-handle:active {
+  cursor: grabbing;
+}
+
+.rich-block-handle:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.rich-block-menu {
+  top: calc(100% + 2px);
+}
+
+.rich-markdown-content > *,
+.rich-markdown-content li {
+  position: relative;
+}
+
+.rich-block-drop-before::before,
+.rich-block-drop-after::after {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: #3478a7;
+  content: "";
+  pointer-events: none;
+}
+
+.rich-block-drop-before::before {
+  top: -3px;
+}
+
+.rich-block-drop-after::after {
+  bottom: -3px;
+}
+
+.rich-block-drop-nest {
+  border-radius: 5px;
+  background: #e7f1f8;
+  box-shadow: inset 0 0 0 2px #3478a7;
+}
+
+.rich-block-dragging {
+  opacity: 0.45;
+}
+
+.rich-block-gutter-target {
+  position: fixed;
+  z-index: 35;
+  background: rgb(0 0 0 / 0.001%);
+  pointer-events: auto;
+}
+
+.rich-block-outdent-target {
+  position: fixed;
+  z-index: 45;
+  top: 50%;
+  left: max(8px, calc(var(--sidebar-width, 280px) + 8px));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px dashed #9aa7b5;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #596575;
+  font-size: 0.8rem;
+  transform: translateY(-50%);
+}
+
+.rich-block-outdent-target.active {
+  border-color: #3478a7;
+  background: #e7f1f8;
+  color: #183f59;
+}
+
+.note-editor-shell:not(.controls-visible) .rich-markdown-editor-shell [class*='_toolbarRoot_'],
+.note-editor-shell:not(.controls-visible) .rich-markdown-toolbar {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-100%);
+}
+
+.note-editor-shell:not(.controls-visible) :where(.rich-markdown-content, .rich-markdown-content *)::spelling-error,
+.note-editor-shell:not(.controls-visible) :where(.rich-markdown-content, .rich-markdown-content *)::grammar-error {
+  background: transparent;
+  text-decoration: none;
+}
+
+.note-editor-shell:not(.controls-visible) :where(.rich-markdown-content, .rich-markdown-content *)::-webkit-spelling-error,
+.note-editor-shell:not(.controls-visible) :where(.rich-markdown-content, .rich-markdown-content *)::-webkit-grammar-error {
+  background: transparent;
+  text-decoration: none;
+}
+
+.note-editor-shell:not(.controls-visible) :where(.rich-markdown-content, .rich-markdown-content *)::-moz-spelling-error,
+.note-editor-shell:not(.controls-visible) :where(.rich-markdown-content, .rich-markdown-content *)::-moz-grammar-error {
+  background: transparent;
+  text-decoration: none;
+}
+
+.rich-markdown-editor .rich-markdown-content {
+  width: min(100%, 880px);
+  min-height: 100%;
+  margin: 0;
+  padding: 28px 28px 28px 48px;
+  color: #27313d;
+  caret-color: #17202a;
+}
+
+.rich-markdown-editor .mdxeditor-root-contenteditable {
+  overscroll-behavior: contain;
+}
+
+.rich-markdown-editor button {
+  border: 0;
+}
+
+.rich-markdown-editor a[href^="web-notes-wikilink:"] {
+  color: #2f6f9f;
+  text-decoration: underline;
+  text-decoration-color: rgb(47 111 159 / 35%);
+  text-underline-offset: 2px;
+}
+
+.rich-completion-anchor {
+  z-index: 1000;
+}
+
+.rich-completion-menu {
+  display: grid;
+  width: max-content;
+  min-width: 260px;
+  max-width: min(440px, calc(100vw - 24px));
+  max-height: min(320px, calc(100vh - 24px));
+  gap: 2px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid #dfe3ea;
+  border-radius: 7px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgb(30 38 48 / 16%);
+  animation: dropdown-fade-in 0.1s ease-out;
+}
+
+.rich-completion-menu button {
+  display: grid;
+  min-height: 34px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  background: transparent;
+  color: #202124;
+  cursor: pointer;
+  text-align: left;
+}
+
+.rich-completion-menu button:hover,
+.rich-completion-menu button.active {
+  background: #e7f1f8;
+  color: #163e59;
+}
+
+.rich-completion-menu button span,
+.rich-completion-menu button small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rich-completion-menu button small {
+  max-width: 220px;
+  color: #6d7580;
+  font-size: 0.78rem;
+}
+
 .markdown-format-toolbar {
   display: flex;
   min-height: 38px;
@@ -1482,9 +1800,8 @@ li.markdown-block > .markdown-block-controls {
 
 .note-sequence-navigation {
   display: inline-flex;
-  overflow: hidden;
-  border: 1px solid #dfe3ea;
-  border-radius: 6px;
+  align-items: center;
+  gap: 2px;
 }
 
 .note-sequence-button {
@@ -1495,15 +1812,13 @@ li.markdown-block > .markdown-block-controls {
   justify-content: center;
   gap: 3px;
   padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
   background: transparent;
   color: #3b4655;
   font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
-}
-
-.note-sequence-button + .note-sequence-button {
-  border-left: 1px solid #dfe3ea;
 }
 
 .note-sequence-button:hover:not(:disabled),
@@ -1516,6 +1831,18 @@ li.markdown-block > .markdown-block-controls {
 .note-sequence-button:disabled {
   color: #a0a7b1;
   cursor: default;
+}
+
+.note-sequence-current {
+  display: inline-flex;
+  min-width: 42px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  color: #3b4655;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .note-save-status {
@@ -1718,6 +2045,102 @@ li.markdown-block > .markdown-block-controls {
 
 [data-theme="dark"] .login-panel {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+}
+
+[data-theme="dark"] .rich-markdown-editor,
+[data-theme="dark"] .rich-markdown-editor-shell [class*='_toolbarRoot_'],
+[data-theme="dark"] .rich-markdown-toolbar {
+  border-color: #2b3643;
+  background: #181e25;
+  color: #e7ebf0;
+}
+
+[data-theme="dark"] .editor-mode-switch {
+  background: #10151b;
+}
+
+[data-theme="dark"] .editor-mode-switch button {
+  color: #aab4c0;
+}
+
+[data-theme="dark"] .editor-mode-switch button:hover,
+[data-theme="dark"] .editor-mode-switch button:focus-visible,
+[data-theme="dark"] .editor-mode-switch button.active {
+  background: #26313d;
+  color: #f3f6f9;
+}
+
+[data-theme="dark"] .rich-markdown-editor .rich-markdown-content {
+  color: #dce3ea;
+  caret-color: #ffffff;
+}
+
+[data-theme="dark"] .rich-markdown-editor {
+  --baseBase: #181e25;
+  --baseBgSubtle: #202832;
+  --baseBg: #26313d;
+  --baseText: #e7ebf0;
+  --baseTextContrast: #ffffff;
+  --accentBgSubtle: #21394a;
+  --accentBg: #2c536d;
+  --accentTextContrast: #ffffff;
+}
+
+[data-theme="dark"] .rich-markdown-editor a[href^="web-notes-wikilink:"] {
+  color: #8cc8ee;
+  text-decoration-color: rgb(140 200 238 / 45%);
+}
+
+[data-theme="dark"] .rich-block-handle {
+  color: #9ba8b7;
+}
+
+[data-theme="dark"] .rich-block-handle:hover,
+[data-theme="dark"] .rich-block-handle:focus-visible {
+  background: #263d50;
+  color: #dceefa;
+}
+
+[data-theme="dark"] .rich-block-drop-before::before,
+[data-theme="dark"] .rich-block-drop-after::after {
+  background: #8ab7dc;
+}
+
+[data-theme="dark"] .rich-block-drop-nest {
+  background: #263d50;
+  box-shadow: inset 0 0 0 2px #8ab7dc;
+}
+
+[data-theme="dark"] .rich-block-outdent-target {
+  border-color: #596777;
+  background: #171c22;
+  color: #aeb9c5;
+}
+
+[data-theme="dark"] .rich-block-outdent-target.active {
+  border-color: #8ab7dc;
+  background: #263d50;
+  color: #dceefa;
+}
+
+[data-theme="dark"] .rich-completion-menu {
+  border-color: #344250;
+  background: #1a222b;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 45%);
+}
+
+[data-theme="dark"] .rich-completion-menu button {
+  color: #e7ebf0;
+}
+
+[data-theme="dark"] .rich-completion-menu button:hover,
+[data-theme="dark"] .rich-completion-menu button.active {
+  background: #27485e;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .rich-completion-menu button small {
+  color: #a8b3bf;
 }
 
 [data-theme="dark"] .login-copy,
@@ -2002,12 +2425,8 @@ li.markdown-block > .markdown-block-controls {
   color: #dceefa;
 }
 
-[data-theme="dark"] .note-sequence-navigation,
-[data-theme="dark"] .note-sequence-button + .note-sequence-button {
-  border-color: #3a4655;
-}
-
-[data-theme="dark"] .note-sequence-button {
+[data-theme="dark"] .note-sequence-button,
+[data-theme="dark"] .note-sequence-current {
   color: #d6dde6;
 }
 
@@ -2141,7 +2560,8 @@ li.markdown-block > .markdown-block-controls {
 
   .dropdown-popover-open,
   .dropdown-popover-closing,
-  .markdown-editor .cm-tooltip-autocomplete {
+  .markdown-editor .cm-tooltip-autocomplete,
+  .rich-completion-menu {
     animation-duration: 0.01ms;
   }
 }
@@ -2200,6 +2620,10 @@ li.markdown-block > .markdown-block-controls {
   }
 
   .markdown-body {
+    padding: 20px 20px 20px 42px;
+  }
+
+  .rich-markdown-editor .rich-markdown-content {
     padding: 20px 20px 20px 42px;
   }
 

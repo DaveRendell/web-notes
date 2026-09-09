@@ -2,6 +2,8 @@
 
 A static React SPA for browsing and editing Markdown notes stored in Google Drive.
 
+Notes open in an in-place rich-text surface. Its formatting toolbar stays out of the way until the note receives focus, and changes save to the local cache immediately before being pushed to Drive after one second of inactivity or when focus leaves the editor. Rich text supports common Markdown formatting, lists and checklists, links, wikilinks, tables, quotes, thematic breaks, and fenced code. Hover a block to reveal its grabber, then drag it to reorder or nest content; the same menu provides keyboard-accessible move, indent, outdent, and delete actions. Markdown remains the canonical stored format and an explicit source editor is available from the note menu; notes containing syntax that cannot be preserved safely automatically use source mode.
+
 ## Setup
 
 See [docs/google-drive-setup.md](docs/google-drive-setup.md) for the full Google Cloud and OAuth setup.

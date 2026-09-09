@@ -2,6 +2,7 @@ import type { VaultNode } from '../types/vault';
 import { getVaultNodeDisplayName } from './vaultTree';
 
 export type NoteSequenceNavigation = {
+  currentNumber: string;
   next: VaultNode | null;
   nextNumber: string;
   previous: VaultNode | null;
@@ -20,6 +21,7 @@ export function getNoteSequenceNavigation(
   const notesByPath = new Map(notes.map((note) => [note.path, note]));
 
   return {
+    currentNumber: number,
     previousNumber,
     previous: notesByPath.get(replaceNumber(currentNote.path, number, previousNumber)) ?? null,
     nextNumber,

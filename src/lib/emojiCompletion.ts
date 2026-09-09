@@ -9,7 +9,7 @@ import { isProseCompletionContext } from './markdownCompletion';
 
 const MAX_RESULTS = 8;
 
-type EmojiSearchEntry = {
+export type EmojiSearchEntry = {
   emoji: string;
   keywords: string[];
   name: string;
@@ -39,12 +39,13 @@ export function createEmojiCompletionSource(): CompletionSource {
   };
 }
 
-function searchEmoji(query: string) {
+export function searchEmoji(query: string, limit = MAX_RESULTS) {
+  const normalizedQuery = normalizeKeyword(query);
   return emojiSearchEntries
-    .map((entry) => ({ entry, score: getSearchScore(entry, query) }))
+    .map((entry) => ({ entry, score: getSearchScore(entry, normalizedQuery) }))
     .filter((result) => result.score > 0)
     .sort((a, b) => b.score - a.score || a.entry.name.localeCompare(b.entry.name))
-    .slice(0, MAX_RESULTS)
+    .slice(0, limit)
     .map((result) => result.entry);
 }
 

@@ -1,55 +1,17 @@
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Check, ChevronLeft, ChevronRight, Edit3, EllipsisVertical, FileText, Loader2, Pencil, Star, StarOff, Trash2, X } from 'lucide-react';
-import {
-  Children,
-  ChangeEvent,
-  cloneElement,
-  InputHTMLAttributes,
-  isValidElement,
-  MouseEvent,
-  ReactElement,
-  ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import type { Element } from 'hast';
-import type { ListItem, Root } from 'mdast';
-import type { Plugin } from 'unified';
-import { visit } from 'unist-util-visit';
+import { Check, ChevronLeft, ChevronRight, EllipsisVertical, FileCode2, FileText, Loader2, Pencil, Star, StarOff, Trash2, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useVault } from '../contexts/VaultContext';
 import { useMarkdownFile } from '../hooks/useMarkdownFile';
 import { isGoogleDriveAuthError, updateDriveFileText } from '../lib/googleDrive';
-import {
-  type MarkdownTaskCheckbox,
-  findMarkdownTaskCheckboxes,
-  getWikilinkTargetFromHref,
-  parseMarkdownWithFrontmatter,
-  toggleMarkdownTaskCheckbox,
-} from '../lib/markdown';
-import {
-  createMarkdownSourcePositionPlugin,
-  createRemarkSourceBreaksPlugin,
-  createRemarkWikilinkPlugin,
-  getMarkdownClickOffset,
-} from '../lib/markdownClickPosition';
-import {
-  deleteMarkdownBlock,
-  moveMarkdownBlock,
-  parseMarkdownBlocks,
-  type MarkdownBlock,
-  type MarkdownBlockMove,
-} from '../lib/markdownBlocks';
-import { putNoteContent } from '../lib/vaultCache';
+import { parseMarkdownWithFrontmatter } from '../lib/markdown';
 import { getNoteSequenceNavigation } from '../lib/noteSequence';
-import { FrontmatterProperties } from './FrontmatterProperties';
-import { MarkdownEditor } from './MarkdownEditor';
+import { putNoteContent } from '../lib/vaultCache';
 import { AnimatedPopover } from './AnimatedPopover';
-import { MarkdownBlockDndProvider, MarkdownBlockListItem, MarkdownBlockShell } from './MarkdownBlockDnd';
+import { FrontmatterProperties } from './FrontmatterProperties';
+import { NoteEditorShell, type NoteEditorMode } from './NoteEditorShell';
+
+const RICH_AUTOSAVE_DELAY_MS = 1000;
 
 export function MarkdownViewer() {
   const { accessToken, accountId, ensureAccessToken, invalidateAccessToken } = useAuth();
@@ -61,55 +23,36 @@ export function MarkdownViewer() {
     notes,
     recentNotes,
     renameNote,
-    resolveWikilink,
     selectFile,
     selectedFile,
     selectedVault,
     storeSavedNote,
     toggleFavorite,
   } = useVault();
-  const { cacheContent, content, error, isLoading, isRefreshing, refreshError, setContent } = useMarkdownFile(
+  const selectedVaultId = selectedVault?.id ?? null;
+  const { cacheContent, content, error, isLoading, isRefreshing, refreshError } = useMarkdownFile(
     accessToken,
     accountId,
-    selectedVault?.id ?? null,
+    selectedVaultId,
     selectedFile,
   );
   const noteContentRef = useRef<HTMLDivElement>(null);
   const noteMenuRef = useRef<HTMLDivElement>(null);
-  const isNoteMutationInFlightRef = useRef(false);
+  const isSaveInFlightRef = useRef(false);
   const selectedFileRef = useRef(selectedFile);
-  const [draft, setDraft] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
-  const [editCursorOffset, setEditCursorOffset] = useState<number | null>(null);
-  const draftRef = useRef(draft);
-  const isEditingRef = useRef(isEditing);
+  const draftRef = useRef('');
   const previousContentRef = useRef(content);
   const previousFileIdRef = useRef(selectedFile?.id);
+  const previousFileRef = useRef(selectedFile);
+  const [draft, setDraft] = useState('');
+  const [editorMode, setEditorMode] = useState<NoteEditorMode>('rich');
   const [hasRemoteUpdate, setHasRemoteUpdate] = useState(false);
   const [needsAuthReconnect, setNeedsAuthReconnect] = useState(false);
   const [hasFailedSave, setHasFailedSave] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isSavingTask, setIsSavingTask] = useState(false);
   const [isNoteMenuOpen, setIsNoteMenuOpen] = useState(false);
-  const parsedMarkdown = useMemo(() => parseMarkdownWithFrontmatter(content), [content]);
-  const bodyStartOffset = content.length - parsedMarkdown.body.length;
-  const sourcePositionPlugin = useMemo(
-    () => createMarkdownSourcePositionPlugin(parsedMarkdown.body, bodyStartOffset),
-    [bodyStartOffset, parsedMarkdown.body],
-  );
-  const sourceBreaksPlugin = useMemo(
-    () => createRemarkSourceBreaksPlugin(parsedMarkdown.body),
-    [parsedMarkdown.body],
-  );
-  const wikilinkPlugin = useMemo(
-    () => createRemarkWikilinkPlugin(parsedMarkdown.body),
-    [parsedMarkdown.body],
-  );
-  const taskCheckboxes = useMemo(() => findMarkdownTaskCheckboxes(content), [content]);
-  const taskMetadataPlugin = useMemo(() => createTaskMetadataPlugin(taskCheckboxes), [taskCheckboxes]);
-  const blockDocument = useMemo(() => parseMarkdownBlocks(content), [content]);
-  const blockMetadataPlugin = useMemo(() => createBlockMetadataPlugin(blockDocument.blocks), [blockDocument.blocks]);
+  const parsedMarkdown = useMemo(() => parseMarkdownWithFrontmatter(draft), [draft]);
   const sequenceNavigation = useMemo(
     () => selectedFile ? getNoteSequenceNavigation(selectedFile, notes) : null,
     [notes, selectedFile],
@@ -117,7 +60,6 @@ export function MarkdownViewer() {
   const hasUnsavedChanges = draft !== content;
 
   draftRef.current = draft;
-  isEditingRef.current = isEditing;
   selectedFileRef.current = selectedFile;
 
   useEffect(() => {
@@ -127,39 +69,76 @@ export function MarkdownViewer() {
 
   useEffect(() => {
     const previousContent = previousContentRef.current;
+    const previousFile = previousFileRef.current;
     const fileChanged = previousFileIdRef.current !== selectedFile?.id;
     previousContentRef.current = content;
     previousFileIdRef.current = selectedFile?.id;
+    previousFileRef.current = selectedFileRef.current;
 
     if (fileChanged) {
+      const departingDraft = draftRef.current;
+      if (
+        previousFile &&
+        departingDraft !== previousContent &&
+        accessToken &&
+        accountId &&
+        selectedVaultId &&
+        isOnline &&
+        !isSaveInFlightRef.current
+      ) {
+        isSaveInFlightRef.current = true;
+        void (async () => {
+          try {
+            await putNoteContent({
+              accountId,
+              vaultId: selectedVaultId,
+              fileId: previousFile.id,
+              content: departingDraft,
+              cachedAt: Date.now(),
+            });
+            const validAccessToken = await ensureAccessToken();
+            const updatedFile = await updateDriveFileText(validAccessToken, previousFile.id, departingDraft);
+            storeSavedNote(previousFile, updatedFile, departingDraft);
+          } catch (requestError) {
+            if (isGoogleDriveAuthError(requestError)) invalidateAccessToken();
+            console.warn('Could not save the note before navigation; the draft remains in the local cache.', requestError);
+          } finally {
+            isSaveInFlightRef.current = false;
+            setIsSaving(false);
+          }
+        })();
+      }
+
       setDraft(content);
-      setIsEditing(false);
-      setEditCursorOffset(null);
+      setEditorMode('rich');
       setHasRemoteUpdate(false);
       setNeedsAuthReconnect(false);
       setHasFailedSave(false);
       setSaveError(null);
+      setIsSaving(isSaveInFlightRef.current);
       return;
     }
 
-    if (isNoteMutationInFlightRef.current) return;
+    if (isSaveInFlightRef.current) return;
 
-    if (isEditingRef.current) {
-      if (content !== previousContent && draftRef.current !== previousContent) {
-        setHasRemoteUpdate(true);
-        return;
-      }
-
-      setDraft(content);
+    if (content !== previousContent && draftRef.current !== previousContent) {
+      setHasRemoteUpdate(true);
       return;
     }
 
     setDraft(content);
-    setIsEditing(false);
     setHasRemoteUpdate(false);
-    setNeedsAuthReconnect(false);
-    setSaveError(null);
-  }, [content, selectedFile?.id]);
+  }, [
+    accessToken,
+    accountId,
+    content,
+    ensureAccessToken,
+    invalidateAccessToken,
+    isOnline,
+    selectedFile?.id,
+    selectedVaultId,
+    storeSavedNote,
+  ]);
 
   useEffect(() => {
     noteContentRef.current?.scrollTo({ top: 0 });
@@ -185,80 +164,21 @@ export function MarkdownViewer() {
     };
   }, [isNoteMenuOpen]);
 
-  useEffect(() => {
-    if (!isTaskDebugEnabled()) return;
-
-    console.groupCollapsed(
-      `[tasks] parsed ${taskCheckboxes.length} checkbox${taskCheckboxes.length === 1 ? '' : 'es'} for ${
-        selectedFile?.path ?? 'no note'
-      }`,
-    );
-    console.table(
-      taskCheckboxes.map((task, index) => ({
-        checked: task.checked,
-        index,
-        line: task.line,
-        markerOffset: task.markerOffset,
-        sourcePreview: task.sourcePreview,
-      })),
-    );
-    console.groupEnd();
-  }, [selectedFile?.path, taskCheckboxes]);
-
-  useEffect(() => {
-    if (!isEditing || !hasUnsavedChanges) return;
-
-    function handleBeforeUnload(event: BeforeUnloadEvent) {
-      event.preventDefault();
-    }
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [hasUnsavedChanges, isEditing]);
-
-  function handleLinkClick(href: string | undefined, event: MouseEvent<HTMLAnchorElement>) {
-    if (!href) return;
-
-    const wikilinkTarget = getWikilinkTargetFromHref(href);
-    if (!wikilinkTarget) return;
-
-    event.preventDefault();
-    const linkedFile = resolveWikilink(wikilinkTarget);
-
-    if (linkedFile) {
-      selectFile(linkedFile);
-    }
-  }
-
-  function handleViewerTextClick(event: MouseEvent<HTMLElement>) {
-    if (event.button !== 0 || !isOnline || isSaving || isSavingTask) return;
-    const offset = getMarkdownClickOffset(event.currentTarget, event, content);
-    if (offset === null) return;
-
-    setDraft(content);
-    setEditCursorOffset(offset);
-    setSaveError(null);
-    setIsEditing(true);
-  }
-
-  async function handleSave() {
-    if (!accessToken || !selectedFile || !isOnline || isNoteMutationInFlightRef.current) return;
+  const persistDraft = useCallback(async (returnToRich = false) => {
+    if (!accessToken || !selectedFile || !isOnline || isSaveInFlightRef.current) return;
     if (!hasUnsavedChanges && !hasFailedSave) {
-      setIsEditing(false);
+      if (returnToRich) setEditorMode('rich');
       return;
     }
 
-    const nextContent = draft;
+    const nextContent = draftRef.current;
     const note = selectedFile;
-    isNoteMutationInFlightRef.current = true;
+    isSaveInFlightRef.current = true;
     setIsSaving(true);
     setHasFailedSave(false);
     setSaveError(null);
     cacheContent(nextContent);
-    setIsEditing(false);
+    if (returnToRich) setEditorMode('rich');
 
     try {
       const validAccessToken = await ensureAccessToken();
@@ -273,154 +193,61 @@ export function MarkdownViewer() {
       }
       storeSavedNote(note, updatedFile, nextContent);
     } catch (requestError) {
-      if (selectedFileRef.current?.id !== note.id) return;
-
-      setIsEditing(true);
-      setHasFailedSave(true);
-      if (isGoogleDriveAuthError(requestError)) {
-        invalidateAccessToken();
-        setNeedsAuthReconnect(true);
-        setSaveError('Google Drive access expired. Reconnect to retry; your changes are preserved.');
-      } else {
-        setSaveError(requestError instanceof Error ? requestError.message : 'Failed to save markdown file.');
-      }
-    } finally {
-      isNoteMutationInFlightRef.current = false;
-      setIsSaving(false);
-    }
-  }
-
-  async function handleTaskToggle(taskCheckbox: MarkdownTaskCheckbox, checked: boolean) {
-    if (!accessToken || !selectedFile) {
-      logTaskDebug('toggle skipped: missing auth or selected file', { hasAccessToken: Boolean(accessToken), selectedFile });
-      return;
-    }
-
-    if (isNoteMutationInFlightRef.current) {
-      logTaskDebug('toggle skipped: save already in flight', taskCheckbox);
-      return;
-    }
-
-    logTaskDebug('toggle requested', {
-      nextChecked: checked,
-      task: taskCheckbox,
-      sourceAroundMarker: getSourceAroundOffset(content, taskCheckbox.markerOffset),
-    });
-
-    const nextContent = toggleMarkdownTaskCheckbox(content, taskCheckbox.markerOffset, checked);
-
-    if (nextContent === content) {
-      logTaskDebug('toggle produced no content change', {
-        markerCharacter: content[taskCheckbox.markerOffset],
-        markerOffset: taskCheckbox.markerOffset,
-        sourceAroundMarker: getSourceAroundOffset(content, taskCheckbox.markerOffset),
-      });
-      return;
-    }
-
-    isNoteMutationInFlightRef.current = true;
-    const note = selectedFile;
-    setIsSavingTask(true);
-    setContent(nextContent);
-    setSaveError(null);
-
-    try {
-      const validAccessToken = await ensureAccessToken();
-      const updatedFile = await updateDriveFileText(validAccessToken, note.id, nextContent);
-      if (selectedFileRef.current?.id === note.id) cacheContent(nextContent, updatedFile.modifiedTime);
-      storeSavedNote(note, updatedFile, nextContent);
-      logTaskDebug('toggle saved', {
-        note: selectedFile.path,
-        nextChecked: checked,
-        task: taskCheckbox,
-      });
-    } catch (requestError) {
-      if (selectedFileRef.current?.id !== note.id) return;
-
-      setContent(content);
-      if (isGoogleDriveAuthError(requestError)) {
-        invalidateAccessToken();
-        setSaveError('Google Drive access expired. Select the checkbox again to reconnect and retry.');
-      } else {
-        setSaveError(requestError instanceof Error ? requestError.message : 'Failed to update checkbox.');
-      }
-
-      logTaskDebug('toggle save failed', requestError);
-    } finally {
-      isNoteMutationInFlightRef.current = false;
-      setIsSavingTask(false);
-    }
-  }
-
-  const persistOptimisticBlockContent = useCallback(async (nextContent: string) => {
-    if (!accessToken || !selectedFile || !selectedVault || !isOnline || isNoteMutationInFlightRef.current) return;
-    const previousContent = content;
-    const note = selectedFile;
-    const vault = selectedVault;
-    isNoteMutationInFlightRef.current = true;
-    setIsSaving(true);
-    setSaveError(null);
-    cacheContent(nextContent);
-
-    try {
-      const validAccessToken = await ensureAccessToken();
-      const updatedFile = await updateDriveFileText(validAccessToken, note.id, nextContent);
       if (selectedFileRef.current?.id === note.id) {
-        cacheContent(nextContent, updatedFile.modifiedTime);
-      }
-      storeSavedNote(note, updatedFile, nextContent);
-    } catch (requestError) {
-      if (accountId) {
-        await putNoteContent({
-          accountId,
-          vaultId: vault.id,
-          fileId: note.id,
-          content: previousContent,
-          modifiedTime: note.source.modifiedTime,
-          cachedAt: Date.now(),
-        });
-      }
-      if (selectedFileRef.current?.id === note.id) {
-        setContent(previousContent);
+        setHasFailedSave(true);
         if (isGoogleDriveAuthError(requestError)) {
           invalidateAccessToken();
-          setSaveError('Google Drive access expired. Reconnect and try changing the block again.');
+          setNeedsAuthReconnect(true);
+          setSaveError('Google Drive access expired. Reconnect to retry; your changes are preserved locally.');
         } else {
-          setSaveError(requestError instanceof Error ? requestError.message : 'Failed to update Markdown block.');
+          setSaveError(requestError instanceof Error ? requestError.message : 'Failed to save markdown file.');
         }
       }
     } finally {
-      isNoteMutationInFlightRef.current = false;
+      isSaveInFlightRef.current = false;
       setIsSaving(false);
     }
   }, [
     accessToken,
-    accountId,
     cacheContent,
-    content,
     ensureAccessToken,
+    hasFailedSave,
+    hasUnsavedChanges,
     invalidateAccessToken,
     isOnline,
     selectedFile,
-    selectedVault,
-    setContent,
     storeSavedNote,
   ]);
 
-  const handleBlockMove = useCallback(async (move: MarkdownBlockMove) => {
-    const result = moveMarkdownBlock(blockDocument, move);
-    if (result.changed) await persistOptimisticBlockContent(result.content);
-  }, [blockDocument, persistOptimisticBlockContent]);
+  useEffect(() => {
+    if (editorMode !== 'rich' || !hasUnsavedChanges || hasFailedSave || isSaving || !isOnline) return;
+    const timeout = window.setTimeout(() => void persistDraft(), RICH_AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(timeout);
+  }, [draft, editorMode, hasFailedSave, hasUnsavedChanges, isOnline, isSaving, persistDraft]);
 
-  const handleBlockDelete = useCallback(async (blockId: string) => {
-    const result = deleteMarkdownBlock(blockDocument, blockId);
-    if (result.changed) await persistOptimisticBlockContent(result.content);
-  }, [blockDocument, persistOptimisticBlockContent]);
+  useEffect(() => {
+    if ((!hasUnsavedChanges && !hasFailedSave) || !selectedFile) return;
 
-  function handleCancel() {
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasFailedSave, hasUnsavedChanges, selectedFile]);
+
+  function handleDraftChange(nextDraft: string) {
+    setDraft(nextDraft);
+    if (nextDraft !== draftRef.current) {
+      setHasFailedSave(false);
+      setNeedsAuthReconnect(false);
+      setSaveError(null);
+    }
+  }
+
+  function handleCancelSourceEdit() {
     setDraft(content);
-    setIsEditing(false);
-    setEditCursorOffset(null);
+    setEditorMode('rich');
     setHasRemoteUpdate(false);
     setNeedsAuthReconnect(false);
     setHasFailedSave(false);
@@ -459,7 +286,7 @@ export function MarkdownViewer() {
       <main className="viewer empty-viewer">
         <FileText size={38} />
         <h2>Select a markdown file</h2>
-        <p>Choose a note from the sidebar to render it here.</p>
+        <p>Choose a note from the sidebar to open it here.</p>
       </main>
     );
   }
@@ -470,6 +297,12 @@ export function MarkdownViewer() {
         key={selectedFile.id}
         error={parsedMarkdown.frontmatterError}
         properties={parsedMarkdown.frontmatter}
+        status={isSaving ? (
+          <span className="note-save-status" role="status">
+            <Loader2 className="spin" size={16} />
+            Saving...
+          </span>
+        ) : undefined}
         navigation={sequenceNavigation && (sequenceNavigation.previous || sequenceNavigation.next) ? (
           <nav className="note-sequence-navigation" aria-label="Sequential notes">
             <button
@@ -483,6 +316,9 @@ export function MarkdownViewer() {
               <ChevronLeft size={16} />
               <span>{sequenceNavigation.previousNumber}</span>
             </button>
+            <span className="note-sequence-current" aria-label={`Current note: ${sequenceNavigation.currentNumber}`}>
+              {sequenceNavigation.currentNumber}
+            </span>
             <button
               className="note-sequence-button"
               type="button"
@@ -498,47 +334,49 @@ export function MarkdownViewer() {
         ) : undefined}
         actions={
           <>
-            {isSaving ? (
-              <span className="note-save-status" role="status">
-                <Loader2 className="spin" size={16} />
-                Saving...
-              </span>
-            ) : isEditing ? (
+            {!isSaving && (editorMode === 'source' ? (
               <div className="edit-actions">
-                <button
-                  className="icon-text-button"
-                  type="button"
-                  onClick={handleCancel}
-                >
+                <button className="icon-text-button" type="button" onClick={handleCancelSourceEdit}>
                   <X size={16} />
                   Cancel
                 </button>
                 <button
                   className="primary-button compact"
                   type="button"
-                  onClick={handleSave}
+                  onClick={() => void persistDraft(true)}
                   disabled={(!hasUnsavedChanges && !hasFailedSave) || !isOnline}
                 >
                   <Check size={16} />
                   {needsAuthReconnect ? 'Reconnect & save' : 'Save'}
                 </button>
               </div>
-            ) : (
-              <button
-                className="icon-text-button"
-                type="button"
-                onClick={() => {
-                  setDraft(content);
-                  setEditCursorOffset(null);
-                  setIsEditing(true);
-                  setSaveError(null);
-                }}
-                disabled={isLoading || Boolean(error) || !isOnline}
-              >
-                <Edit3 size={16} />
-                Edit
+            ) : hasFailedSave ? (
+              <button className="icon-text-button" type="button" onClick={() => void persistDraft()} disabled={!isOnline}>
+                {needsAuthReconnect ? 'Reconnect & save' : 'Retry save'}
               </button>
-            )}
+            ) : null)}
+            <div className="editor-mode-switch" role="group" aria-label="Editor mode">
+              <button
+                aria-label="Rich text"
+                className={`editor-mode-icon-button${editorMode === 'rich' ? ' active' : ''}`}
+                disabled={isSaving}
+                title="Rich text"
+                type="button"
+                onClick={() => setEditorMode('rich')}
+              >
+                <FileText size={16} />
+              </button>
+              <button
+                aria-label="Markdown"
+                className={`editor-mode-icon-button${editorMode === 'source' ? ' active' : ''}`}
+                disabled={isSaving}
+                title="Markdown source"
+                type="button"
+                onClick={() => setEditorMode('source')}
+              >
+                <FileCode2 size={16} />
+              </button>
+            </div>
             <div className="note-actions-menu" ref={noteMenuRef}>
               <button
                 className="icon-button"
@@ -552,30 +390,15 @@ export function MarkdownViewer() {
                 <EllipsisVertical size={18} />
               </button>
               <AnimatedPopover className="header-menu-popover" isOpen={isNoteMenuOpen} role="menu">
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => runNoteMenuAction(() => toggleFavorite(selectedFile.id))}
-                >
+                <button type="button" role="menuitem" onClick={() => runNoteMenuAction(() => toggleFavorite(selectedFile.id))}>
                   {favoriteNoteIds.includes(selectedFile.id) ? <StarOff size={16} /> : <Star size={16} />}
                   <span>{favoriteNoteIds.includes(selectedFile.id) ? 'Remove favourite' : 'Add favourite'}</span>
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => runNoteMenuAction(handleRenameNote)}
-                  disabled={!isOnline || isEditing || isSaving}
-                >
+                <button type="button" role="menuitem" onClick={() => runNoteMenuAction(handleRenameNote)} disabled={!isOnline || hasUnsavedChanges || hasFailedSave || isSaving}>
                   <Pencil size={16} />
                   <span>Rename note</span>
                 </button>
-                <button
-                  className="danger"
-                  type="button"
-                  role="menuitem"
-                  onClick={() => runNoteMenuAction(handleDeleteNote)}
-                  disabled={!isOnline || isEditing || isSaving}
-                >
+                <button className="danger" type="button" role="menuitem" onClick={() => runNoteMenuAction(handleDeleteNote)} disabled={!isOnline || hasUnsavedChanges || hasFailedSave || isSaving}>
                   <Trash2 size={16} />
                   <span>Delete note</span>
                 </button>
@@ -585,290 +408,31 @@ export function MarkdownViewer() {
         }
       />
 
-      <div
-        className={`note-content-area${isEditing ? ' editing' : ''}`}
-        ref={noteContentRef}
-      >
-      {isLoading && (
-        <div className="status-row viewer-status">
-          <Loader2 className="spin" size={16} />
-          <span>Loading note...</span>
-        </div>
-      )}
-      {isRefreshing && (
-        <div className="status-row viewer-status">
-          <Loader2 className="spin" size={16} />
-          <span>Refreshing note from Google Drive...</span>
-        </div>
-      )}
-      {error && <p className="error-text viewer-status">{error}</p>}
-      {!isOnline && (
-        <p className="warning-text viewer-status">
-          Offline: cached notes are read-only until the internet connection returns.
-        </p>
-      )}
-      {refreshError && (
-        <p className="warning-text viewer-status">Showing cached content; Drive refresh failed: {refreshError}</p>
-      )}
-      {hasRemoteUpdate && (
-        <p className="warning-text viewer-status">
-          This note changed in Google Drive while you were editing. Saving will overwrite it with your draft.
-        </p>
-      )}
-      {saveError && <p className="error-text viewer-status">{saveError}</p>}
-      {!isLoading && !error && isEditing && (
-        <section className="editor-pane" aria-label="Raw markdown editor">
-          <MarkdownEditor
-            initialCursorOffset={editCursorOffset}
-            notes={notes}
-            value={draft}
-            onChange={setDraft}
-            onSave={handleSave}
-            recentNotes={recentNotes}
-          />
-        </section>
-      )}
-      {!isLoading && !error && !isEditing && (
-        <div className="note-view">
-          <MarkdownBlockDndProvider
-            disabled={!isOnline || isLoading || isRefreshing || isSaving || isSavingTask}
-            document={blockDocument}
-            onDelete={(blockId) => void handleBlockDelete(blockId)}
-            onMove={(move) => void handleBlockMove(move)}
-            scrollElementRef={noteContentRef}
-          >
-            <article className="markdown-body" onClick={handleViewerTextClick}>
-              <ReactMarkdown
-                components={{
-                p: ({ children, node, ...props }) => (
-                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}>
-                    <p {...props}>{children}</p>
-                  </MarkdownBlockShell>
-                ),
-                h1: ({ children, node, ...props }) => (
-                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><h1 {...props}>{children}</h1></MarkdownBlockShell>
-                ),
-                h2: ({ children, node, ...props }) => (
-                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><h2 {...props}>{children}</h2></MarkdownBlockShell>
-                ),
-                h3: ({ children, node, ...props }) => (
-                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><h3 {...props}>{children}</h3></MarkdownBlockShell>
-                ),
-                h4: ({ children, node, ...props }) => (
-                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><h4 {...props}>{children}</h4></MarkdownBlockShell>
-                ),
-                h5: ({ children, node, ...props }) => (
-                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><h5 {...props}>{children}</h5></MarkdownBlockShell>
-                ),
-                h6: ({ children, node, ...props }) => (
-                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><h6 {...props}>{children}</h6></MarkdownBlockShell>
-                ),
-                blockquote: ({ children, node, ...props }) => (
-                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><blockquote {...props}>{children}</blockquote></MarkdownBlockShell>
-                ),
-                table: ({ children, node, ...props }) => (
-                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><table {...props}>{children}</table></MarkdownBlockShell>
-                ),
-                hr: ({ node, ...props }) => (
-                  <MarkdownBlockShell blockId={getMarkdownBlockId(node)}><hr {...props} /></MarkdownBlockShell>
-                ),
-                pre: ({ children, node, ...props }) => (
-                  <MarkdownBlockShell blockId={getMarkdownPreBlockId(node)}><pre {...props}>{children}</pre></MarkdownBlockShell>
-                ),
-                a: ({ href, children }) => {
-                  const wikilinkTarget = href ? getWikilinkTargetFromHref(href) : null;
-                  const linkedFile = wikilinkTarget ? resolveWikilink(wikilinkTarget) : null;
-
-                  return (
-                    <a
-                      className={wikilinkTarget ? (linkedFile ? 'wikilink' : 'wikilink missing') : undefined}
-                      href={href}
-                      onClick={(event) => handleLinkClick(href, event)}
-                      title={wikilinkTarget && !linkedFile ? `Not found: ${wikilinkTarget}` : undefined}
-                    >
-                      {children}
-                    </a>
-                  );
-                },
-                li: ({ children, node, ...props }) => {
-                  const taskCheckbox = getTaskCheckboxFromNode(node);
-
-                  return (
-                    <MarkdownBlockListItem {...props} blockId={getMarkdownBlockId(node)}>
-                      {taskCheckbox
-                        ? injectTaskCheckboxHandler(children, {
-                            isOnline,
-                            isSavingTask: isSaving || isSavingTask,
-                            onToggle: (checked) => void handleTaskToggle(taskCheckbox, checked),
-                            taskCheckbox,
-                          })
-                        : children}
-                    </MarkdownBlockListItem>
-                  );
-                },
-              }}
-                remarkPlugins={[
-                  remarkGfm,
-                  wikilinkPlugin,
-                  sourceBreaksPlugin,
-                  sourcePositionPlugin,
-                  blockMetadataPlugin,
-                  taskMetadataPlugin,
-                ]}
-              >
-                {parsedMarkdown.body}
-              </ReactMarkdown>
-            </article>
-          </MarkdownBlockDndProvider>
-        </div>
-      )}
+      <div className="note-content-area editing" ref={noteContentRef}>
+        {isLoading && <div className="status-row viewer-status"><Loader2 className="spin" size={16} /><span>Loading note...</span></div>}
+        {isRefreshing && <div className="status-row viewer-status"><Loader2 className="spin" size={16} /><span>Refreshing note from Google Drive...</span></div>}
+        {error && <p className="error-text viewer-status">{error}</p>}
+        {!isOnline && <p className="warning-text viewer-status">Offline: cached notes are read-only until the internet connection returns.</p>}
+        {refreshError && <p className="warning-text viewer-status">Showing cached content; Drive refresh failed: {refreshError}</p>}
+        {hasRemoteUpdate && <p className="warning-text viewer-status">This note changed in Google Drive while you were editing. Saving will overwrite it with your draft.</p>}
+        {saveError && <p className="error-text viewer-status">{saveError}</p>}
+        {!isLoading && !error && (
+          <section className="editor-pane" aria-label="Note editor">
+            <NoteEditorShell
+              blockMovementDisabled={isSaving || !isOnline}
+              key={selectedFile.id}
+              mode={editorMode}
+              notes={notes}
+              value={draft}
+              onBlur={() => void persistDraft()}
+              onChange={handleDraftChange}
+              onSave={() => void persistDraft(true)}
+              readOnly={!isOnline}
+              recentNotes={recentNotes}
+            />
+          </section>
+        )}
       </div>
     </main>
   );
-}
-
-const TASK_DEBUG_KEY = 'web-notes:debug-tasks';
-
-function isTaskDebugEnabled() {
-  return localStorage.getItem(TASK_DEBUG_KEY) === 'true';
-}
-
-function logTaskDebug(message: string, detail?: unknown) {
-  if (!isTaskDebugEnabled()) return;
-
-  console.debug(`[tasks] ${message}`, detail ?? '');
-}
-
-function getSourceAroundOffset(content: string, offset: number) {
-  return content
-    .slice(Math.max(0, offset - 80), Math.min(content.length, offset + 80))
-    .replace(/\n/g, '\\n');
-}
-
-function createTaskMetadataPlugin(taskCheckboxes: MarkdownTaskCheckbox[]): Plugin<[], Root> {
-  return () => (tree) => {
-    let taskIndex = 0;
-
-    visit(tree, 'listItem', (node: ListItem) => {
-      if (typeof node.checked !== 'boolean') return;
-
-      const taskCheckbox = taskCheckboxes[taskIndex];
-      taskIndex += 1;
-
-      node.data = {
-        ...node.data,
-        hProperties: {
-          ...node.data?.hProperties,
-          dataTaskChecked: taskCheckbox?.checked,
-          dataTaskLine: taskCheckbox?.line,
-          dataTaskMarkerOffset: taskCheckbox?.markerOffset,
-          dataTaskPreview: taskCheckbox?.sourcePreview,
-        },
-      };
-
-      logTaskDebug('assign task metadata', {
-        renderedTaskIndex: taskIndex - 1,
-        task: taskCheckbox ?? null,
-      });
-    });
-  };
-}
-
-function createBlockMetadataPlugin(blocks: MarkdownBlock[]): Plugin<[], Root> {
-  return () => (tree) => {
-    let blockIndex = 0;
-
-    function markNode(node: Root['children'][number] | ListItem) {
-      const block = blocks[blockIndex];
-      blockIndex += 1;
-      if (!block) return;
-      node.data = {
-        ...node.data,
-        hProperties: {
-          ...node.data?.hProperties,
-          dataMarkdownBlockId: block.id,
-        },
-      };
-    }
-
-    function visitContainer(parent: Root | ListItem) {
-      let skippedLead = false;
-      for (const node of parent.children) {
-        if (node.type === 'list') {
-          for (const item of node.children) {
-            markNode(item);
-            visitContainer(item);
-          }
-          continue;
-        }
-        if (parent.type === 'listItem' && !skippedLead) {
-          skippedLead = true;
-          continue;
-        }
-        if (node.type === 'definition' || node.type === 'yaml') continue;
-        markNode(node);
-      }
-    }
-
-    visitContainer(tree);
-  };
-}
-
-function getMarkdownBlockId(node: Element | undefined) {
-  const blockId = node?.properties?.dataMarkdownBlockId;
-  return typeof blockId === 'string' ? blockId : null;
-}
-
-function getMarkdownPreBlockId(node: Element | undefined) {
-  const codeNode = node?.children.find((child): child is Element => child.type === 'element' && child.tagName === 'code');
-  return getMarkdownBlockId(codeNode);
-}
-
-function getTaskCheckboxFromNode(node: Element | undefined): MarkdownTaskCheckbox | null {
-  const properties = node?.properties;
-
-  if (!properties) {
-    return null;
-  }
-
-  const markerOffset = properties?.dataTaskMarkerOffset;
-
-  if (typeof markerOffset !== 'number') {
-    return null;
-  }
-
-  return {
-    checked: properties.dataTaskChecked === true,
-    line: typeof properties.dataTaskLine === 'number' ? properties.dataTaskLine : 0,
-    markerOffset,
-    sourcePreview: typeof properties.dataTaskPreview === 'string' ? properties.dataTaskPreview : '',
-  };
-}
-
-function injectTaskCheckboxHandler(
-  children: ReactNode,
-  options: {
-    isOnline: boolean;
-    isSavingTask: boolean;
-    onToggle: (checked: boolean) => void;
-    taskCheckbox: MarkdownTaskCheckbox;
-  },
-): ReactNode {
-  let didInject = false;
-
-  return Children.map(children, (child) => {
-    if (!isValidElement(child)) return child;
-
-    if (!didInject && child.type === 'input') {
-      didInject = true;
-      logTaskDebug('render task checkbox', options.taskCheckbox);
-
-      return cloneElement(child as ReactElement<InputHTMLAttributes<HTMLInputElement>>, {
-        disabled: options.isSavingTask || !options.isOnline,
-        onChange: (event: ChangeEvent<HTMLInputElement>) => options.onToggle(event.currentTarget.checked),
-      } satisfies InputHTMLAttributes<HTMLInputElement>);
-    }
-
-    return child;
-  });
 }

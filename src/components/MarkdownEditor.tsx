@@ -21,10 +21,11 @@ type MarkdownEditorProps = {
   value: string;
   onChange: (value: string) => void;
   onSave: () => void;
+  readOnly?: boolean;
   recentNotes: VaultNode[];
 };
 
-export function MarkdownEditor({ initialCursorOffset, notes, value, onChange, onSave, recentNotes }: MarkdownEditorProps) {
+export function MarkdownEditor({ initialCursorOffset, notes, value, onChange, onSave, readOnly = false, recentNotes }: MarkdownEditorProps) {
   const editorViewRef = useRef<EditorView | null>(null);
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
@@ -138,7 +139,7 @@ export function MarkdownEditor({ initialCursorOffset, notes, value, onChange, on
           lineNumbers: true,
         }}
         className="markdown-editor"
-        extensions={[markdown(), EditorView.lineWrapping, editorCompletions, formattingKeymap]}
+        extensions={[markdown(), EditorView.lineWrapping, EditorView.editable.of(!readOnly), editorCompletions, formattingKeymap]}
         height="100%"
         onChange={onChange}
         onCreateEditor={(view) => {

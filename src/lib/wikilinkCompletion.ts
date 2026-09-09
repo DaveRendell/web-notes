@@ -5,7 +5,7 @@ import {
   pickedCompletion,
 } from '@codemirror/autocomplete';
 import { isProseCompletionContext } from './markdownCompletion';
-import { getNoteTitle, searchNotes } from './noteSearch';
+import { getNoteSuggestions, getNoteTitle } from './noteSearch';
 import type { VaultNode } from '../types/vault';
 
 const MAX_RESULTS = 8;
@@ -20,9 +20,7 @@ export function createWikilinkCompletionSource(
     if (!isProseCompletionContext(context)) return null;
 
     const query = match.text.slice(2);
-    const results = query.trim()
-      ? searchNotes(notes, query, MAX_RESULTS)
-      : recentNotes.slice(0, MAX_RESULTS);
+    const results = getNoteSuggestions(notes, recentNotes, query, MAX_RESULTS);
 
     if (results.length === 0) return null;
 

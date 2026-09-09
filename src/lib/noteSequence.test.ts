@@ -9,6 +9,7 @@ describe('getNoteSequenceNavigation', () => {
     const next = note('next', 'Media/2026/2026 Games.md');
 
     expect(getNoteSequenceNavigation(current, [previous, current, next])).toEqual({
+      currentNumber: '2025',
       previous,
       previousNumber: '2024',
       next,
@@ -21,6 +22,7 @@ describe('getNoteSequenceNavigation', () => {
     const next = note('next', 'Reports/13/Edition 13 for 2025.md');
 
     expect(getNoteSequenceNavigation(current, [current, next])).toEqual({
+      currentNumber: '12',
       previous: null,
       previousNumber: '11',
       next,
@@ -34,6 +36,7 @@ describe('getNoteSequenceNavigation', () => {
     const next = note('next', 'Journal/010/Entry 010.md');
 
     expect(getNoteSequenceNavigation(current, [previous, current, next])).toEqual({
+      currentNumber: '009',
       previous,
       previousNumber: '008',
       next,
@@ -47,6 +50,7 @@ describe('getNoteSequenceNavigation', () => {
     const next = note('next', 'Journal/2021/Week 11 2021.md');
 
     expect(getNoteSequenceNavigation(current, [previous, current, next])).toEqual({
+      currentNumber: '10',
       previous,
       previousNumber: '9',
       next,
@@ -60,6 +64,7 @@ describe('getNoteSequenceNavigation', () => {
     const next = note('next', 'Journal/2021/Week 21 2021.md');
 
     expect(getNoteSequenceNavigation(current, [previous, current, next])).toEqual({
+      currentNumber: '20',
       previous,
       previousNumber: '19',
       next,
@@ -73,6 +78,7 @@ describe('getNoteSequenceNavigation', () => {
 
     const numbered = note('numbered', 'Media/Games 3.md');
     expect(getNoteSequenceNavigation(numbered, [numbered])).toEqual({
+      currentNumber: '3',
       previous: null,
       previousNumber: '2',
       next: null,

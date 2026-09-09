@@ -26,6 +26,10 @@ export function getNoteTitle(note: VaultNode) {
   return note.name.replace(/\.md$/i, '');
 }
 
+export function getNoteSuggestions(notes: VaultNode[], recentNotes: VaultNode[], query: string, limit = 8) {
+  return query.trim() ? searchNotes(notes, query, limit) : recentNotes.slice(0, limit);
+}
+
 function getSearchScore(note: VaultNode, normalizedQuery: string) {
   const title = getNoteTitle(note).toLowerCase();
   const path = note.path.toLowerCase();

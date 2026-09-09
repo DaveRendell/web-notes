@@ -8,11 +8,12 @@ const mocks = vi.hoisted(() => ({
   content: 'original body',
   deleteNote: vi.fn(),
   ensureAccessToken: vi.fn(() => Promise.resolve('valid-token')),
+  invalidateAccessToken: vi.fn(),
   isOnline: true,
-  renameNote: vi.fn(),
   notes: [] as VaultNode[],
+  renameNote: vi.fn(),
+  selectedFile: null as VaultNode | null,
   selectFile: vi.fn(),
-  setContent: vi.fn(),
   storeSavedNote: vi.fn(),
   toggleFavorite: vi.fn(),
   updateDriveFileText: vi.fn(),
@@ -32,9 +33,10 @@ vi.mock('../contexts/AuthContext', () => ({
     accessToken: 'token',
     accountId: 'account',
     ensureAccessToken: mocks.ensureAccessToken,
-    invalidateAccessToken: vi.fn(),
+    invalidateAccessToken: mocks.invalidateAccessToken,
   }),
 }));
+
 vi.mock('../contexts/VaultContext', () => ({
   useVault: () => ({
     cacheNoteIcon: mocks.cacheNoteIcon,
@@ -42,15 +44,16 @@ vi.mock('../contexts/VaultContext', () => ({
     favoriteNoteIds: [],
     isOnline: mocks.isOnline,
     notes: mocks.notes,
+    recentNotes: [],
     renameNote: mocks.renameNote,
-    resolveWikilink: () => null,
     selectFile: mocks.selectFile,
-    selectedFile,
+    selectedFile: mocks.selectedFile ?? selectedFile,
     selectedVault: { id: 'vault', name: 'My vault' },
     storeSavedNote: mocks.storeSavedNote,
     toggleFavorite: mocks.toggleFavorite,
   }),
 }));
+
 vi.mock('../hooks/useMarkdownFile', () => ({
   useMarkdownFile: () => ({
     cacheContent: mocks.cacheContent,
@@ -59,26 +62,32 @@ vi.mock('../hooks/useMarkdownFile', () => ({
     isLoading: false,
     isRefreshing: false,
     refreshError: null,
-    setContent: mocks.setContent,
   }),
 }));
+
 vi.mock('../lib/googleDrive', () => ({
   isGoogleDriveAuthError: () => false,
   updateDriveFileText: mocks.updateDriveFileText,
 }));
-vi.mock('./MarkdownEditor', () => ({
-  MarkdownEditor: ({ initialCursorOffset, value, onChange, onSave }: { initialCursorOffset?: number | null; value: string; onChange: (value: string) => void; onSave: () => void }) => (
+
+vi.mock('./NoteEditorShell', () => ({
+  NoteEditorShell: ({ mode, onBlur, onChange, onSave, readOnly, value }: {
+    mode: 'rich' | 'source';
+    onBlur: () => void;
+    onChange: (value: string) => void;
+    onSave: () => void;
+    readOnly: boolean;
+    value: string;
+  }) => (
     <textarea
-      aria-label="Markdown draft"
-      data-cursor-offset={initialCursorOffset ?? ''}
-      value={value}
+      aria-label={mode === 'rich' ? 'Rich note' : 'Markdown draft'}
+      onBlur={onBlur}
       onChange={(event) => onChange(event.target.value)}
       onKeyDown={(event) => {
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
-          event.preventDefault();
-          onSave();
-        }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') onSave();
       }}
+      readOnly={readOnly}
+      value={value}
     />
   ),
 }));
@@ -87,256 +96,119 @@ import { MarkdownViewer } from './MarkdownViewer';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useRealTimers();
+  mocks.content = 'original body';
   selectedFile.name = 'Note.md';
   selectedFile.path = 'Note.md';
-  mocks.content = 'original body';
   mocks.isOnline = true;
   mocks.notes = [selectedFile];
-  mocks.updateDriveFileText.mockResolvedValue({
-    ...selectedFile.source,
-    modifiedTime: 'saved',
-  });
+  mocks.selectedFile = null;
+  mocks.updateDriveFileText.mockResolvedValue({ ...selectedFile.source, modifiedTime: 'saved' });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
-describe('MarkdownViewer cache conflicts', () => {
-  it('opens the editor at the clicked rendered source position, including frontmatter', () => {
-    mocks.content = '---\ntitle: Example\n---\n# Large heading';
-    const { container } = render(<MarkdownViewer />);
-    const sourceSpan = Array.from(container.querySelectorAll<HTMLElement>('[data-markdown-source-start]'))
-      .find((element) => element.textContent === 'Large heading')!;
-    const text = sourceSpan.firstChild!;
-    Object.defineProperty(document, 'caretPositionFromPoint', {
-      configurable: true,
-      value: () => ({ offsetNode: text, offset: 5 }),
-    });
-
-    fireEvent.click(sourceSpan, { button: 0, clientX: 20, clientY: 20 });
-
-    expect(screen.getByRole('textbox', { name: 'Markdown draft' }).getAttribute('data-cursor-offset')).toBe(
-      String(mocks.content.indexOf('Large') + 5),
-    );
-  });
-
-  it('keeps soft breaks and wikilink navigation interactive', () => {
-    mocks.content = 'First line\nsecond line\n\n[[Folder/Note|Linked note]]';
-    const { container } = render(<MarkdownViewer />);
-    const link = screen.getByRole('link', { name: 'Linked note' });
-
-    expect(container.querySelector('.markdown-body br')).not.toBeNull();
-    expect(link.getAttribute('href')).toBe('#wikilink=Folder%2FNote');
-    fireEvent.click(link);
-    expect(screen.queryByRole('textbox', { name: 'Markdown draft' })).toBeNull();
-  });
-
-  it('renders one move handle per semantic Markdown block', () => {
-    mocks.content = 'First line\nstill the same paragraph\n\n- task\n  - nested task\n';
+describe('MarkdownViewer rich editing', () => {
+  it('opens notes in the rich editor by default', () => {
     render(<MarkdownViewer />);
-
-    expect(screen.getAllByRole('button', { name: 'Move block' })).toHaveLength(3);
+    expect((screen.getByRole('textbox', { name: 'Rich note' }) as HTMLTextAreaElement).value).toBe('original body');
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
   });
 
-  it('adds handles to quotes, code blocks, tables, and thematic breaks', () => {
-    mocks.content = '> quote\n\n```js\ncode();\n```\n\n| A |\n| - |\n| B |\n\n---\n';
+  it('autosaves rich-text changes after one second of inactivity', async () => {
+    vi.useFakeTimers();
     render(<MarkdownViewer />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Rich note' }), { target: { value: 'changed body' } });
 
-    expect(screen.getAllByRole('button', { name: 'Move block' })).toHaveLength(4);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(mocks.updateDriveFileText).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(mocks.updateDriveFileText).toHaveBeenCalledWith('valid-token', 'note', 'changed body');
+    expect(mocks.cacheContent).toHaveBeenCalledWith('changed body');
   });
 
-  it('optimistically reorders blocks from the accessible move menu', async () => {
-    mocks.content = 'Alpha\n\nBeta\n';
+  it('saves immediately when focus leaves the rich note', async () => {
     render(<MarkdownViewer />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Move block' })[0]);
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Move down' }));
+    const editor = screen.getByRole('textbox', { name: 'Rich note' });
+    fireEvent.change(editor, { target: { value: 'save on blur' } });
+    fireEvent.blur(editor);
 
-    expect(mocks.cacheContent).toHaveBeenCalledWith('Beta\n\nAlpha\n');
-    expect(screen.getByRole('status').textContent).toContain('Saving...');
-    await waitFor(() => expect(mocks.updateDriveFileText).toHaveBeenCalledWith(
-      'valid-token',
-      'note',
-      'Beta\n\nAlpha\n',
-    ));
-    expect(mocks.cacheContent).toHaveBeenLastCalledWith('Beta\n\nAlpha\n', 'saved');
+    await waitFor(() => expect(mocks.updateDriveFileText).toHaveBeenCalledWith('valid-token', 'note', 'save on blur'));
   });
 
-  it('deletes a block from the grabber menu and saves optimistically', async () => {
-    mocks.content = 'Alpha\n\nBeta\n';
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
-    render(<MarkdownViewer />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Move block' })[0]);
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete block' }));
-
-    expect(confirm).toHaveBeenCalledWith('Delete this block?');
-    expect(mocks.cacheContent).toHaveBeenCalledWith('Beta\n');
-    await waitFor(() => expect(mocks.updateDriveFileText).toHaveBeenCalledWith('valid-token', 'note', 'Beta\n'));
-    expect(mocks.cacheContent).toHaveBeenLastCalledWith('Beta\n', 'saved');
-    confirm.mockRestore();
-  });
-
-  it('rolls an optimistic block move back when Drive rejects it', async () => {
-    mocks.content = 'Alpha\n\nBeta\n';
-    mocks.updateDriveFileText.mockRejectedValueOnce(new Error('Move failed'));
-    render(<MarkdownViewer />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Move block' })[0]);
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Move down' }));
-
-    await waitFor(() => expect(mocks.setContent).toHaveBeenCalledWith('Alpha\n\nBeta\n'));
-    expect(screen.getByText('Move failed')).not.toBeNull();
-  });
-
-  it('combines optional frontmatter properties and note controls above the note', () => {
-    mocks.content = '---\ntitle: Test note\n---\nBody';
-    const { container } = render(<MarkdownViewer />);
-
-    const noteView = container.querySelector('.note-view');
-    const properties = container.querySelector('.frontmatter-panel');
-    const contentArea = container.querySelector('.note-content-area');
-    const article = container.querySelector('.markdown-body');
-    expect(properties?.parentElement).toBe(container.querySelector('.viewer'));
-    expect(contentArea?.parentElement).toBe(container.querySelector('.viewer'));
-    expect(properties?.nextElementSibling).toBe(contentArea);
-    expect(article?.parentElement).toBe(noteView);
-    expect(article?.contains(properties)).toBe(false);
-    expect(screen.queryByRole('heading', { name: 'Note' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Edit' })).not.toBeNull();
-    expect(screen.getByRole('button', { name: '1 property' })).not.toBeNull();
-  });
-
-  it('keeps note controls visible without rendering a properties disclosure when none exist', () => {
-    render(<MarkdownViewer />);
-
-    expect(screen.getByRole('region', { name: 'Note controls' })).not.toBeNull();
-    expect(screen.queryByRole('button', { name: /propert/i })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Edit' })).not.toBeNull();
-  });
-
-  it('shows cached sequential notes and keeps a missing direction disabled', () => {
-    const previous = {
-      ...selectedFile,
-      id: 'previous',
-      name: 'Note 2024.md',
-      path: 'Archive/2024/Note 2024.md',
-    };
-    Object.assign(selectedFile, { name: 'Note 2025.md', path: 'Archive/2025/Note 2025.md' });
+  it('places saving status before sequential navigation and the fixed mode switch', async () => {
+    const previous = { ...selectedFile, id: 'previous', name: 'Note 1.md', path: 'Note 1.md' };
+    selectedFile.name = 'Note 2.md';
+    selectedFile.path = 'Note 2.md';
     mocks.notes = [previous, selectedFile];
-
+    mocks.updateDriveFileText.mockReturnValueOnce(new Promise(() => undefined));
     render(<MarkdownViewer />);
+    const editor = screen.getByRole('textbox', { name: 'Rich note' });
+    fireEvent.change(editor, { target: { value: 'saving draft' } });
+    fireEvent.blur(editor);
 
-    const previousButton = screen.getByRole('button', { name: 'Previous note: 2024' });
-    const nextButton = screen.getByRole('button', { name: 'Next note: 2026' });
-    const toolbarControls = previousButton.closest('.note-toolbar-controls');
-    expect(previousButton.textContent).toContain('2024');
-    expect(nextButton.textContent).toContain('2026');
-    expect(toolbarControls?.querySelector('.note-toolbar-navigation')?.nextElementSibling)
-      .toBe(toolbarControls?.querySelector('.note-toolbar-actions'));
-    expect((previousButton as HTMLButtonElement).disabled).toBe(false);
-    expect((nextButton as HTMLButtonElement).disabled).toBe(true);
-
-    fireEvent.click(previousButton);
-    expect(mocks.selectFile).toHaveBeenCalledWith(previous);
-
-    Object.assign(selectedFile, { name: 'Note.md', path: 'Note.md' });
+    const status = await screen.findByRole('status');
+    const navigation = screen.getByRole('navigation', { name: 'Sequential notes' });
+    const switcher = screen.getByRole('group', { name: 'Editor mode' });
+    expect(status.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(status.compareDocumentPosition(switcher) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
   });
 
-  it('offers favourite, rename, and delete actions in the note menu', () => {
-    render(<MarkdownViewer />);
-    fireEvent.click(screen.getByRole('button', { name: 'Note actions' }));
-
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Add favourite' }));
-    expect(mocks.toggleFavorite).toHaveBeenCalledWith('note');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Note actions' }));
-    expect(screen.getByRole('menuitem', { name: 'Rename note' })).not.toBeNull();
-    expect(screen.getByRole('menuitem', { name: 'Delete note' })).not.toBeNull();
-  });
-
-  it('preserves an unsaved draft when fresher Drive content arrives and caches the later local save', async () => {
+  it('preserves and saves a draft when browser navigation changes the selected note without a blur', async () => {
     const { rerender } = render(<MarkdownViewer />);
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Markdown draft' }), {
-      target: { value: 'my local draft' },
-    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Rich note' }), { target: { value: 'departing draft' } });
 
-    mocks.content = 'new body from Drive';
+    mocks.selectedFile = {
+      ...selectedFile,
+      id: 'next-note',
+      name: 'Next.md',
+      path: 'Next.md',
+      source: { ...selectedFile.source, id: 'next-note', name: 'Next.md' },
+    };
+    mocks.content = 'next body';
     rerender(<MarkdownViewer />);
 
-    expect((screen.getByRole('textbox', { name: 'Markdown draft' }) as HTMLTextAreaElement).value).toBe(
-      'my local draft',
-    );
-    expect(screen.getByText(/changed in Google Drive while you were editing/i)).not.toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() =>
-      expect(mocks.updateDriveFileText).toHaveBeenCalledWith('valid-token', 'note', 'my local draft'),
-    );
-    expect(mocks.cacheContent).toHaveBeenCalledWith('my local draft', 'saved');
-    expect(mocks.storeSavedNote).toHaveBeenCalledWith(
-      selectedFile,
-      expect.objectContaining({ modifiedTime: 'saved' }),
-      'my local draft',
-    );
+    await waitFor(() => expect(mocks.updateDriveFileText).toHaveBeenCalledWith('valid-token', 'note', 'departing draft'));
   });
 
-  it('saves with Ctrl+S and returns to view mode', async () => {
+  it('switches to Markdown from the note header with explicit Save and Cancel', async () => {
     render(<MarkdownViewer />);
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    const editor = screen.getByRole('textbox', { name: 'Markdown draft' });
-    fireEvent.change(editor, { target: { value: 'saved by shortcut' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Markdown' }));
 
-    fireEvent.keyDown(editor, { ctrlKey: true, key: 's' });
+    const source = screen.getByRole('textbox', { name: 'Markdown draft' });
+    fireEvent.change(source, { target: { value: '# Raw source' } });
+    expect(screen.getByRole('button', { name: 'Save' })).not.toBeNull();
+    fireEvent.keyDown(source, { ctrlKey: true, key: 's' });
 
-    await waitFor(() => expect(mocks.updateDriveFileText).toHaveBeenCalledWith(
-      'valid-token',
-      'note',
-      'saved by shortcut',
-    ));
-    await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Markdown draft' })).toBeNull());
-    expect(screen.getByRole('button', { name: 'Edit' })).not.toBeNull();
+    await waitFor(() => expect(mocks.updateDriveFileText).toHaveBeenCalledWith('valid-token', 'note', '# Raw source'));
+    expect(screen.getByRole('textbox', { name: 'Rich note' })).not.toBeNull();
   });
 
-  it('caches the edited content and shows a header spinner while Drive saves', async () => {
-    let resolveSave: ((value: typeof selectedFile.source) => void) | undefined;
-    mocks.updateDriveFileText.mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveSave = resolve;
-      }),
-    );
-    render(<MarkdownViewer />);
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Markdown draft' }), {
-      target: { value: 'optimistic body' },
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    expect(screen.queryByRole('textbox', { name: 'Markdown draft' })).toBeNull();
-    expect(screen.getByRole('status').textContent).toContain('Saving...');
-    expect(mocks.cacheContent).toHaveBeenCalledWith('optimistic body');
-
-    resolveSave?.({ ...selectedFile.source, modifiedTime: 'saved' });
-
-    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
-    expect(mocks.cacheContent).toHaveBeenLastCalledWith('optimistic body', 'saved');
-  });
-
-  it('reopens the editor with the optimistic draft when saving fails', async () => {
+  it('preserves a failed rich draft and offers a retry', async () => {
     mocks.updateDriveFileText.mockRejectedValueOnce(new Error('Drive write failed'));
     render(<MarkdownViewer />);
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Markdown draft' }), {
-      target: { value: 'preserved draft' },
-    });
+    const editor = screen.getByRole('textbox', { name: 'Rich note' });
+    fireEvent.change(editor, { target: { value: 'preserved draft' } });
+    fireEvent.blur(editor);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Drive write failed')).not.toBeNull();
+    expect((screen.getByRole('textbox', { name: 'Rich note' }) as HTMLTextAreaElement).value).toBe('preserved draft');
+    expect(screen.getByRole('button', { name: 'Retry save' })).not.toBeNull();
+  });
 
-    await waitFor(() =>
-      expect((screen.getByRole('textbox', { name: 'Markdown draft' }) as HTMLTextAreaElement).value).toBe(
-        'preserved draft',
-      ),
-    );
-    expect(screen.getByText('Drive write failed')).not.toBeNull();
-    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(false);
+  it('keeps sequential navigation in the fixed note header', () => {
+    const previous = { ...selectedFile, id: 'previous', name: 'Note 1.md', path: 'Note 1.md' };
+    selectedFile.name = 'Note 2.md';
+    selectedFile.path = 'Note 2.md';
+    mocks.notes = [previous, selectedFile];
+    render(<MarkdownViewer />);
+
+    expect(document.querySelector('.note-sequence-current')?.textContent).toBe('2');
+    fireEvent.click(screen.getByRole('button', { name: 'Previous note: 1' }));
+    expect(mocks.selectFile).toHaveBeenCalledWith(previous);
   });
 });
