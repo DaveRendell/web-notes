@@ -22,9 +22,11 @@ import { $createLinkNode, $isLinkNode, type LinkNode } from '@lexical/link';
 import {
   INSERT_CHECK_LIST_COMMAND,
   $createListNode,
+  $createListItemNode,
   $isListItemNode,
   $isListNode,
   type ListItemNode,
+  type ListNode,
 } from '@lexical/list';
 import {
   LexicalTypeaheadMenuPlugin,
@@ -39,12 +41,13 @@ import {
   $findMatchingParent,
   $getSelection,
   $isRangeSelection,
+  $isElementNode,
   COMMAND_PRIORITY_HIGH,
   KEY_DOWN_COMMAND,
   TextNode,
   type LexicalEditor,
 } from 'lexical';
-import type { Parent, RootContent, Text } from 'mdast';
+import type { Image, List, Parent, RootContent, Text } from 'mdast';
 import type { Extension as FromMarkdownExtension } from 'mdast-util-from-markdown';
 import type { Handle, Options as ToMarkdownExtension } from 'mdast-util-to-markdown';
 import type { Literal } from 'unist';
@@ -55,6 +58,7 @@ import { splitEmojiText } from '../lib/twemoji';
 import { getNoteSuggestions, getNoteTitle } from '../lib/noteSearch';
 import type { VaultNode } from '../types/vault';
 import { $createRichEmojiNode, $isRichEmojiNode, RichEmojiNode } from './RichEmojiNode';
+import { $createRichImageNode, $isRichImageNode, RichImageNode } from './RichImageNode';
 import { Twemoji, TwemojiText } from './Twemoji';
 
 type WikiLinkMdastNode = Parent & {
@@ -98,9 +102,9 @@ export const richEditorEnhancementsPlugin = realmPlugin<RichEditorEnhancementsPa
       [notes$]: params?.notes ?? [],
       [recentNotes$]: params?.recentNotes ?? [],
       [addMdastExtension$]: wikiLinkFromMarkdownExtension,
-      [addLexicalNode$]: RichEmojiNode,
-      [addImportVisitor$]: [MdastWikiLinkVisitor, MdastEmojiVisitor],
-      [addExportVisitor$]: [LexicalWikiLinkVisitor, LexicalEmojiVisitor],
+      [addLexicalNode$]: [RichEmojiNode, RichImageNode],
+      [addImportVisitor$]: [MdastWikiLinkVisitor, MdastEmojiVisitor, MdastImageVisitor, MdastNumberedListVisitor],
+      [addExportVisitor$]: [LexicalWikiLinkVisitor, LexicalEmojiVisitor, LexicalImageVisitor, LexicalNumberedListVisitor],
       [addToMarkdownExtension$]: wikiLinkToMarkdownExtension,
       [addComposerChild$]: RichEditorCompletions,
       [addNestedEditorChild$]: RichEditorCompletions,
@@ -127,6 +131,32 @@ const MdastWikiLinkVisitor: MdastImportVisitor<WikiLinkMdastNode> = {
   },
 };
 
+// The stock list visitors omit the starting number on import and export.
+const MdastNumberedListVisitor: MdastImportVisitor<List> = {
+  priority: 100,
+  testNode: (node) => node.type === 'list' && Boolean(node.ordered)
+    && !node.children.some((item) => typeof item.checked === 'boolean'),
+  visitNode({ mdastNode, lexicalParent, actions }) {
+    const list = $createListNode('number', mdastNode.start ?? 1);
+    if ($isListItemNode(lexicalParent)) {
+      const wrapper = $createListItemNode();
+      wrapper.append(list);
+      lexicalParent.insertAfter(wrapper);
+    } else if ($isElementNode(lexicalParent)) {
+      lexicalParent.append(list);
+    }
+    actions.visitChildren(mdastNode, list);
+  },
+};
+
+const LexicalNumberedListVisitor: LexicalExportVisitor<ListNode, List> = {
+  priority: 100,
+  testLexicalNode: (node): node is ListNode => $isListNode(node) && node.getListType() === 'number',
+  visitLexicalNode({ lexicalNode, actions }) {
+    actions.addAndStepInto('list', { ordered: true, start: lexicalNode.getStart(), spread: false });
+  },
+};
+
 const MdastEmojiVisitor: MdastImportVisitor<EmojiMdastNode> = {
   testNode: 'emoji',
   visitNode({ actions, mdastNode }) {
@@ -135,6 +165,13 @@ const MdastEmojiVisitor: MdastImportVisitor<EmojiMdastNode> = {
       actions.getParentFormatting(),
       actions.getParentStyle(),
     ));
+  },
+};
+
+const MdastImageVisitor: MdastImportVisitor<Image> = {
+  testNode: 'image',
+  visitNode({ actions, mdastNode }) {
+    actions.addAndStepInto($createRichImageNode(mdastNode.url, mdastNode.alt ?? '', mdastNode.title ?? null));
   },
 };
 
@@ -180,6 +217,18 @@ const LexicalEmojiVisitor: LexicalExportVisitor<RichEmojiNode, RootContent> = {
     actions.appendToParent(parent, format & IS_CODE
       ? { type: 'inlineCode', value: lexicalNode.getEmoji() }
       : { type: 'text', value: lexicalNode.getEmoji() });
+  },
+};
+
+const LexicalImageVisitor: LexicalExportVisitor<RichImageNode, Image> = {
+  testLexicalNode: $isRichImageNode,
+  visitLexicalNode({ actions, lexicalNode, mdastParent }) {
+    actions.appendToParent(mdastParent, {
+      type: 'image',
+      url: lexicalNode.getSource(),
+      alt: lexicalNode.getAltText(),
+      title: lexicalNode.getTitle(),
+    });
   },
 };
 

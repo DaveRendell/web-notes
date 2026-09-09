@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   ensureAccessToken: vi.fn(() => Promise.resolve('valid-token')),
   invalidateAccessToken: vi.fn(),
   isOnline: true,
+  isRefreshing: false,
   notes: [] as VaultNode[],
   renameNote: vi.fn(),
   selectedFile: null as VaultNode | null,
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   toggleFavorite: vi.fn(),
   updateDriveFileText: vi.fn(),
   putNoteContent: vi.fn(() => Promise.resolve()),
+  setContent: vi.fn(),
 }));
 
 const selectedFile: VaultNode = {
@@ -61,8 +63,9 @@ vi.mock('../hooks/useMarkdownFile', () => ({
     content: mocks.content,
     error: null,
     isLoading: false,
-    isRefreshing: false,
+    isRefreshing: mocks.isRefreshing,
     refreshError: null,
+    setContent: mocks.setContent,
   }),
 }));
 
@@ -108,6 +111,7 @@ beforeEach(() => {
   selectedFile.name = 'Note.md';
   selectedFile.path = 'Note.md';
   mocks.isOnline = true;
+  mocks.isRefreshing = false;
   mocks.notes = [selectedFile];
   mocks.selectedFile = null;
   mocks.updateDriveFileText.mockResolvedValue({ ...selectedFile.source, modifiedTime: 'saved' });
@@ -237,6 +241,16 @@ describe('MarkdownViewer rich editing', () => {
     const switcher = screen.getByRole('group', { name: 'Editor mode' });
     expect(status.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(status.compareDocumentPosition(switcher) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  });
+
+  it('shows note refreshes as a concise syncing status in the fixed header', () => {
+    mocks.isRefreshing = true;
+    render(<MarkdownViewer />);
+
+    const status = screen.getByRole('status');
+    expect(status.textContent).toContain('Syncing...');
+    expect(status.closest('.frontmatter-panel')).not.toBeNull();
+    expect(screen.queryByText('Refreshing note from Google Drive...')).toBeNull();
   });
 
   it('preserves and saves a draft when browser navigation changes the selected note without a blur', async () => {

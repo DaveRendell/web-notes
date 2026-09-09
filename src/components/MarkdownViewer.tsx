@@ -333,10 +333,10 @@ export function MarkdownViewer() {
         key={selectedFile.id}
         error={parsedMarkdown.frontmatterError}
         properties={parsedMarkdown.frontmatter}
-        status={isSaving ? (
+        status={isSaving || isRefreshing ? (
           <span className="note-save-status" role="status">
             <Loader2 className="spin" size={16} />
-            Saving...
+            {isSaving ? 'Saving...' : 'Syncing...'}
           </span>
         ) : undefined}
         navigation={sequenceNavigation && (sequenceNavigation.previous || sequenceNavigation.next) ? (
@@ -446,7 +446,6 @@ export function MarkdownViewer() {
 
       <div className="note-content-area editing" ref={noteContentRef}>
         {isLoading && <div className="status-row viewer-status"><Loader2 className="spin" size={16} /><span>Loading note...</span></div>}
-        {isRefreshing && <div className="status-row viewer-status"><Loader2 className="spin" size={16} /><span>Refreshing note from Google Drive...</span></div>}
         {error && <p className="error-text viewer-status">{error}</p>}
         {!isOnline && <p className="warning-text viewer-status">Offline: cached notes are read-only until the internet connection returns.</p>}
         {refreshError && <p className="warning-text viewer-status">Showing cached content; Drive refresh failed: {refreshError}</p>}

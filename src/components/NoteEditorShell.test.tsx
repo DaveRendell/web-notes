@@ -120,6 +120,15 @@ describe('NoteEditorShell', () => {
     expect(onChange).toHaveBeenCalledWith('---\r\ntitle: Note\r\n---\r\nNew\r\ntext\r\n');
   });
 
+  it('keeps image embeds in rich mode', async () => {
+    const source = 'Before\n\n![Diagram](assets/map.png "Map")\n\nAfter';
+    renderEditor(source);
+
+    const editor = await screen.findByRole('textbox', { name: 'Rich editor' });
+    expect((editor as HTMLTextAreaElement).value).toBe(source);
+    expect(screen.queryByRole('textbox', { name: 'Source editor' })).toBeNull();
+  });
+
   it('falls back without modifying unsupported Markdown', () => {
     localStorage.setItem('web-notes:editor-mode', 'rich');
     const source = '<details>hidden</details>';

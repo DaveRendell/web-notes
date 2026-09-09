@@ -23,14 +23,13 @@ describe('Markdown rich-editor envelope', () => {
   });
 
   it('accepts the rich editor core syntax', () => {
-    const result = checkRichMarkdownCompatibility('# Heading\n\nSee [[Folder/Note]].\n\n- [x] task\n\n| A |\n| - |\n| B |');
+    const result = checkRichMarkdownCompatibility('# Heading\n\nSee [[Folder/Note]].\n\n![Diagram](assets/map.png "Map")\n\n- [x] task\n\n| A |\n| - |\n| B |');
     expect(result.compatible).toBe(true);
   });
 
   it.each([
     ['raw HTML', '<details>hidden</details>'],
     ['reference links', '[text][ref]\n\n[ref]: https://example.com'],
-    ['images', '![alt](image.png)'],
   ])('falls back for unsupported %s without changing the source', (_label, source) => {
     const result = checkRichMarkdownCompatibility(source);
     expect(result.compatible).toBe(false);

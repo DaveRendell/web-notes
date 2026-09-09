@@ -1379,6 +1379,43 @@ button {
   caret-color: #17202a;
 }
 
+.rich-image-node {
+  display: inline-block;
+  width: min(100%, 520px);
+  margin: 8px 0;
+  vertical-align: middle;
+}
+
+.rich-image-placeholder {
+  display: flex;
+  min-height: 88px;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px dashed #9aa3b2;
+  border-radius: 8px;
+  color: #697386;
+  background: #f7f8fa;
+}
+
+.rich-image-placeholder > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rich-image-placeholder strong,
+.rich-image-placeholder small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rich-image-placeholder small {
+  color: #8b95a5;
+}
+
 .rich-markdown-editor .mdxeditor-root-contenteditable {
   overscroll-behavior: contain;
 }
@@ -2116,6 +2153,16 @@ li.markdown-block > .markdown-block-controls {
 [data-theme="dark"] .rich-markdown-editor a[href^="web-notes-wikilink:"] {
   color: #8cc8ee;
   text-decoration-color: rgb(140 200 238 / 45%);
+}
+
+[data-theme="dark"] .rich-image-placeholder {
+  border-color: #596273;
+  color: #aeb8c8;
+  background: #202630;
+}
+
+[data-theme="dark"] .rich-image-placeholder small {
+  color: #8792a3;
 }
 
 [data-theme="dark"] .rich-block-handle {

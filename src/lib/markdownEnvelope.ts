@@ -31,6 +31,7 @@ const SUPPORTED_NODE_TYPES = new Set([
   'blockquote',
   'thematicBreak',
   'break',
+  'image',
   'link',
   'list',
   'listItem',
