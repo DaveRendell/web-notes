@@ -24,6 +24,8 @@ export function useVaultTree(
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const shouldRetryWhenOnline = useRef(false);
   const activeCacheScope = useRef<string | null>(null);
+  const refreshGeneration = useRef(0);
+  const activeRefresh = useRef<AbortController | null>(null);
 
   const persistTree = useCallback(
     (nextTree: VaultNode[]) => {
@@ -46,12 +48,21 @@ export function useVaultTree(
 
   const reloadTree = useCallback(
     async (signal?: AbortSignal) => {
+      // Online retries and explicit reloads must be invalidated too, not only
+      // the request started by the effect's AbortController.
+      const generation = ++refreshGeneration.current;
+      activeRefresh.current?.abort();
+      const controller = new AbortController();
+      activeRefresh.current = controller;
+      const isStale = () => signal?.aborted || generation !== refreshGeneration.current;
       if (!accessToken || !rootFolderId) {
         shouldRetryWhenOnline.current = false;
         activeCacheScope.current = null;
         setTreeState([]);
         setIsLoading(false);
         setIsRefreshing(false);
+        setError(null);
+        setRefreshError(null);
         return;
       }
 
@@ -60,7 +71,7 @@ export function useVaultTree(
         return;
       }
 
-      const activeSignal = signal ?? new AbortController().signal;
+      const activeSignal = controller.signal;
       let hasCachedTree = false;
       const cacheScope = `${accountId ?? 'network-only'}:${rootFolderId}`;
 
@@ -74,7 +85,7 @@ export function useVaultTree(
 
       if (accountId) {
         const cachedVault = await getVaultTree(accountId, rootFolderId);
-        if (activeSignal.aborted) return;
+        if (isStale()) return;
 
         if (cachedVault) {
           hasCachedTree = true;
@@ -87,7 +98,7 @@ export function useVaultTree(
 
       try {
         const nodes = await loadTree(accessToken, rootFolderId, '', activeSignal);
-        if (activeSignal.aborted) return;
+        if (isStale()) return;
 
         setTreeState(nodes);
         shouldRetryWhenOnline.current = false;
@@ -99,7 +110,7 @@ export function useVaultTree(
           await deleteMissingNoteContents(accountId, rootFolderId, collectMarkdownFileIds(nodes));
         }
       } catch (requestError) {
-        if (activeSignal.aborted) return;
+        if (isStale()) return;
 
         const message = requestError instanceof Error ? requestError.message : 'Failed to load vault tree.';
         shouldRetryWhenOnline.current = true;
@@ -109,7 +120,7 @@ export function useVaultTree(
           setError(message);
         }
       } finally {
-        if (!activeSignal.aborted) {
+        if (!isStale()) {
           setIsLoading(false);
           setIsRefreshing(false);
         }
@@ -122,7 +133,11 @@ export function useVaultTree(
     const controller = new AbortController();
     void reloadTree(controller.signal);
 
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      activeRefresh.current?.abort();
+      refreshGeneration.current += 1;
+    };
   }, [reloadTree]);
 
   useEffect(() => {
@@ -145,17 +160,19 @@ async function loadTree(
 ): Promise<VaultNode[]> {
   if (signal.aborted) return [];
 
-  const children = await listDriveChildren({ accessToken, folderId });
-  const visibleChildren = children.filter(
-    (child) => child.mimeType === GOOGLE_FOLDER_MIME_TYPE || child.name.toLowerCase().endsWith('.md'),
-  );
+  const children = await listDriveChildren({ accessToken, folderId, signal });
+  if (signal.aborted) return [];
+  // Use the same classification as uploads/cache hydration so images don't
+  // disappear on the next metadata refresh.
+  const visibleNodes = children
+    .filter((child) => !child.name.startsWith('.'))
+    .map((child) => createVaultNode(child, parentPath))
+    .filter((node) => node.type !== 'other');
 
   const nodes = await Promise.all(
-    visibleChildren.map(async (child) => {
-      const node = createVaultNode(child, parentPath);
-
-      if (child.mimeType === GOOGLE_FOLDER_MIME_TYPE) {
-        node.children = await loadTree(accessToken, child.id, node.path, signal);
+    visibleNodes.map(async (node) => {
+      if (node.mimeType === GOOGLE_FOLDER_MIME_TYPE) {
+        node.children = await loadTree(accessToken, node.id, node.path, signal);
       }
 
       return node;

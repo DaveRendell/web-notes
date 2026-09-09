@@ -39,6 +39,56 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('useVaultTree', () => {
+  it('retains images by MIME type or extension but excludes hidden and unsupported files', async () => {
+    mocks.listDriveChildren.mockResolvedValue([
+      remoteFile,
+      { id: 'image', name: 'Photo', mimeType: 'image/png' },
+      { id: 'extension', name: 'Photo.JPG', mimeType: 'application/octet-stream' },
+      { id: 'hidden', name: '.secret.png', mimeType: 'image/png' },
+      { id: 'other', name: 'archive.zip', mimeType: 'application/zip' },
+    ]);
+    const { result } = renderHook(() => useVaultTree('token', 'account', true, 'vault', 'My vault'));
+    await waitFor(() => expect(result.current.tree).toHaveLength(3));
+    expect(result.current.tree.filter((node) => node.type === 'image').map((node) => node.id)).toEqual(['image', 'extension']);
+    expect(mocks.deleteMissingNoteContents).toHaveBeenCalledWith('account', 'vault', new Set(['remote']));
+  });
+
+  it('ignores an online retry from the previous account after switching accounts', async () => {
+    const retry = deferred<DriveFile[]>();
+    mocks.listDriveChildren.mockRejectedValueOnce(new Error('offline')).mockReturnValueOnce(retry.promise).mockResolvedValueOnce([remoteFile]);
+    const { result, rerender } = renderHook(({ account }) => useVaultTree('token', account, true, 'vault', 'My vault'), { initialProps: { account: 'first' } });
+    await waitFor(() => expect(result.current.error).toBe('offline'));
+    await act(async () => window.dispatchEvent(new Event('online')));
+    await waitFor(() => expect(mocks.listDriveChildren).toHaveBeenCalledTimes(2));
+    rerender({ account: 'second' });
+    await waitFor(() => expect(result.current.tree[0]?.id).toBe('remote'));
+    await act(async () => retry.resolve([createFile('stale', 'Stale.md', 'old')]));
+    expect(result.current.tree[0]?.id).toBe('remote');
+    expect(mocks.putVaultTree).toHaveBeenCalledTimes(1);
+    expect(mocks.putVaultTree).toHaveBeenCalledWith(expect.objectContaining({ accountId: 'second' }));
+    expect(mocks.deleteMissingNoteContents).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets only the newest explicit reload replace and prune the tree', async () => {
+    mocks.listDriveChildren.mockResolvedValueOnce([remoteFile]);
+    const { result } = renderHook(() => useVaultTree('token', 'account', true, 'vault', 'My vault'));
+    await waitFor(() => expect(result.current.tree[0]?.id).toBe('remote'));
+    mocks.putVaultTree.mockClear();
+    mocks.deleteMissingNoteContents.mockClear();
+    const old = deferred<DriveFile[]>();
+    const latest = deferred<DriveFile[]>();
+    mocks.listDriveChildren.mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise);
+    act(() => { void result.current.reloadTree(); });
+    await waitFor(() => expect(mocks.listDriveChildren).toHaveBeenCalledTimes(2));
+    act(() => { void result.current.reloadTree(); });
+    await waitFor(() => expect(mocks.listDriveChildren).toHaveBeenCalledTimes(3));
+    await act(async () => latest.resolve([createFile('latest', 'Latest.md', 'new')]));
+    await act(async () => old.resolve([createFile('stale', 'Stale.md', 'old')]));
+    expect(result.current.tree[0]?.id).toBe('latest');
+    expect(mocks.putVaultTree).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteMissingNoteContents).toHaveBeenCalledTimes(1);
+  });
+
   it('shows a cached tree while refreshing, then atomically replaces and prunes it after success', async () => {
     const remoteResponse = deferred<DriveFile[]>();
     mocks.getVaultTree.mockResolvedValue({ tree: [cachedNode] });
@@ -68,6 +118,32 @@ describe('useVaultTree', () => {
     await waitFor(() => expect(result.current.refreshError).toBe('offline'));
     expect(result.current.tree).toEqual([cachedNode]);
     expect(result.current.error).toBeNull();
+    expect(mocks.deleteMissingNoteContents).not.toHaveBeenCalled();
+  });
+
+  it('does not publish or prune a partial recursive listing when a child folder fails', async () => {
+    mocks.getVaultTree.mockResolvedValue({ tree: [cachedNode] });
+    mocks.listDriveChildren.mockResolvedValueOnce([
+      remoteFile,
+      { id: 'folder', name: 'Folder', mimeType: 'application/vnd.google-apps.folder' },
+    ]).mockRejectedValueOnce(new Error('Folder unavailable'));
+    const { result } = renderHook(() => useVaultTree('token', 'account', true, 'vault', 'My vault'));
+    await waitFor(() => expect(result.current.refreshError).toBe('Folder unavailable'));
+    expect(result.current.tree).toEqual([cachedNode]);
+    expect(mocks.putVaultTree).not.toHaveBeenCalled();
+    expect(mocks.deleteMissingNoteContents).not.toHaveBeenCalled();
+  });
+
+  it('aborts pending retries on unmount without updating the cache', async () => {
+    const pending = deferred<DriveFile[]>();
+    mocks.listDriveChildren.mockReturnValue(pending.promise);
+    const { unmount } = renderHook(() => useVaultTree('token', 'account', true, 'vault', 'My vault'));
+    await waitFor(() => expect(mocks.listDriveChildren).toHaveBeenCalledTimes(1));
+    const signal = mocks.listDriveChildren.mock.calls[0][0].signal as AbortSignal;
+    unmount();
+    expect(signal.aborted).toBe(true);
+    await act(async () => pending.resolve([remoteFile]));
+    expect(mocks.putVaultTree).not.toHaveBeenCalled();
     expect(mocks.deleteMissingNoteContents).not.toHaveBeenCalled();
   });
 
