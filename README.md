@@ -63,6 +63,8 @@ npm run build
 
 Run all three with `npm run check`. GitHub Actions runs these checks and the browser smoke suite on pull requests and pushes to `main`.
 
+See [technical maintenance](docs/technical-maintenance.md) for reliability boundaries, dependency overrides, and remaining follow-ups.
+
 ### Browser checks
 
 ```sh
