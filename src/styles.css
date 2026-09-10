@@ -2963,8 +2963,22 @@ li.markdown-block > .markdown-block-controls {
 
 /* List rows sit closer together, so use a smaller spread to avoid overlap. */
 .rich-markdown-content li[data-block-background]:not(.rich-block-drop-nest) {
+  --block-marker-highlight-offset: 0px;
+
   box-shadow:
     inset 0 0 0 1px var(--block-bg),
     0 0 0 1px var(--block-bg),
-    0 0 0 3px var(--block-bg);
+    0 0 0 3px var(--block-bg),
+    var(--block-marker-highlight-offset) 0 0 3px var(--block-bg);
+}
+
+/* Native bullets and numbers are painted outside the LI box. Add an
+   overlapping background layer in their marker gutter so they receive the
+   same treatment as checkboxes without changing list indentation or wrapping. */
+.rich-markdown-content ul > li[data-block-background]:not([role="checkbox"]) {
+  --block-marker-highlight-offset: -1.5rem;
+}
+
+.rich-markdown-content ol > li[data-block-background]:not([role="checkbox"]) {
+  --block-marker-highlight-offset: -2rem;
 }

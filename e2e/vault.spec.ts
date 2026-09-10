@@ -78,6 +78,29 @@ test('block background colours save as comments and survive reloading', async ({
   await expect(page.getByText(/Rich text normalization changed/)).toHaveCount(0);
 });
 
+test('coloured list items extend their highlight behind native markers', async ({ page }) => {
+  await page.route('https://www.googleapis.com/drive/v3/files/welcome?*', route => route.fulfill({
+    contentType: 'text/plain',
+    body: [
+      '- Bullet <!-- web-notes:background=green -->',
+      '',
+      '1. Ordered <!-- web-notes:background=blue -->',
+      '',
+      '- [ ] Todo <!-- web-notes:background=red -->',
+    ].join('\n'),
+  }));
+  await page.goto('/#/note/Welcome.md');
+
+  const bulletShadow = await page.locator('li').filter({ hasText: 'Bullet' }).evaluate(element => getComputedStyle(element).boxShadow);
+  const orderedShadow = await page.locator('li').filter({ hasText: 'Ordered' }).evaluate(element => getComputedStyle(element).boxShadow);
+  const todoShadow = await page.locator('li[role="checkbox"]').evaluate(element => getComputedStyle(element).boxShadow);
+
+  expect(bulletShadow).toContain('-24px 0px 0px 3px');
+  expect(orderedShadow).toContain('-32px 0px 0px 3px');
+  expect(todoShadow).not.toContain('-24px 0px 0px 3px');
+  expect(todoShadow).not.toContain('-32px 0px 0px 3px');
+});
+
 test('aligns rich checklist text and markers with ordinary list content', async ({ page }) => {
   await page.route('https://www.googleapis.com/drive/v3/files/welcome?*', route => route.fulfill({
     contentType: 'text/plain',
