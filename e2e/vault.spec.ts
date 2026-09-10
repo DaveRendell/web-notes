@@ -40,6 +40,7 @@ test('opens rich text, switches to source, and follows browser history', async (
   await expect(page.locator('.rich-markdown-content')).toContainText('A browser-tested note.');
   await page.getByRole('button', { name: 'Markdown', exact: true }).click();
   await expect(page.locator('.cm-content')).toContainText('A browser-tested note.');
+  await page.keyboard.press('Control+K');
   await page.getByRole('combobox', { name: 'Find notes by title' }).fill('Second');
   await page.getByRole('option').first().click();
   await expect(page).toHaveURL(/Second/);
@@ -92,7 +93,10 @@ test('aligns rich checklist text and markers with ordinary list content', async 
     return { item: await item.boundingBox(), text: await text.boundingBox() };
   }));
   expect(Math.abs(alignment[0].text!.x - alignment[1].text!.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(alignment[0].item!.x - alignment[1].item!.x)).toBeLessThanOrEqual(1);
+  // The checklist LI extends into the marker gutter while its padded text
+  // remains aligned with an ordinary list item. Lexical uses this wider box
+  // to hit-test clicks on the generated checkbox marker.
+  expect(alignment[0].item!.x - alignment[1].item!.x).toBeCloseTo(24, 0);
 
   const verticalOffset = await todo.evaluate((element) => {
     const row = getComputedStyle(element);
@@ -100,6 +104,29 @@ test('aligns rich checklist text and markers with ordinary list content', async 
     return Math.abs(Number.parseFloat(marker.top) + Number.parseFloat(marker.height) / 2 - Number.parseFloat(row.lineHeight) / 2);
   });
   expect(verticalOffset).toBeLessThanOrEqual(1);
+
+  const todoBox = await todo.boundingBox();
+  expect(todoBox).not.toBeNull();
+  await todo.click({ position: { x: 8, y: todoBox!.height / 2 } });
+  await expect(todo).toHaveAttribute('aria-checked', 'true');
+});
+
+test('hides a block grabber when its block scrolls behind the note header', async ({ page }) => {
+  const body = Array.from({ length: 50 }, (_, index) => `Paragraph ${index + 1}`).join('\n\n');
+  await page.route('https://www.googleapis.com/drive/v3/files/welcome?*', route => route.fulfill({
+    contentType: 'text/plain',
+    body,
+  }));
+  await page.goto('/#/note/Welcome.md');
+
+  await page.locator('.rich-markdown-content p').first().hover();
+  const handle = page.getByRole('button', { name: 'Move block' });
+  await expect(handle).toBeVisible();
+
+  await page.locator('.mdxeditor-root-contenteditable').evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(handle).toBeHidden();
 });
 
 test('autosaves rich-text changes through the Drive adapter', async ({ page }) => {
@@ -146,6 +173,7 @@ for (const width of [320, 390]) {
     await page.getByRole('button', { name: 'Show file sidebar' }).click();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('button', { name: 'Show file sidebar' })).toBeFocused();
+    await page.getByRole('button', { name: 'Show file sidebar' }).click();
     await page.getByRole('button', { name: 'Open options menu' }).click();
     await page.getByRole('menuitem', { name: 'Dark mode' }).click();
     await expect(page.locator('.header-menu-popover')).toBeHidden();

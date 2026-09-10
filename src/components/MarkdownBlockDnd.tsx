@@ -173,14 +173,9 @@ function MarkdownBlockFrame({
     function handlePointerDown(event: PointerEvent) {
       if (!menuRef.current?.contains(event.target as Node)) closeMenu();
     }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') closeMenu();
-    }
     document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
     };
   });
 
@@ -216,7 +211,7 @@ function MarkdownBlockFrame({
       >
         <GripVertical size={16} />
       </button>
-      <AnimatedPopover className="markdown-block-menu" isOpen={isMenuOpen} placementGap={2} role="menu">
+      <AnimatedPopover className="markdown-block-menu" isOpen={isMenuOpen} onEscape={closeMenu} placementGap={2} role="menu">
         <BlockMenuButton icon={<ArrowUp size={15} />} label="Move up" disabled={!actions.canMoveUp} onClick={() => runMenuMove('up')} />
         <BlockMenuButton icon={<ArrowDown size={15} />} label="Move down" disabled={!actions.canMoveDown} onClick={() => runMenuMove('down')} />
         <BlockMenuButton icon={<ArrowRight size={15} />} label="Indent" disabled={!actions.canIndent} onClick={() => runMenuMove('indent')} />

@@ -1,47 +1,47 @@
-import { Search } from 'lucide-react';
-import { ChangeEvent, KeyboardEvent, useId, useMemo, useRef, useState } from 'react';
+import { Search, X } from 'lucide-react';
+import { ChangeEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useVault } from '../contexts/VaultContext';
 import { getNoteTitle, searchNotes } from '../lib/noteSearch';
 import { VaultNode } from '../types/vault';
-import { AnimatedPopover } from './AnimatedPopover';
+import { AppModal } from './AppModal';
 
 const MAX_RESULTS = 8;
 
 export function NoteSearch() {
   const { notes, recentNotes, selectFile } = useVault();
   const [query, setQuery] = useState('');
-  const [isFocused, setIsFocused] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
-  const blurTimeoutRef = useRef<number | null>(null);
-  const listboxId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
   const hasQuery = query.trim().length > 0;
   const results = useMemo(
     () => hasQuery ? searchNotes(notes, query) : recentNotes.slice(0, MAX_RESULTS),
     [hasQuery, notes, query, recentNotes],
   );
-  const isOpen = isFocused;
 
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
     setQuery(event.target.value);
     setActiveIndex(0);
   }
 
-  function handleFocus() {
-    if (blurTimeoutRef.current) {
-      window.clearTimeout(blurTimeoutRef.current);
+  function openSearch() {
+    setActiveIndex(0);
+    setIsOpen(true);
+  }
+
+  useEffect(() => {
+    function handleOpenSearch() {
+      setActiveIndex(0);
+      setIsOpen(true);
     }
-
-    setIsFocused(true);
-  }
-
-  function handleBlur() {
-    blurTimeoutRef.current = window.setTimeout(() => setIsFocused(false), 120);
-  }
+    window.addEventListener('web-notes:open-search', handleOpenSearch);
+    return () => window.removeEventListener('web-notes:open-search', handleOpenSearch);
+  }, []);
 
   function chooseNote(note: VaultNode) {
     selectFile(note);
     setQuery('');
-    setIsFocused(false);
+    setIsOpen(false);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -63,51 +63,66 @@ export function NoteSearch() {
     }
 
     if (event.key === 'Escape') {
-      setIsFocused(false);
+      setIsOpen(false);
     }
   }
 
   return (
-    <div className="note-search">
-      <Search className="note-search-icon" size={16} aria-hidden="true" />
-      <input
-        id="note-search-input"
-        aria-autocomplete="list"
-        aria-controls={isOpen ? listboxId : undefined}
-        aria-expanded={isOpen}
+    <>
+      <button
+        className="icon-button"
+        id="note-search-trigger"
+        type="button"
+        onClick={openSearch}
         aria-keyshortcuts="Control+K Meta+K"
-        aria-label="Find notes by title"
-        onBlur={handleBlur}
-        onChange={handleChange}
-        onFocus={handleFocus}
-        onKeyDown={handleKeyDown}
-        placeholder="Find notes"
-        role="combobox"
+        aria-label="Find notes"
         title="Find notes (Ctrl/Cmd+K)"
-        type="search"
-        value={query}
-      />
-      <AnimatedPopover className="note-search-results" id={listboxId} isOpen={isOpen} role="listbox">
-        {!hasQuery && results.length > 0 && <div className="note-search-results-label">Recent notes</div>}
-        {results.length === 0 ? (
-          <div className="note-search-empty">{hasQuery ? 'No matching notes' : 'No recent notes'}</div>
-        ) : (
-          results.map((note, index) => (
-            <button
-              aria-selected={index === activeIndex}
-              className={index === activeIndex ? 'note-search-result active' : 'note-search-result'}
-              key={note.id}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => chooseNote(note)}
-              role="option"
-              type="button"
-            >
-              <span>{getNoteTitle(note)}</span>
-              <small>{note.path}</small>
-            </button>
-          ))
-        )}
-      </AnimatedPopover>
-    </div>
+      >
+        <Search size={16} aria-hidden="true" />
+      </button>
+      <AppModal className="note-search-modal" isOpen={isOpen} onClose={() => setIsOpen(false)} title="Find notes">
+        <div className="note-search-input-row">
+          <Search size={18} aria-hidden="true" />
+          <input
+            ref={inputRef}
+            id="note-search-input"
+            aria-autocomplete="list"
+            aria-expanded="true"
+            aria-keyshortcuts="Control+K Meta+K"
+            aria-label="Find notes by title"
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            placeholder="Type a note name or path…"
+            role="combobox"
+            type="search"
+            value={query}
+          />
+          <button className="icon-button" type="button" onClick={() => setIsOpen(false)} aria-label="Close search">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="note-search-results" role="listbox">
+          {!hasQuery && results.length > 0 && <div className="note-search-results-label">Recent notes</div>}
+          {results.length === 0 ? (
+            <div className="note-search-empty">{hasQuery ? 'No matching notes' : 'No recent notes'}</div>
+          ) : (
+            results.map((note, index) => (
+              <button
+                aria-selected={index === activeIndex}
+                className={index === activeIndex ? 'note-search-result active' : 'note-search-result'}
+                key={note.id}
+                onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => chooseNote(note)}
+                role="option"
+                type="button"
+              >
+                <span>{getNoteTitle(note)}</span>
+                <small>{note.path}</small>
+              </button>
+            ))
+          )}
+        </div>
+      </AppModal>
+    </>
   );
 }

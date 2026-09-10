@@ -21,10 +21,10 @@ afterEach(() => {
 });
 
 describe('NoteSearch', () => {
-  it('shows recent notes in order when focused with an empty query', () => {
+  it('shows recent notes in order when opened with an empty query', () => {
     render(<NoteSearch />);
 
-    fireEvent.focus(screen.getByRole('combobox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Find notes' }));
 
     expect(screen.getByText('Recent notes')).toBeTruthy();
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
@@ -35,9 +35,9 @@ describe('NoteSearch', () => {
 
   it('switches to matching notes when text is entered', () => {
     render(<NoteSearch />);
+    fireEvent.click(screen.getByRole('button', { name: 'Find notes' }));
     const search = screen.getByRole('combobox');
 
-    fireEvent.focus(search);
     fireEvent.change(search, { target: { value: 'alp' } });
 
     expect(screen.queryByText('Recent notes')).toBeNull();
@@ -47,9 +47,9 @@ describe('NoteSearch', () => {
 
   it('selects a recent note with the keyboard', () => {
     render(<NoteSearch />);
+    fireEvent.click(screen.getByRole('button', { name: 'Find notes' }));
     const search = screen.getByRole('combobox');
 
-    fireEvent.focus(search);
     fireEvent.keyDown(search, { key: 'ArrowDown' });
     fireEvent.keyDown(search, { key: 'Enter' });
 

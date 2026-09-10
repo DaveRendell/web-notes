@@ -1,10 +1,11 @@
 import { AlertCircle, AlertTriangle, FilePlus2, FolderPlus, Loader2 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useVault } from '../../contexts/VaultContext';
 import { FileTree } from './FileTree';
 import { FavoriteNotes } from './FavoriteNotes';
 import { CollapsibleSidebarSection } from './CollapsibleSidebarSection';
 
-export function Sidebar() {
+export function Sidebar({ controls }: { controls?: ReactNode }) {
   const {
     createFolder,
     createNote,
@@ -41,6 +42,7 @@ export function Sidebar() {
 
   return (
     <aside className="sidebar" id="vault-sidebar" aria-label="Vault files">
+      {controls && <div className="sidebar-toolbar">{controls}</div>}
       {!isLoading && !error && <FavoriteNotes />}
       <CollapsibleSidebarSection
         className="files-section"

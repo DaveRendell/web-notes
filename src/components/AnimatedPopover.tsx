@@ -4,6 +4,7 @@ const FADE_OUT_DURATION_MS = 100;
 
 type AnimatedPopoverProps = HTMLAttributes<HTMLDivElement> & {
   isOpen: boolean;
+  onEscape?: () => void;
   placementGap?: number;
 };
 
@@ -11,12 +12,31 @@ export function AnimatedPopover({
   children,
   className = '',
   isOpen,
+  onEscape,
   placementGap = 6,
   ...props
 }: AnimatedPopoverProps) {
   const popoverRef = useRef<HTMLDivElement>(null);
+  const onEscapeRef = useRef(onEscape);
   const [placement, setPlacement] = useState<'bottom' | 'top'>('bottom');
   const [isPresent, setIsPresent] = useState(isOpen);
+  onEscapeRef.current = onEscape;
+
+  useEffect(() => {
+    if (!isOpen || !onEscapeRef.current) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const trigger = popoverRef.current?.previousElementSibling;
+      onEscapeRef.current?.();
+      if (trigger instanceof HTMLElement) trigger.focus();
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {

@@ -46,7 +46,7 @@ button {
   height: 100vh;
   height: 100dvh;
   min-height: 0;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -108,28 +108,8 @@ button {
   background: #ffffff;
 }
 
-.vault-top-bar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 420px) minmax(0, 1fr);
-}
-
-.vault-top-bar .note-search {
-  width: 100%;
-}
-
-.vault-top-bar .header-actions-menu {
-  justify-self: end;
-}
-
 .top-bar h1 {
   font-size: 1.25rem;
-}
-
-.top-bar-title {
-  display: flex;
-  min-width: 180px;
-  align-items: center;
-  gap: 10px;
 }
 
 .top-bar-actions {
@@ -214,48 +194,35 @@ button {
   background: #fde7e7;
 }
 
-.note-search {
-  position: relative;
-  width: min(420px, 36vw);
-  min-width: 260px;
-}
-
-.note-search-icon {
-  position: absolute;
-  top: 50%;
-  left: 12px;
-  color: #697180;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.note-search input {
+.note-search-input-row input {
   width: 100%;
-  min-height: 38px;
-  padding: 0 12px 0 36px;
-  border: 1px solid #ccd4df;
-  border-radius: 6px;
-  background: #ffffff;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: #202124;
   outline: none;
+  font: inherit;
+  font-size: 1rem;
 }
 
-.note-search input:focus {
-  border-color: #24577a;
-  box-shadow: 0 0 0 3px rgba(36, 87, 122, 0.14);
+.note-search-input-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px 4px 14px;
+  border-bottom: 1px solid #dfe3ea;
+  color: #697180;
 }
 
 .note-search-results {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  left: 0;
-  z-index: 10;
-  overflow: hidden;
-  border: 1px solid #ccd4df;
-  border-radius: 8px;
+  min-height: 60px;
+  max-height: min(60vh, 480px);
+  overflow-x: hidden;
+  overflow-y: auto;
   background: #ffffff;
-  box-shadow: 0 16px 40px rgba(32, 33, 36, 0.14);
 }
 
 .note-search-results-label {
@@ -522,6 +489,27 @@ button {
   visibility: visible;
   opacity: 1;
   transition: opacity 0.1s ease-out;
+}
+
+.sidebar-toolbar {
+  display: flex;
+  min-height: 51px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.sidebar-toolbar > .icon-button,
+.sidebar-toolbar > .header-actions-menu > .icon-button {
+  width: 36px;
+  min-height: 36px;
+}
+
+.sidebar-toolbar .header-actions-menu {
+  margin-left: auto;
 }
 
 .sidebar-resizer {
@@ -1062,6 +1050,74 @@ button {
   margin-top: 18px;
 }
 
+.app-modal-backdrop {
+  position: fixed;
+  z-index: 200;
+  inset: 0;
+  display: grid;
+  place-items: start center;
+  overflow-y: auto;
+  padding: max(72px, 10vh) 20px 20px;
+  background: rgb(15 23 33 / 48%);
+  animation: dropdown-fade-in 0.1s ease-out both;
+}
+
+.app-modal {
+  position: relative;
+  width: min(100%, 560px);
+  max-height: min(78vh, 700px);
+  overflow: hidden;
+  border: 1px solid #dfe3ea;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 20px 56px rgb(15 23 33 / 28%);
+  color: #202124;
+  outline: none;
+}
+
+.app-modal > h2 {
+  margin: 0;
+  padding: 16px 56px 14px 18px;
+  border-bottom: 1px solid #edf0f4;
+  font-size: 1rem;
+}
+
+.app-modal-close {
+  position: absolute;
+  z-index: 1;
+  top: 7px;
+  right: 8px;
+}
+
+.note-search-modal > h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.properties-modal {
+  width: min(100%, 680px);
+}
+
+.properties-table-scroll {
+  max-height: min(60vh, 520px);
+  overflow: auto;
+}
+
+.properties-empty {
+  padding: 4px 18px 14px;
+}
+
+.properties-modal .frontmatter-table a {
+  color: #24577a;
+  text-decoration-thickness: from-font;
+  text-underline-offset: 2px;
+}
+
 .tree-action {
   display: inline-flex;
   width: 28px;
@@ -1399,18 +1455,22 @@ button {
    padding. Keep the text/background on the normal list grid and put only the
    checkbox in the marker gutter. */
 .rich-markdown-editor .rich-markdown-content li[role="checkbox"] {
-  margin-inline-start: 0;
-  padding-inline: 0;
+  /* Keep the marker inside the LI's real box: Lexical uses that box for
+     checkbox hit-testing. The padding offsets the negative margin so the text
+     remains aligned with ordinary list items. */
+  margin-inline-start: -1.5rem;
+  padding-inline-start: 1.5rem;
+  padding-inline-end: 0;
 }
 
 .rich-markdown-editor .rich-markdown-content li[role="checkbox"]::before {
   top: calc((1lh - var(--spacing-4)) / 2);
-  left: -1.5rem;
+  left: 0;
 }
 
 .rich-markdown-editor .rich-markdown-content li[role="checkbox"]::after {
   top: calc((1lh - var(--spacing-4)) / 2 + var(--spacing-0_5));
-  left: calc(-1.5rem + var(--spacing-1_5));
+  left: var(--spacing-1_5);
   right: auto;
 }
 
@@ -1865,6 +1925,10 @@ li.markdown-block > .markdown-block-controls {
   min-width: 0;
 }
 
+.note-toolbar-leading:empty {
+  display: none;
+}
+
 .frontmatter-summary {
   display: inline-flex;
   min-height: 30px;
@@ -1992,6 +2056,10 @@ li.markdown-block > .markdown-block-controls {
   text-align: left;
 }
 
+.properties-modal .frontmatter-table tr:first-child > * {
+  border-top: 0;
+}
+
 .frontmatter-table th {
   width: 32%;
   color: #5f6673;
@@ -2078,6 +2146,8 @@ li.markdown-block > .markdown-block-controls {
 
 .empty-viewer {
   display: grid;
+  min-height: 0;
+  flex: 1;
   align-content: center;
   justify-items: center;
   padding: 32px;
@@ -2152,6 +2222,7 @@ li.markdown-block > .markdown-block-controls {
 
 [data-theme="dark"] .login-panel,
 [data-theme="dark"] .top-bar,
+[data-theme="dark"] .app-modal,
 [data-theme="dark"] .folder-list,
 [data-theme="dark"] .folder-row,
 [data-theme="dark"] .sidebar,
@@ -2163,6 +2234,20 @@ li.markdown-block > .markdown-block-controls {
   border-color: #2b3643;
   background: #181e25;
   color: #e7ebf0;
+}
+
+[data-theme="dark"] .app-modal > h2,
+[data-theme="dark"] .note-search-input-row,
+[data-theme="dark"] .sidebar-toolbar {
+  border-color: #2b3643;
+}
+
+[data-theme="dark"] .note-search-input-row input {
+  color: #e7ebf0;
+}
+
+[data-theme="dark"] .properties-modal .frontmatter-table a {
+  color: #8ec8ed;
 }
 
 [data-theme="dark"] .login-panel {
@@ -2310,10 +2395,6 @@ li.markdown-block > .markdown-block-controls {
 [data-theme="dark"] .eyebrow,
 [data-theme="dark"] .markdown-body a {
   color: #8ab7dc;
-}
-
-[data-theme="dark"] .note-search-icon {
-  color: #aab4c0;
 }
 
 [data-theme="dark"] .note-search input,
@@ -2700,24 +2781,6 @@ li.markdown-block > .markdown-block-controls {
 }
 
 @media (max-width: 760px) {
-  .vault-top-bar {
-    position: relative;
-    z-index: 70;
-    display: grid;
-    grid-template-columns: 44px minmax(0, 1fr) 44px;
-    align-items: center;
-    gap: 8px;
-    min-height: 60px;
-    padding: 8px max(8px, env(safe-area-inset-right)) 8px max(8px, env(safe-area-inset-left));
-  }
-
-  .top-bar-title,
-  .top-bar-actions,
-  .note-search {
-    width: 100%;
-    min-width: 0;
-  }
-
   .header-actions-menu {
     justify-content: flex-end;
   }
@@ -2775,19 +2838,15 @@ li.markdown-block > .markdown-block-controls {
     overscroll-behavior: contain;
   }
 
-  .vault-top-bar .icon-button,
+  .sidebar-toolbar .icon-button,
   .sidebar-section-actions .compact-icon,
   .tree-item,
   .favorite-note {
     min-height: 44px;
   }
 
-  .vault-top-bar .icon-button {
+  .sidebar-toolbar .icon-button {
     width: 44px;
-  }
-
-  .note-search input {
-    font-size: 16px;
   }
 
   .tree-actions,
@@ -2796,12 +2855,18 @@ li.markdown-block > .markdown-block-controls {
     opacity: 1;
   }
 
+  .app-modal-backdrop {
+    place-items: start stretch;
+    padding: max(16px, env(safe-area-inset-top)) 12px max(16px, env(safe-area-inset-bottom));
+  }
+
+  .app-modal {
+    width: 100%;
+    max-height: calc(100dvh - 32px);
+  }
+
   .note-search-results {
-    position: fixed;
-    top: 60px;
-    left: 8px;
-    right: 8px;
-    max-height: min(60dvh, 420px);
+    max-height: calc(100dvh - 88px);
   }
 
   .image-viewer-header {
@@ -2846,16 +2911,11 @@ li.markdown-block > .markdown-block-controls {
 }
 
 @media (max-width: 520px) {
-  .note-toolbar-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .note-toolbar-leading:empty {
     display: none;
   }
 
   .note-toolbar-controls {
-    grid-column: 1;
     flex-wrap: wrap;
   }
 }
@@ -2892,10 +2952,19 @@ li.markdown-block > .markdown-block-controls {
 
 /* Paint beyond the block box without changing margins, padding or hit targets. */
 .rich-markdown-content [data-block-background]:not(.rich-block-drop-nest) {
-  box-shadow: 0 0 0 6px var(--block-bg);
+  /* Firefox on some Windows display scales can rasterize a hairline between the
+     element background and a spread shadow. The inner/outer 1px layers overlap
+     that join without changing the visible size of the highlight. */
+  box-shadow:
+    inset 0 0 0 1px var(--block-bg),
+    0 0 0 1px var(--block-bg),
+    0 0 0 6px var(--block-bg);
 }
 
 /* List rows sit closer together, so use a smaller spread to avoid overlap. */
 .rich-markdown-content li[data-block-background]:not(.rich-block-drop-nest) {
-  box-shadow: 0 0 0 3px var(--block-bg);
+  box-shadow:
+    inset 0 0 0 1px var(--block-bg),
+    0 0 0 1px var(--block-bg),
+    0 0 0 3px var(--block-bg);
 }

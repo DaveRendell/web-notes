@@ -1,5 +1,5 @@
-import { LogOut, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings, Sun, Unplug } from 'lucide-react';
-import { CSSProperties, KeyboardEvent, PointerEvent, useEffect, useRef, useState } from 'react';
+import { LogOut, Moon, PanelLeftClose, RefreshCw, Settings, Sun, Unplug } from 'lucide-react';
+import { CSSProperties, KeyboardEvent, PointerEvent, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useVault } from '../contexts/VaultContext';
@@ -33,23 +33,44 @@ export function AppShell() {
 
   useEffect(() => { setMobileSidebarOpen(false); }, [selectedFile?.id, selectedVault?.id]);
 
-  function closeMobileSidebar() {
+  const closeMobileSidebar = useCallback(() => {
     setMobileSidebarOpen(false);
-    sidebarToggleRef.current?.focus();
-  }
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLButtonElement>('[aria-label="Show file sidebar"]')?.focus();
+    });
+  }, []);
+
+  const openSidebar = useCallback(() => {
+    if (isMobile) {
+      setMobileSidebarOpen(true);
+      return;
+    }
+    setIsSidebarCollapsed(false);
+    window.requestAnimationFrame(() => sidebarToggleRef.current?.focus());
+  }, [isMobile]);
+
+  const hideSidebar = useCallback(() => {
+    if (isMobile) {
+      closeMobileSidebar();
+      return;
+    }
+    setIsSidebarCollapsed(true);
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLButtonElement>('[aria-label="Show file sidebar"]')?.focus();
+    });
+  }, [closeMobileSidebar, isMobile]);
 
   useEffect(() => {
     if (!isMobile || !mobileSidebarOpen) return;
     document.querySelector<HTMLElement>('#vault-sidebar button')?.focus();
     const escape = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape' && !event.defaultPrevented) {
-        setMobileSidebarOpen(false);
-        sidebarToggleRef.current?.focus();
+        closeMobileSidebar();
       }
     };
     document.addEventListener('keydown', escape);
     return () => document.removeEventListener('keydown', escape);
-  }, [isMobile, mobileSidebarOpen]);
+  }, [closeMobileSidebar, isMobile, mobileSidebarOpen]);
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(isSidebarCollapsed));
@@ -63,9 +84,8 @@ export function AppShell() {
 
       if (hasPrimaryModifier && !event.altKey && !event.shiftKey && event.code === 'KeyK') {
         event.preventDefault();
-        const searchInput = document.querySelector<HTMLInputElement>('#note-search-input');
-        searchInput?.focus();
-        searchInput?.select();
+        window.dispatchEvent(new Event('web-notes:open-search'));
+        document.querySelector<HTMLButtonElement>('#note-search-trigger')?.click();
         return;
       }
 
@@ -128,25 +148,30 @@ export function AppShell() {
 
   return (
     <div className="app-shell">
-      <header className="top-bar vault-top-bar">
-        <div className="top-bar-title">
-          <button
-            className="icon-button"
-            ref={sidebarToggleRef}
-            type="button"
-            onClick={() => isMobile ? setMobileSidebarOpen((current) => !current) : setIsSidebarCollapsed((current) => !current)}
-            aria-controls="vault-sidebar"
-            aria-expanded={!sidebarCollapsed}
-            aria-label={sidebarCollapsed ? 'Show file sidebar' : 'Hide file sidebar'}
-            title={sidebarCollapsed ? 'Show file sidebar' : 'Hide file sidebar'}
-          >
-            {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
-          </button>
-        </div>
-        <NoteSearch />
-        <HeaderActionsMenu onChangeVault={clearVault} onDisconnect={disconnect} onSignOut={signOut} />
-      </header>
-      <ResizableWorkspace isSidebarCollapsed={sidebarCollapsed} mobileSidebarOpen={isMobile && mobileSidebarOpen} onCloseSidebar={closeMobileSidebar} />
+      <ResizableWorkspace
+        controls={(
+          <>
+            <button
+              className="icon-button"
+              ref={sidebarToggleRef}
+              type="button"
+              onClick={hideSidebar}
+              aria-controls="vault-sidebar"
+              aria-expanded="true"
+              aria-label="Hide file sidebar"
+              title="Hide file sidebar"
+            >
+              <PanelLeftClose size={18} />
+            </button>
+            <NoteSearch />
+            <HeaderActionsMenu onChangeVault={clearVault} onDisconnect={disconnect} onSignOut={signOut} />
+          </>
+        )}
+        isSidebarCollapsed={sidebarCollapsed}
+        mobileSidebarOpen={isMobile && mobileSidebarOpen}
+        onCloseSidebar={closeMobileSidebar}
+        onOpenSidebar={openSidebar}
+      />
     </div>
   );
 }
@@ -161,7 +186,13 @@ const MAX_SIDEBAR_WIDTH = 640;
 const MIN_VIEWER_WIDTH = 320;
 const RESIZE_STEP = 16;
 
-function ResizableWorkspace({ isSidebarCollapsed, mobileSidebarOpen, onCloseSidebar }: { isSidebarCollapsed: boolean; mobileSidebarOpen: boolean; onCloseSidebar: () => void }) {
+function ResizableWorkspace({ controls, isSidebarCollapsed, mobileSidebarOpen, onCloseSidebar, onOpenSidebar }: {
+  controls: ReactNode;
+  isSidebarCollapsed: boolean;
+  mobileSidebarOpen: boolean;
+  onCloseSidebar: () => void;
+  onOpenSidebar: () => void;
+}) {
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const [isResizing, setIsResizing] = useState(false);
   const dragStartRef = useRef<{ pointerX: number; sidebarWidth: number } | null>(null);
@@ -215,7 +246,7 @@ function ResizableWorkspace({ isSidebarCollapsed, mobileSidebarOpen, onCloseSide
         const target = event.target as HTMLElement;
         if (mobileSidebarOpen && target.closest('.favorite-note, .tree-item:not([aria-expanded])')) onCloseSidebar();
       }}>
-        <Sidebar />
+        <Sidebar controls={controls} />
       </div>
       {mobileSidebarOpen && <button className="sidebar-backdrop" type="button" aria-label="Close file sidebar" onClick={onCloseSidebar} />}
       <div
@@ -236,15 +267,17 @@ function ResizableWorkspace({ isSidebarCollapsed, mobileSidebarOpen, onCloseSide
         title="Drag to resize; double-click to reset"
       />
       <div className="workspace-viewer" inert={mobileSidebarOpen}>
-        <SelectedFileViewer />
+        <SelectedFileViewer onOpenSidebar={isSidebarCollapsed ? onOpenSidebar : undefined} />
       </div>
     </div>
   );
 }
 
-function SelectedFileViewer() {
+function SelectedFileViewer({ onOpenSidebar }: { onOpenSidebar?: () => void }) {
   const { selectedFile } = useVault();
-  return selectedFile?.type === 'image' ? <ImageViewer /> : <MarkdownViewer />;
+  return selectedFile?.type === 'image'
+    ? <ImageViewer onOpenSidebar={onOpenSidebar} />
+    : <MarkdownViewer onOpenSidebar={onOpenSidebar} />;
 }
 
 function readSidebarWidth() {
@@ -304,12 +337,6 @@ export function HeaderActionsMenu({ onChangeVault, onDisconnect, onSignOut }: He
     }
 
     function handleKeyDown(event: globalThis.KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setIsOpen(false);
-        triggerRef.current?.focus();
-        return;
-      }
-
       const menuItems = getMenuItems();
       const currentIndex = menuItems.indexOf(document.activeElement as HTMLButtonElement);
       let nextIndex: number | null = null;
@@ -356,7 +383,7 @@ export function HeaderActionsMenu({ onChangeVault, onDisconnect, onSignOut }: He
       >
         <Settings size={18} />
       </button>
-      <AnimatedPopover className="header-menu-popover" isOpen={isOpen} role="menu">
+      <AnimatedPopover className="header-menu-popover" isOpen={isOpen} onEscape={() => setIsOpen(false)} role="menu">
         <button type="button" role="menuitem" onClick={() => runAction(toggleTheme)}>
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>

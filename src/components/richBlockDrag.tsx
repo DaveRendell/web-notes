@@ -139,12 +139,24 @@ function RichBlockDrag() {
     };
   }, [candidates, clearHideTimer, isDragging, isMenuOpen, rootElement]);
 
+  useEffect(() => {
+    if (!isMenuOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!handleContainerRef.current?.contains(event.target as Node)) setIsMenuOpen(false);
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [isMenuOpen]);
+
   useLayoutEffect(() => {
     const container = handleContainerRef.current;
-    if (!container || !hovered) return;
+    if (!container || !hovered || !rootElement) return;
     const targetContainer = container;
     const targetCandidate = hovered;
     const targetElement = targetCandidate.element;
+    const editorRoot = rootElement;
 
     function positionHandle() {
       const rect = getCandidateInteractionRect(targetCandidate);
@@ -152,6 +164,16 @@ function RichBlockDrag() {
       const firstLineHeight = getFirstLineHeight(targetElement, rect.height);
       const taskOffset = targetCandidate.taskItem ? 4 : 0;
       const top = rect.top + Math.max(0, (firstLineHeight - 28) / 2) - taskOffset;
+      const scrollElement = findScrollElement(editorRoot);
+      const viewport = scrollElement?.getBoundingClientRect();
+      const isVisible = !viewport || (
+        rect.bottom > viewport.top
+        && rect.top < viewport.bottom
+        && top >= viewport.top
+        && top + 28 <= viewport.bottom
+      );
+      targetContainer.style.visibility = isVisible ? 'visible' : 'hidden';
+      targetContainer.style.pointerEvents = isVisible ? 'auto' : 'none';
       targetContainer.style.transform = `translate(${Math.max(4, rect.left - gutterOffset)}px, ${top}px)`;
     }
 
@@ -162,7 +184,7 @@ function RichBlockDrag() {
       window.removeEventListener('resize', positionHandle);
       window.removeEventListener('scroll', positionHandle, true);
     };
-  }, [hovered]);
+  }, [hovered, rootElement]);
 
   useEffect(() => {
     const handle = handleRef.current;
@@ -272,7 +294,7 @@ function RichBlockDrag() {
         >
           <GripVertical size={16} />
         </button>
-        <AnimatedPopover className="markdown-block-menu rich-block-menu" isOpen={isMenuOpen} placementGap={2} role="menu">
+        <AnimatedPopover className="markdown-block-menu rich-block-menu" isOpen={isMenuOpen} onEscape={() => setIsMenuOpen(false)} placementGap={2} role="menu">
           <MenuButton disabled={!actions.up} icon={<ArrowUp size={15} />} label="Move up" onClick={() => runAction('up')} />
           <MenuButton disabled={!actions.down} icon={<ArrowDown size={15} />} label="Move down" onClick={() => runAction('down')} />
           <MenuButton disabled={!actions.indent} icon={<ArrowRight size={15} />} label="Indent" onClick={() => runAction('indent')} />

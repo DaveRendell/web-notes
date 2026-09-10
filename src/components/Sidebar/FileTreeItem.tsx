@@ -101,15 +101,9 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
       if (!menuRef.current?.contains(event.target as Node)) setIsMenuOpen(false);
     }
 
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setIsMenuOpen(false);
-    }
-
     document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isMenuOpen]);
 
@@ -253,7 +247,7 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
             >
               <EllipsisVertical size={14} />
             </button>
-            <AnimatedPopover className="tree-action-menu" isOpen={isMenuOpen} placementGap={2} role="menu">
+            <AnimatedPopover className="tree-action-menu" isOpen={isMenuOpen} onEscape={() => setIsMenuOpen(false)} placementGap={2} role="menu">
               {node.type === 'image' && <ImageActionItems image={node} onClose={() => setIsMenuOpen(false)} />}
               {isFolder && (
                 <>

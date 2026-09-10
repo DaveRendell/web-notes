@@ -31,8 +31,15 @@ vi.mock('../contexts/VaultContext', () => ({
   }),
 }));
 vi.mock('./MarkdownViewer', () => ({ MarkdownViewer: () => <div>Viewer</div> }));
-vi.mock('./NoteSearch', () => ({ NoteSearch: () => <input id="note-search-input" aria-label="Find notes" /> }));
-vi.mock('./Sidebar/Sidebar', () => ({ Sidebar: () => <aside id="vault-sidebar">Sidebar</aside> }));
+vi.mock('./NoteSearch', () => ({
+  NoteSearch: () => (
+    <>
+      <button id="note-search-trigger" type="button" onClick={() => document.querySelector<HTMLInputElement>('#note-search-input')?.focus()}>Find notes</button>
+      <input id="note-search-input" aria-label="Find notes" />
+    </>
+  ),
+}));
+vi.mock('./Sidebar/Sidebar', () => ({ Sidebar: ({ controls }: { controls: React.ReactNode }) => <aside id="vault-sidebar">{controls}</aside> }));
 
 import { AppShell } from './AppShell';
 
@@ -42,8 +49,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('AppShell header options', () => {
-  it('places all right-side actions in one menu', () => {
+describe('AppShell sidebar controls', () => {
+  it('places app actions in the sidebar menu', () => {
     render(<AppShell />);
 
     expect(screen.queryByRole('heading', { name: 'My Vault' })).toBeNull();

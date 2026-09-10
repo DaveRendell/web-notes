@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, ChevronRight, EllipsisVertical, FileCode2, FileText, Loader2, Pencil, Star, StarOff, Trash2, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, EllipsisVertical, FileCode2, FileText, ListTree, Loader2, PanelLeftOpen, Pencil, Star, StarOff, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useVault } from '../contexts/VaultContext';
@@ -18,7 +18,7 @@ type QueuedNoteSave = {
   note: NonNullable<ReturnType<typeof useVault>['selectedFile']>;
 };
 
-export function MarkdownViewer() {
+export function MarkdownViewer({ onOpenSidebar }: { onOpenSidebar?: () => void } = {}) {
   const { accessToken, accountId, ensureAccessToken, invalidateAccessToken } = useAuth();
   const {
     cacheNoteIcon,
@@ -65,6 +65,7 @@ export function MarkdownViewer() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isNoteMenuOpen, setIsNoteMenuOpen] = useState(false);
+  const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
   const parsedMarkdown = useMemo(() => parseMarkdownWithFrontmatter(draft), [draft]);
   const sequenceNavigation = useMemo(
     () => selectedFile ? getNoteSequenceNavigation(selectedFile, notes) : null,
@@ -229,6 +230,7 @@ export function MarkdownViewer() {
   useEffect(() => {
     noteContentRef.current?.scrollTo({ top: 0 });
     setIsNoteMenuOpen(false);
+    setIsPropertiesOpen(false);
   }, [selectedFile?.id]);
 
   useEffect(() => {
@@ -238,15 +240,9 @@ export function MarkdownViewer() {
       if (!noteMenuRef.current?.contains(event.target as Node)) setIsNoteMenuOpen(false);
     }
 
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setIsNoteMenuOpen(false);
-    }
-
     document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isNoteMenuOpen]);
 
@@ -344,10 +340,19 @@ export function MarkdownViewer() {
 
   if (!selectedFile) {
     return (
-      <main className="viewer empty-viewer">
-        <FileText size={38} />
-        <h2>Select a markdown file</h2>
-        <p>Choose a note from the sidebar to open it here.</p>
+      <main className="viewer">
+        {onOpenSidebar && (
+          <header className="frontmatter-panel empty-viewer-header">
+            <button className="icon-button" type="button" onClick={onOpenSidebar} aria-label="Show file sidebar" title="Show file sidebar">
+              <PanelLeftOpen size={18} />
+            </button>
+          </header>
+        )}
+        <div className="empty-viewer">
+          <FileText size={38} />
+          <h2>Select a markdown file</h2>
+          <p>Choose a note from the sidebar to open it here.</p>
+        </div>
       </main>
     );
   }
@@ -357,6 +362,9 @@ export function MarkdownViewer() {
       <FrontmatterProperties
         key={selectedFile.id}
         error={parsedMarkdown.frontmatterError}
+        isPropertiesOpen={isPropertiesOpen}
+        onCloseProperties={() => setIsPropertiesOpen(false)}
+        onOpenSidebar={onOpenSidebar}
         properties={parsedMarkdown.frontmatter}
         status={isSaving || isRefreshing ? (
           <span className="note-save-status" role="status">
@@ -450,7 +458,13 @@ export function MarkdownViewer() {
               >
                 <EllipsisVertical size={18} />
               </button>
-              <AnimatedPopover className="header-menu-popover" isOpen={isNoteMenuOpen} role="menu">
+              <AnimatedPopover className="header-menu-popover" isOpen={isNoteMenuOpen} onEscape={() => setIsNoteMenuOpen(false)} role="menu">
+                {(parsedMarkdown.frontmatter.length > 0 || parsedMarkdown.frontmatterError) && (
+                  <button type="button" role="menuitem" onClick={() => runNoteMenuAction(() => setIsPropertiesOpen(true))}>
+                    <ListTree size={16} />
+                    <span>Properties</span>
+                  </button>
+                )}
                 <button type="button" role="menuitem" onClick={() => runNoteMenuAction(() => toggleFavorite(selectedFile.id))}>
                   {favoriteNoteIds.includes(selectedFile.id) ? <StarOff size={16} /> : <Star size={16} />}
                   <span>{favoriteNoteIds.includes(selectedFile.id) ? 'Remove favourite' : 'Add favourite'}</span>

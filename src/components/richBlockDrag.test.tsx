@@ -73,6 +73,22 @@ describe('rich block movement', () => {
     await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe('Second\n\nFirst'));
   });
 
+  it('dismisses the grabber menu with Escape or an outside click', async () => {
+    const { container } = renderEditor('First');
+    const paragraph = container.querySelector('p')!;
+    await openBlockMenu(paragraph);
+    const handle = screen.getByRole('button', { name: 'Move block' });
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(handle));
+
+    fireEvent.click(handle);
+    expect(screen.getByRole('menu')).toBeTruthy();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
   it('moves individual list items and carries their nested subtree', async () => {
     const { container, editorRef } = renderEditor('- Parent\n  - Child\n- Sibling');
     const items = container.querySelectorAll('li');

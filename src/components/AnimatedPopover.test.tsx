@@ -1,4 +1,5 @@
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AnimatedPopover } from './AnimatedPopover';
 
@@ -44,6 +45,29 @@ describe('AnimatedPopover placement', () => {
     act(() => vi.advanceTimersByTime(100));
     expect(container.querySelector('.dropdown-popover')).toBeNull();
     rectSpy.mockRestore();
+  });
+
+  it('closes with Escape and restores focus to its trigger', async () => {
+    function Menu() {
+      const [open, setOpen] = useState(false);
+      return (
+        <div>
+          <button type="button" onClick={() => setOpen(true)}>Open menu</button>
+          <AnimatedPopover isOpen={open} onEscape={() => setOpen(false)} role="menu">
+            <button type="button">Action</button>
+          </AnimatedPopover>
+        </div>
+      );
+    }
+
+    render(<Menu />);
+    const trigger = screen.getByRole('button', { name: 'Open menu' });
+    fireEvent.click(trigger);
+    screen.getByRole('button', { name: 'Action' }).focus();
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('menu')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 });
 
