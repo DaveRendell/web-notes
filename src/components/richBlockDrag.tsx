@@ -1,11 +1,12 @@
 import { autoScrollForElements } from '@atlaskit/pragmatic-drag-and-drop-auto-scroll/element';
 import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
-import { $createListNode, $isListItemNode, $isListNode, type ListItemNode, type ListNode } from '@lexical/list';
+import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, type ListItemNode, type ListNode } from '@lexical/list';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { addComposerChild$, Cell, realmPlugin, useCellValue } from '@mdxeditor/editor';
+import { addComposerChild$, addImportVisitor$, Cell, realmPlugin, useCellValue, type MdastImportVisitor } from '@mdxeditor/editor';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, GripVertical, Trash2 } from 'lucide-react';
 import {
   $getNodeByKey,
+  $createParagraphNode,
   $getState,
   $setState,
   $getRoot,
@@ -23,6 +24,7 @@ import { createPortal } from 'react-dom';
 import { AnimatedPopover } from './AnimatedPopover';
 import { BLOCK_BACKGROUNDS } from '../lib/blockBackground';
 import { blockBackgroundState } from './richBlockBackground';
+import type { Paragraph } from 'mdast';
 
 const RICH_BLOCK_DRAG_TYPE = 'web-notes-rich-block';
 const GUTTER_TARGET_OVERSCAN = 36;
@@ -36,6 +38,7 @@ export const richBlockDragPlugin = realmPlugin<{ disabled: boolean }>({
   init(realm, params) {
     realm.pubIn({
       [addComposerChild$]: RichBlockDrag,
+      [addImportVisitor$]: NestedParagraphVisitor,
       [disabled$]: params?.disabled ?? false,
     });
   },
@@ -43,6 +46,23 @@ export const richBlockDragPlugin = realmPlugin<{ disabled: boolean }>({
     realm.pub(disabled$, params?.disabled ?? false);
   },
 });
+
+// ListItemNode normally flattens every ParagraphNode appended to it. Retain
+// continuation paragraphs as actual blocks so a nested paragraph can round-trip
+// instead of being concatenated with the list item's label.
+const NestedParagraphVisitor: MdastImportVisitor<Paragraph> = {
+  priority: 100,
+  testNode: 'paragraph',
+  visitNode({ actions, lexicalParent, mdastNode }) {
+    if (!$isListItemNode(lexicalParent) || lexicalParent.getChildrenSize() === 0) {
+      actions.nextVisitor();
+      return;
+    }
+    const paragraph = $createParagraphNode();
+    lexicalParent.splice(lexicalParent.getChildrenSize(), 0, [paragraph]);
+    actions.visitChildren(mdastNode, paragraph);
+  },
+};
 
 function RichBlockDrag() {
   const [editor] = useLexicalComposerContext();
@@ -177,7 +197,7 @@ function RichBlockDrag() {
       const destination = getDropState(location.current.dropTargets[0]?.data);
       setDropState(null);
       setIsDragging(false);
-      if (sourceKey && destination) moveBlock(editor, sourceKey, destination.key, destination.placement);
+      if (sourceKey && destination) moveRichBlock(editor, sourceKey, destination.key, destination.placement);
     },
   }), [editor]);
 
@@ -510,8 +530,8 @@ function canMove(editor: LexicalEditor, sourceKey: NodeKey, targetKey: NodeKey, 
   return editor.getEditorState().read(() => {
     const source = $getNodeByKey(sourceKey);
     const target = $getNodeByKey(targetKey);
-    if (!source || !target || source.is(target) || isAncestor(source, target)) return false;
-    if (placement === 'nest') return $isListItemNode(source) && $isListItemNode(target);
+    if (!source || !target || source.is(target) || isLogicalAncestor(source, target)) return false;
+    if (placement === 'nest') return $isListItemNode(target);
     return true;
   });
 }
@@ -525,7 +545,13 @@ function isAncestor(possibleParent: LexicalNode, node: LexicalNode) {
   return false;
 }
 
-function moveBlock(editor: LexicalEditor, sourceKey: NodeKey, targetKey: NodeKey, placement: Placement) {
+function isLogicalAncestor(possibleParent: LexicalNode, node: LexicalNode) {
+  if (isAncestor(possibleParent, node)) return true;
+  return $isListItemNode(possibleParent)
+    && getNestedWrappers(possibleParent).some((wrapper) => wrapper.is(node) || isAncestor(wrapper, node));
+}
+
+export function moveRichBlock(editor: LexicalEditor, sourceKey: NodeKey, targetKey: NodeKey, placement: Placement) {
   editor.update(() => {
     const source = $getNodeByKey(sourceKey);
     if (placement === 'outdent') {
@@ -535,13 +561,12 @@ function moveBlock(editor: LexicalEditor, sourceKey: NodeKey, targetKey: NodeKey
       return;
     }
     const target = $getNodeByKey(targetKey);
-    if (!source || !target || source.is(target) || isAncestor(source, target)) return;
+    if (!source || !target || source.is(target) || isLogicalAncestor(source, target)) return;
 
     if (placement === 'nest') {
-      if (!$isListItemNode(source) || !$isListItemNode(target)) return;
-      moveListItemWithSubtree(source, target, 'after');
-      source.selectStart();
-      editor.dispatchCommand(INDENT_CONTENT_COMMAND, undefined);
+      if (!$isListItemNode(target)) return;
+      if ($isListItemNode(source)) nestListItemPreservingType(source, target);
+      else target.splice(target.getChildrenSize(), 0, [source]);
       return;
     }
 
@@ -549,7 +574,14 @@ function moveBlock(editor: LexicalEditor, sourceKey: NodeKey, targetKey: NodeKey
       ? getTopLevelList(target)
       : target;
     if (!destination) return;
-    if ($isListItemNode(source) && $isListItemNode(destination)) {
+    if ($isListItemNode(source) && !$isListItemNode(destination)) {
+      const sourceList = source.getParent();
+      if (!$isListNode(sourceList)) return;
+      const fragment = detachListItemFragment(source, sourceList);
+      if (placement === 'before') destination.insertBefore(fragment);
+      else destination.insertAfter(fragment);
+      removeEmptyList(sourceList);
+    } else if ($isListItemNode(source) && $isListItemNode(destination)) {
       const sourceList = source.getParent();
       const destinationList = destination.getParent();
       if (
@@ -557,7 +589,9 @@ function moveBlock(editor: LexicalEditor, sourceKey: NodeKey, targetKey: NodeKey
         && $isListNode(destinationList)
         && sourceList.getListType() !== destinationList.getListType()
       ) {
-        moveListItemToNewList(source, sourceList, destination, destinationList, placement);
+        const fragment = detachListItemFragment(source, sourceList);
+        insertListFragment(destinationList, destination, fragment, placement);
+        removeEmptyList(sourceList);
       } else {
         moveListItemWithSubtree(source, destination, placement);
       }
@@ -566,37 +600,103 @@ function moveBlock(editor: LexicalEditor, sourceKey: NodeKey, targetKey: NodeKey
   }, { tag: 'rich-block-move' });
 }
 
-function moveListItemToNewList(
-  source: ListItemNode,
-  sourceList: ListNode,
-  target: ListItemNode,
+function detachListItemFragment(source: ListItemNode, sourceList: ListNode) {
+  const sourceType = sourceList.getListType();
+  const fragment = $createListNode(sourceType, sourceType === 'number' ? source.getValue() : sourceList.getStart());
+  const wrappers = getNestedWrappers(source);
+  source.setChecked(sourceType === 'check' ? source.getChecked() ?? false : undefined);
+  fragment.append(source, ...wrappers);
+  return fragment;
+}
+
+function insertListFragment(
   destinationList: ListNode,
+  target: ListItemNode,
+  fragment: ListNode,
   placement: 'before' | 'after',
 ) {
-  const nestedWrapper = source.getNextSibling();
-  const sourceType = sourceList.getListType();
-  const fragment = $createListNode(sourceType, sourceList.getStart());
-  source.setChecked(sourceType === 'check' ? source.getChecked() ?? false : undefined);
-  fragment.append(source);
-  if (nestedWrapper && isListWrapper(nestedWrapper)) fragment.append(nestedWrapper);
+  const children = destinationList.getChildren();
+  const targetIndex = children.findIndex((child) => child.is(target));
+  if (targetIndex === -1) return;
+  const boundary = placement === 'before'
+    ? targetIndex
+    : targetIndex + 1 + getNestedWrappers(target).length;
+  const container = destinationList.getParent();
 
-  if (placement === 'before') {
-    const previous = target.getPreviousSibling();
-    if (previous) previous.insertAfter(fragment);
-    else destinationList.insertBefore(fragment);
+  if (boundary === 0) {
+    insertListBeside(destinationList, fragment, 'before');
+    return;
+  }
+  if (boundary >= children.length) {
+    insertListBeside(destinationList, fragment, 'after');
     return;
   }
 
-  const nestedTarget = target.getNextSibling();
-  const anchor = nestedTarget && isListWrapper(nestedTarget) ? nestedTarget : target;
-  anchor.insertAfter(fragment);
+  const afterList = $createListNode(destinationList.getListType(), getListStartAtBoundary(destinationList, boundary));
+  afterList.append(...children.slice(boundary));
+  if ($isListItemNode(container) && isListWrapper(container)) {
+    const fragmentWrapper = $createListItemNode().append(fragment);
+    const afterWrapper = $createListItemNode().append(afterList);
+    container.insertAfter(afterWrapper);
+    container.insertAfter(fragmentWrapper);
+  } else {
+    destinationList.insertAfter(afterList);
+    destinationList.insertAfter(fragment);
+  }
 }
 
 function moveListItemWithSubtree(source: ListItemNode, target: ListItemNode, placement: 'before' | 'after') {
-  const nestedWrapper = source.getNextSibling();
+  const nestedWrappers = getNestedWrappers(source);
   if (placement === 'before') target.insertBefore(source);
-  else target.insertAfter(source);
-  if (nestedWrapper && isListWrapper(nestedWrapper)) source.insertAfter(nestedWrapper);
+  else (getNestedWrappers(target).at(-1) ?? target).insertAfter(source);
+  let anchor: LexicalNode = source;
+  for (const wrapper of nestedWrappers) {
+    anchor.insertAfter(wrapper);
+    anchor = wrapper;
+  }
+}
+
+function nestListItemPreservingType(source: ListItemNode, target: ListItemNode) {
+  const sourceList = source.getParent();
+  if (!$isListNode(sourceList)) return;
+  const fragment = detachListItemFragment(source, sourceList);
+  const wrapper = $createListItemNode().append(fragment);
+  const existingWrappers = getNestedWrappers(target);
+  const anchor = existingWrappers.at(-1) ?? target;
+  anchor.insertAfter(wrapper);
+  removeEmptyList(sourceList);
+}
+
+function getNestedWrappers(item: ListItemNode) {
+  const wrappers: ListItemNode[] = [];
+  let sibling = item.getNextSibling();
+  while ($isListItemNode(sibling) && isListWrapper(sibling)) {
+    wrappers.push(sibling);
+    sibling = sibling.getNextSibling();
+  }
+  return wrappers;
+}
+
+function insertListBeside(reference: ListNode, list: ListNode, placement: 'before' | 'after') {
+  const container = reference.getParent();
+  if ($isListItemNode(container) && isListWrapper(container)) {
+    const wrapper = $createListItemNode().append(list);
+    if (placement === 'before') container.insertBefore(wrapper);
+    else container.insertAfter(wrapper);
+  } else if (placement === 'before') reference.insertBefore(list);
+  else reference.insertAfter(list);
+}
+
+function getListStartAtBoundary(list: ListNode, boundary: number) {
+  const precedingItems = list.getChildren().slice(0, boundary).filter((node) => $isListItemNode(node) && !isListWrapper(node)).length;
+  return list.getListType() === 'number' ? list.getStart() + precedingItems : list.getStart();
+}
+
+function removeEmptyList(list: ListNode) {
+  if (list.getChildrenSize() > 0) return;
+  const wrapper = list.getParent();
+  if ($isListItemNode(wrapper) && isListWrapper(wrapper)) wrapper.remove();
+  else list.remove();
 }
 
 function getTopLevelList(node: ListItemNode): LexicalNode | null {

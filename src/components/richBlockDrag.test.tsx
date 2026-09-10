@@ -1,8 +1,20 @@
-import { MDXEditor, type MDXEditorMethods, listsPlugin } from '@mdxeditor/editor';
+import { addComposerChild$, headingsPlugin, MDXEditor, type MDXEditorMethods, listsPlugin, quotePlugin, realmPlugin } from '@mdxeditor/editor';
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
+import { $getRoot, $isElementNode, type LexicalEditor, type LexicalNode } from 'lexical';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { createRef } from 'react';
+import { createRef, useEffect } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { richBlockDragPlugin } from './richBlockDrag';
+import { moveRichBlock, richBlockDragPlugin } from './richBlockDrag';
+
+let lexicalEditor: LexicalEditor;
+function CaptureEditor() {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => { lexicalEditor = editor; }, [editor]);
+  return null;
+}
+const captureEditorPlugin = realmPlugin({
+  init(realm) { realm.pub(addComposerChild$, CaptureEditor); },
+});
 
 afterEach(() => {
   cleanup();
@@ -16,11 +28,33 @@ function renderEditor(markdown: string) {
       <MDXEditor
         ref={editorRef}
         markdown={markdown}
-        plugins={[listsPlugin(), richBlockDragPlugin({ disabled: false })]}
+        plugins={[headingsPlugin(), quotePlugin(), listsPlugin(), richBlockDragPlugin({ disabled: false }), captureEditorPlugin()]}
       />
     </div>,
   );
   return { ...result, editorRef };
+}
+
+function findNode(text: string): LexicalNode | null {
+  return lexicalEditor.getEditorState().read(() => {
+    let found: LexicalNode | null = null;
+    function walk(node: LexicalNode) {
+      if (found) return;
+      if (node.getTextContent() === text && ['listitem', 'paragraph', 'heading'].includes(node.getType())) found = node;
+      if ($isElementNode(node)) node.getChildren().forEach(walk);
+    }
+    $getRoot().getChildren().forEach(walk);
+    return found as LexicalNode | null;
+  });
+}
+
+async function move(sourceText: string, targetText: string, placement: 'before' | 'after' | 'nest') {
+  const source = findNode(sourceText);
+  const target = findNode(targetText);
+  expect(source).not.toBeNull();
+  expect(target).not.toBeNull();
+  if (!source || !target) throw new Error('Expected source and target nodes');
+  moveRichBlock(lexicalEditor, source.getKey(), target.getKey(), placement);
 }
 
 async function openBlockMenu(element: Element) {
@@ -50,6 +84,104 @@ describe('rich block movement', () => {
       expect(markdown.indexOf('Sibling')).toBeLessThan(markdown.indexOf('Parent'));
       expect(markdown.indexOf('Parent')).toBeLessThan(markdown.indexOf('Child'));
     });
+  });
+
+  it('places an item after the target item’s complete subtree', async () => {
+    const { editorRef } = renderEditor('- Source\n- Target\n  - Target child\n- After');
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    await move('Source', 'Target', 'after');
+    await waitFor(() => {
+      const markdown = editorRef.current?.getMarkdown() ?? '';
+      expect(markdown.indexOf('Target')).toBeLessThan(markdown.indexOf('Target child'));
+      expect(markdown.indexOf('Target child')).toBeLessThan(markdown.indexOf('Source'));
+      expect(markdown.indexOf('Source')).toBeLessThan(markdown.indexOf('After'));
+    });
+  });
+
+  it('preserves list types when moving between unlike lists', async () => {
+    const { editorRef } = renderEditor('- Bullet one\n- Bullet two\n\n1. Number one\n2. Number two');
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    await move('Bullet one', 'Number two', 'before');
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toMatch(
+      /[*-] Bullet two\n\n1\. Number one\n\n[*-] Bullet one\n\n1\. Number two/,
+    ));
+  });
+
+  it('preserves a checklist item when moving it beside bullets', async () => {
+    const { editorRef } = renderEditor('- [x] Done\n\nDivider\n\n- First\n- Second');
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    await move('Done', 'Second', 'before');
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toMatch(/[*-] First\n\n[*-] \[x\] Done\n\n[*-] Second/));
+  });
+
+  it.each([
+    ['bullet', '- Source', 'numbered', '1. Target', /^\* Source$/m],
+    ['bullet', '- Source', 'checklist', '- [ ] Target', /^\* Source$/m],
+    ['numbered', '1. Source', 'bullet', '- Target', /^1\. Source$/m],
+    ['numbered', '1. Source', 'checklist', '- [ ] Target', /^1\. Source$/m],
+    ['checklist', '- [x] Source', 'bullet', '- Target', /^\* \[x\] Source$/m],
+    ['checklist', '- [x] Source', 'numbered', '1. Target', /^\* \[x\] Source$/m],
+  ])('keeps a %s item as %s when moved beside a %s item', async (_sourceLabel, source, _targetLabel, target, expected) => {
+    const { editorRef } = renderEditor(`${source}\n\nDivider\n\n${target}`);
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    await move('Source', 'Target', 'before');
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toMatch(expected));
+  });
+
+  it('preserves a numbered item when nesting it beneath a bullet', async () => {
+    const { editorRef } = renderEditor('1. Numbered child\n\n- Parent');
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    await move('Numbered child', 'Parent', 'nest');
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toMatch(/[*-] Parent\n\s+1\. Numbered child/));
+  });
+
+  it('preserves nested list types and the complete dragged subtree', async () => {
+    const { editorRef } = renderEditor('1. Numbered child\n   - Grandchild\n\n- Parent');
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    await move('Numbered child', 'Parent', 'nest');
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toMatch(
+      /[*-] Parent\n\s+1\. Numbered child\n\s+[*-] Grandchild/,
+    ));
+  });
+
+  it('rejects moving a list item into its logical descendant', async () => {
+    const { editorRef } = renderEditor('- Parent\n  1. Child');
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    const before = editorRef.current!.getMarkdown();
+    await move('Parent', 'Child', 'nest');
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe(before));
+  });
+
+  it('nests a non-list block as continuation content without changing its type', async () => {
+    const { editorRef } = renderEditor('Paragraph child\n\n- Parent');
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    await move('Paragraph child', 'Parent', 'nest');
+    await waitFor(() => {
+      const markdown = editorRef.current?.getMarkdown() ?? '';
+      expect(markdown).toMatch(/[*-] Parent/);
+      expect(markdown).toContain('  Paragraph child');
+      expect(markdown).not.toMatch(/\s+[*-] Paragraph child/);
+    });
+  });
+
+  it('preserves a heading when nesting it as list continuation content', async () => {
+    const { editorRef } = renderEditor('## Child heading\n\n- Parent');
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    await move('Child heading', 'Parent', 'nest');
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toMatch(/[*-] Parent\n\s+## Child heading/));
+  });
+
+  it('round-trips a nested continuation paragraph without flattening it into the item label', async () => {
+    const source = '- Parent\n\n  Child paragraph';
+    const { editorRef } = renderEditor(source);
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toMatch(/[*-] Parent\n\n\s+Child paragraph/));
+  });
+
+  it('keeps a list item wrapped in its original list type beside a root block', async () => {
+    const { editorRef } = renderEditor('1. Numbered\n\nParagraph');
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    await move('Numbered', 'Paragraph', 'after');
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toMatch(/Paragraph\n\n1\. Numbered/));
   });
 
   it('supports indenting, outdenting, and deleting list items', async () => {
