@@ -6,6 +6,8 @@ import { addComposerChild$, Cell, realmPlugin, useCellValue } from '@mdxeditor/e
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, GripVertical, Trash2 } from 'lucide-react';
 import {
   $getNodeByKey,
+  $getState,
+  $setState,
   $getRoot,
   $isElementNode,
   $isParagraphNode,
@@ -19,6 +21,8 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatedPopover } from './AnimatedPopover';
+import { BLOCK_BACKGROUNDS } from '../lib/blockBackground';
+import { blockBackgroundState } from './richBlockBackground';
 
 const RICH_BLOCK_DRAG_TYPE = 'web-notes-rich-block';
 const GUTTER_TARGET_OVERSCAN = 36;
@@ -254,6 +258,32 @@ function RichBlockDrag() {
           <MenuButton disabled={!actions.indent} icon={<ArrowRight size={15} />} label="Indent" onClick={() => runAction('indent')} />
           <MenuButton disabled={!actions.outdent} icon={<ArrowLeft size={15} />} label="Outdent" onClick={() => runAction('outdent')} />
           <MenuButton className="danger" disabled={disabled} icon={<Trash2 size={15} />} label="Delete block" onClick={() => runAction('delete')} />
+          <div className="block-background-label">Background colour</div>
+          <div className="block-background-options">
+            {[null, ...BLOCK_BACKGROUNDS].map((color) => (
+              <button
+                key={color ?? 'default'}
+                type="button"
+                role="menuitemradio"
+                aria-label={color ? `${color} background` : 'Default background'}
+                aria-checked={editor.getEditorState().read(() => {
+                  const node = $getNodeByKey(hovered.key);
+                  return Boolean(node && $getState(node, blockBackgroundState) === color);
+                })}
+                title={color ?? 'Default'}
+                data-block-background={color ?? undefined}
+                disabled={disabled}
+                onClick={() => {
+                  editor.update(() => {
+                    const node = $getNodeByKey(hovered.key);
+                    if (node) $setState(node, blockBackgroundState, color);
+                  });
+                  setIsMenuOpen(false);
+                  window.requestAnimationFrame(() => handleRef.current?.focus());
+                }}
+              >{color ? '' : '×'}</button>
+            ))}
+          </div>
         </AnimatedPopover>
       </div>
       {isDragging && actions.outdent && (

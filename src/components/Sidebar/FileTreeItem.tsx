@@ -219,6 +219,7 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
         )}
         <button
           className="tree-item"
+          aria-expanded={isFolder ? isOpen : undefined}
           type="button"
           onClick={handleClick}
           disabled={node.type === 'other'}

@@ -461,6 +461,7 @@ button {
 }
 
 .workspace {
+  position: relative;
   display: grid;
   min-height: 0;
   grid-template-columns:
@@ -468,6 +469,22 @@ button {
     6px minmax(0, 1fr);
   overflow: hidden;
   transition: grid-template-columns 0.1s ease-out;
+}
+
+.sidebar-container,
+.workspace-viewer {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.sidebar-container > .sidebar,
+.workspace-viewer > .viewer {
+  flex: 1;
+}
+
+.sidebar-backdrop {
+  display: none;
 }
 
 .workspace.resizing {
@@ -1212,6 +1229,8 @@ button {
 
 .rich-markdown-editor-shell [class*='_toolbarRoot_'],
 .rich-markdown-toolbar {
+  /* MDXEditor gives toolbar SVGs their own colour; match the source toolbar. */
+  --baseTextContrast: #3b4655;
   position: absolute;
   z-index: 30;
   top: 0;
@@ -1368,6 +1387,31 @@ button {
 .note-editor-shell:not(.controls-visible) :where(.rich-markdown-content, .rich-markdown-content *)::-moz-grammar-error {
   background: transparent;
   text-decoration: none;
+}
+
+.rich-markdown-editor .rich-markdown-content li {
+  /* Override MDXEditor's 0.5rem list-item margins without changing list indentation. */
+  margin-top: 0.375rem;
+  margin-bottom: 0.375rem;
+}
+
+/* MDXEditor offsets the complete checklist row and compensates with asymmetric
+   padding. Keep the text/background on the normal list grid and put only the
+   checkbox in the marker gutter. */
+.rich-markdown-editor .rich-markdown-content li[role="checkbox"] {
+  margin-inline-start: 0;
+  padding-inline: 0;
+}
+
+.rich-markdown-editor .rich-markdown-content li[role="checkbox"]::before {
+  top: calc((1lh - var(--spacing-4)) / 2);
+  left: -1.5rem;
+}
+
+.rich-markdown-editor .rich-markdown-content li[role="checkbox"]::after {
+  top: calc((1lh - var(--spacing-4)) / 2 + var(--spacing-0_5));
+  left: calc(-1.5rem + var(--spacing-1_5));
+  right: auto;
 }
 
 .rich-markdown-editor .rich-markdown-content {
@@ -2128,6 +2172,7 @@ li.markdown-block > .markdown-block-controls {
 [data-theme="dark"] .rich-markdown-editor,
 [data-theme="dark"] .rich-markdown-editor-shell [class*='_toolbarRoot_'],
 [data-theme="dark"] .rich-markdown-toolbar {
+  --baseTextContrast: #b8c2cd;
   border-color: #2b3643;
   background: #181e25;
   color: #e7ebf0;
@@ -2655,10 +2700,15 @@ li.markdown-block > .markdown-block-controls {
 }
 
 @media (max-width: 760px) {
-  .top-bar {
-    display: flex;
-    align-items: flex-start;
-    flex-direction: column;
+  .vault-top-bar {
+    position: relative;
+    z-index: 70;
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    align-items: center;
+    gap: 8px;
+    min-height: 60px;
+    padding: 8px max(8px, env(safe-area-inset-right)) 8px max(8px, env(safe-area-inset-left));
   }
 
   .top-bar-title,
@@ -2674,23 +2724,94 @@ li.markdown-block > .markdown-block-controls {
 
   .workspace {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
-    transition: grid-template-rows 0.1s ease-out;
+    grid-template-rows: minmax(0, 1fr);
+    transition: none;
   }
 
   .workspace.sidebar-collapsed {
     grid-template-columns: 1fr;
-    grid-template-rows: 0 minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .sidebar-resizer {
     display: none;
   }
 
+  .sidebar-container {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: min(340px, calc(100% - 48px));
+    z-index: 60;
+    box-shadow: 8px 0 24px #0003;
+    transition: left 0.1s ease-out, visibility 0s;
+  }
+
+  .workspace.sidebar-collapsed .sidebar-container {
+    left: -340px;
+    visibility: hidden;
+    transition: left 0.1s ease-out, visibility 0s 0.1s;
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    background: #0006;
+    border-radius: 0;
+  }
+
+  .workspace-viewer {
+    grid-area: 1 / 1;
+  }
+
   .sidebar {
-    max-height: 38vh;
-    border-right-width: 0;
-    border-bottom: 1px solid #dfe3ea;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .favorite-notes .sidebar-section-content-body {
+    max-height: 35dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .vault-top-bar .icon-button,
+  .sidebar-section-actions .compact-icon,
+  .tree-item,
+  .favorite-note {
+    min-height: 44px;
+  }
+
+  .vault-top-bar .icon-button {
+    width: 44px;
+  }
+
+  .note-search input {
+    font-size: 16px;
+  }
+
+  .tree-actions,
+  .favorite-remove,
+  .favorite-drag-handle {
+    opacity: 1;
+  }
+
+  .note-search-results {
+    position: fixed;
+    top: 60px;
+    left: 8px;
+    right: 8px;
+    max-height: min(60dvh, 420px);
+  }
+
+  .image-viewer-header {
+    gap: 8px;
+    padding: 10px;
+    flex-wrap: wrap;
+  }
+
+  .image-dialog {
+    max-width: calc(100vw - 24px);
   }
 
   .picker-toolbar {
@@ -2720,6 +2841,10 @@ li.markdown-block > .markdown-block-controls {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-container { transition: none !important; }
+}
+
 @media (max-width: 520px) {
   .note-toolbar-row {
     grid-template-columns: minmax(0, 1fr);
@@ -2739,4 +2864,38 @@ li.markdown-block > .markdown-block-controls {
   .markdown-block > .markdown-block-controls {
     opacity: 1;
   }
+}
+.block-background-label { font-size: 0.75rem; padding: 0.5rem 0.5rem 0.25rem; color: inherit; }
+.block-background-options { display: grid; grid-template-columns: repeat(5, 28px); gap: 6px; padding: 0.25rem 0.5rem 0.5rem; }
+.block-background-options button { width: 28px; height: 28px; border-radius: 4px; padding: 0; }
+.block-background-options button:hover { filter: brightness(0.9); }
+.block-background-options button[aria-checked="true"] { outline: 2px solid currentColor; outline-offset: 1px; }
+[data-block-background="gray"] { --block-bg: #e9e9e7; }
+[data-block-background="brown"] { --block-bg: #eee0d5; }
+[data-block-background="orange"] { --block-bg: #fae5cd; }
+[data-block-background="yellow"] { --block-bg: #faf0c4; }
+[data-block-background="green"] { --block-bg: #dfedde; }
+[data-block-background="blue"] { --block-bg: #dcebf6; }
+[data-block-background="purple"] { --block-bg: #ebe1f4; }
+[data-block-background="pink"] { --block-bg: #f5e0ec; }
+[data-block-background="red"] { --block-bg: #f7dfdc; }
+[data-theme="dark"] [data-block-background="gray"] { --block-bg: #35383b; }
+[data-theme="dark"] [data-block-background="brown"] { --block-bg: #493a30; }
+[data-theme="dark"] [data-block-background="orange"] { --block-bg: #523b28; }
+[data-theme="dark"] [data-block-background="yellow"] { --block-bg: #4b4429; }
+[data-theme="dark"] [data-block-background="green"] { --block-bg: #2c4436; }
+[data-theme="dark"] [data-block-background="blue"] { --block-bg: #2b4054; }
+[data-theme="dark"] [data-block-background="purple"] { --block-bg: #41344f; }
+[data-theme="dark"] [data-block-background="pink"] { --block-bg: #4c3343; }
+[data-theme="dark"] [data-block-background="red"] { --block-bg: #503331; }
+.rich-markdown-content [data-block-background], .block-background-options button[data-block-background] { background-color: var(--block-bg); border-radius: 4px; }
+
+/* Paint beyond the block box without changing margins, padding or hit targets. */
+.rich-markdown-content [data-block-background]:not(.rich-block-drop-nest) {
+  box-shadow: 0 0 0 6px var(--block-bg);
+}
+
+/* List rows sit closer together, so use a smaller spread to avoid overlap. */
+.rich-markdown-content li[data-block-background]:not(.rich-block-drop-nest) {
+  box-shadow: 0 0 0 3px var(--block-bg);
 }

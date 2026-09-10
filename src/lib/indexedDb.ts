@@ -2,7 +2,7 @@ import { deleteDB, type DBSchema, type IDBPDatabase, openDB } from 'idb';
 import type { VaultNode } from '../types/vault';
 
 export const VAULT_CACHE_DATABASE_NAME = 'web-notes';
-export const VAULT_CACHE_DATABASE_VERSION = 3;
+export const VAULT_CACHE_DATABASE_VERSION = 4;
 const LEGACY_VAULT_CACHE_DATABASE_NAME = 'vault-web-viewer';
 
 export type CachedVaultRecord = {
@@ -31,6 +31,11 @@ export type CachedNoteIconRecord = {
 };
 
 interface VaultCacheSchema extends DBSchema {
+  images: {
+    key: [string, string, string];
+    value: { accountId: string; vaultId: string; fileId: string; modifiedTime: string; blob: Blob; cachedAt: number };
+    indexes: { 'by-account': string; 'by-vault': [string, string] };
+  };
   vaults: {
     key: [string, string];
     value: CachedVaultRecord;
@@ -88,6 +93,11 @@ async function openVaultCacheDatabase(invalidate: () => void) {
       console.warn('[vault cache] Database upgrade is waiting for another tab to release its connection.');
     },
     upgrade(database) {
+      if (!database.objectStoreNames.contains('images')) {
+        const images = database.createObjectStore('images', { keyPath: ['accountId', 'vaultId', 'fileId'] });
+        images.createIndex('by-account', 'accountId');
+        images.createIndex('by-vault', ['accountId', 'vaultId']);
+      }
       if (!database.objectStoreNames.contains('vaults')) {
         const vaultStore = database.createObjectStore('vaults', { keyPath: ['accountId', 'vaultId'] });
         vaultStore.createIndex('by-account', 'accountId');

@@ -31,6 +31,7 @@ import { refreshContentEditableSpellcheck } from '../lib/contentEditableSpellche
 import type { VaultNode } from '../types/vault';
 import { richEditorEnhancementsPlugin } from './richEditorEnhancements';
 import { richBlockDragPlugin } from './richBlockDrag';
+import { richBlockBackgroundPlugin } from './richBlockBackground';
 import { richEditorIcon } from './richEditorIcons';
 import { RichInsertImageButton } from './RichInsertImageButton';
 
@@ -67,6 +68,7 @@ export default function RichMarkdownEditor({ markdown, blockMovementDisabled = f
     codeBlockPlugin({ defaultCodeBlockLanguage: '' }),
     codeMirrorPlugin({ codeBlockLanguages: { '': 'Plain text' }, autoLoadLanguageSupport: false }),
     richEditorEnhancementsPlugin({ notes, recentNotes }),
+    richBlockBackgroundPlugin(),
     richBlockDragPlugin({ disabled: blockMovementDisabled || readOnly }),
     markdownShortcutPlugin(),
     toolbarPlugin({

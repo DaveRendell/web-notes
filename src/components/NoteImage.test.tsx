@@ -39,16 +39,17 @@ describe('NoteImage', () => {
     expect(load).toHaveBeenCalledTimes(2);
     expect(screen.queryByText('sensitive remote response')).toBeNull();
   });
-  it('does not authenticate or download offline, and retries when connectivity returns', async () => {
+  it('loads cached images offline and revalidates when connectivity returns', async () => {
     vi.mocked(useImages).mockReturnValue({ ...services, online: false });
     load.mockResolvedValue(new Blob(['image']));
     const { rerender } = render(<NoteImage source="/photo.png" alt="Photo" />);
     expect(screen.getByText('Image unavailable offline')).toBeTruthy();
-    expect(load).not.toHaveBeenCalled();
+    await screen.findByRole('img');
+    expect(load).toHaveBeenCalledOnce();
     vi.mocked(useImages).mockReturnValue(services);
     rerender(<NoteImage source="/photo.png" alt="Photo" />);
     await screen.findByRole('img');
-    expect(load).toHaveBeenCalledOnce();
+    expect(load).toHaveBeenCalledTimes(2);
   });
   it('revokes object URLs and ignores old downloads after navigation', async () => {
     vi.mocked(useImages).mockReturnValue(services);

@@ -53,7 +53,7 @@ describe('vault cache database', () => {
     const database = await getVaultCacheDatabase();
 
     expect(database.version).toBe(VAULT_CACHE_DATABASE_VERSION);
-    expect([...database.objectStoreNames]).toEqual(['noteContents', 'noteIcons', 'vaults']);
+    expect([...database.objectStoreNames]).toEqual(['images', 'noteContents', 'noteIcons', 'vaults']);
   });
 
   it('stores typed vault trees and note bodies with compound-key isolation', async () => {

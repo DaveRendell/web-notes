@@ -21,6 +21,9 @@ import {
 import { $createLinkNode, $isLinkNode, type LinkNode } from '@lexical/link';
 import {
   INSERT_CHECK_LIST_COMMAND,
+  INSERT_ORDERED_LIST_COMMAND,
+  INSERT_UNORDERED_LIST_COMMAND,
+  REMOVE_LIST_COMMAND,
   $createListNode,
   $createListItemNode,
   $isListItemNode,
@@ -28,6 +31,8 @@ import {
   type ListItemNode,
   type ListNode,
 } from '@lexical/list';
+import { $createHeadingNode, $createQuoteNode } from '@lexical/rich-text';
+import { $setBlocksType } from '@lexical/selection';
 import {
   LexicalTypeaheadMenuPlugin,
   MenuOption,
@@ -38,6 +43,7 @@ import {
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import {
   $createTextNode,
+  $createParagraphNode,
   $findMatchingParent,
   $getSelection,
   $isRangeSelection,
@@ -54,8 +60,17 @@ import type { Literal } from 'unist';
 import { useEffect, useMemo, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { searchEmoji } from '../lib/emojiCompletion';
+import type { BlockBackground } from '../lib/blockBackground';
 import { splitEmojiText } from '../lib/twemoji';
 import { getNoteSuggestions, getNoteTitle } from '../lib/noteSearch';
+import {
+  getSlashCommandSuggestions,
+  rememberSlashCommand,
+  requestImageDialog,
+  type SlashCommand,
+} from '../lib/slashCommands';
+import { blockBackgroundState } from './richBlockBackground';
+import { $setState } from 'lexical';
 import type { VaultNode } from '../types/vault';
 import { $createRichEmojiNode, $isRichEmojiNode, RichEmojiNode } from './RichEmojiNode';
 import { $createRichImageNode, $isRichImageNode, RichImageNode } from './RichImageNode';
@@ -356,9 +371,87 @@ function RichEditorCompletions() {
       <WikiLinkTextTransform />
       <WikiLinkTypeahead />
       <EmojiTypeahead />
+      <SlashCommandTypeahead />
       <EmojiTextTransform />
     </>
   );
+}
+
+function SlashCommandTypeahead() {
+  const [editor] = useLexicalComposerContext();
+  const [query, setQuery] = useState<string | null>(null);
+  const [recentRevision, setRecentRevision] = useState(0);
+  const options = useMemo(
+    () => {
+      void recentRevision;
+      return query === null ? [] : getSlashCommandSuggestions(query).map((command) => (
+        new CompletionOption(command.id, command, command.label, command.detail)
+      ));
+    },
+    [query, recentRevision],
+  );
+
+  return (
+    <LexicalTypeaheadMenuPlugin
+      anchorClassName="rich-completion-anchor"
+      menuRenderFn={renderCompletionMenu}
+      onQueryChange={setQuery}
+      onSelectOption={(option, queryNode, closeMenu) => {
+        if (!queryNode) return;
+        applyRichSlashCommand(editor, queryNode, option.item);
+        rememberSlashCommand(option.item.id);
+        setRecentRevision((value) => value + 1);
+        closeMenu();
+      }}
+      options={options}
+      parent={document.body}
+      triggerFn={slashCommandTrigger}
+    />
+  );
+}
+
+function applyRichSlashCommand(editor: LexicalEditor, queryNode: TextNode, command: SlashCommand) {
+  queryNode.setTextContent('');
+  queryNode.selectStart();
+
+  if (command.id === 'image') {
+    window.requestAnimationFrame(() => requestImageDialog(editor.getRootElement()));
+    return;
+  }
+  if (command.kind === 'background') {
+    const listItem = $findMatchingParent(queryNode, $isListItemNode);
+    const target = listItem ?? queryNode.getTopLevelElement();
+    if (target) $setState(target, blockBackgroundState, command.id as BlockBackground);
+    return;
+  }
+
+  const listCommands = {
+    todo: 'check',
+    bullet: 'bullet',
+    numbered: 'number',
+  } as const;
+  if (command.id in listCommands) {
+    const listItem = $findMatchingParent(queryNode, $isListItemNode);
+    if (listItem) convertListItemType(listItem, listCommands[command.id as keyof typeof listCommands]);
+    else {
+      const insertCommands = {
+        todo: INSERT_CHECK_LIST_COMMAND,
+        bullet: INSERT_UNORDERED_LIST_COMMAND,
+        numbered: INSERT_ORDERED_LIST_COMMAND,
+      } as const;
+      editor.dispatchCommand(insertCommands[command.id as keyof typeof insertCommands], undefined);
+    }
+    return;
+  }
+
+  if ($findMatchingParent(queryNode, $isListItemNode)) editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection)) return;
+  if (command.id === 'paragraph') $setBlocksType(selection, () => $createParagraphNode());
+  else if (command.id === 'quote') $setBlocksType(selection, () => $createQuoteNode());
+  else if (command.id === 'heading') $setBlocksType(selection, () => $createHeadingNode('h1'));
+  else if (command.id === 'heading2') $setBlocksType(selection, () => $createHeadingNode('h2'));
+  else if (command.id === 'heading3') $setBlocksType(selection, () => $createHeadingNode('h3'));
 }
 
 function WikiLinkTypeahead() {
@@ -523,6 +616,13 @@ export const emojiTrigger: TriggerFn = (text): MenuTextMatch | null => {
     : null;
 };
 
+export const slashCommandTrigger: TriggerFn = (text): MenuTextMatch | null => {
+  const match = /(?:^|\s)(\/([A-Za-z0-9]*))$/.exec(text);
+  return match
+    ? { leadOffset: match.index + match[0].lastIndexOf('/'), matchingString: match[2], replaceableString: match[1] }
+    : null;
+};
+
 function handleChecklistShortcut(event: KeyboardEvent, editor: LexicalEditor) {
   if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'l') return false;
   const selection = $getSelection();
@@ -543,8 +643,13 @@ function handleChecklistShortcut(event: KeyboardEvent, editor: LexicalEditor) {
 }
 
 function convertListItemToChecklist(item: ListItemNode) {
+  convertListItemType(item, 'check');
+}
+
+function convertListItemType(item: ListItemNode, targetType: 'bullet' | 'check' | 'number') {
   const sourceList = item.getParent();
   if (!$isListNode(sourceList)) return;
+  if (sourceList.getListType() === targetType) return;
   const children = sourceList.getChildren();
   const itemIndex = children.indexOf(item);
   if (itemIndex === -1) return;
@@ -557,10 +662,10 @@ function convertListItemToChecklist(item: ListItemNode) {
     beforeList.append(...beforeItems);
   }
 
-  const checklist = $createListNode('check');
-  sourceList.insertBefore(checklist);
-  checklist.append(item);
-  item.setChecked(false);
+  const convertedList = $createListNode(targetType);
+  sourceList.insertBefore(convertedList);
+  convertedList.append(item);
+  item.setChecked(targetType === 'check' ? false : undefined);
 
   if (afterItems.length) {
     const afterStart = sourceList.getListType() === 'number'

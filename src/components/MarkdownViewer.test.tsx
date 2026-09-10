@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   invalidateAccessToken: vi.fn(),
   isOnline: true,
   isRefreshing: false,
+  isLoading: false,
   notes: [] as VaultNode[],
   renameNote: vi.fn(),
   selectedFile: null as VaultNode | null,
@@ -62,7 +63,7 @@ vi.mock('../hooks/useMarkdownFile', () => ({
     cacheContent: mocks.cacheContent,
     content: mocks.content,
     error: null,
-    isLoading: false,
+    isLoading: mocks.isLoading,
     isRefreshing: mocks.isRefreshing,
     refreshError: null,
     setContent: mocks.setContent,
@@ -112,6 +113,7 @@ beforeEach(() => {
   selectedFile.path = 'Note.md';
   mocks.isOnline = true;
   mocks.isRefreshing = false;
+  mocks.isLoading = false;
   mocks.notes = [selectedFile];
   mocks.selectedFile = null;
   mocks.updateDriveFileText.mockResolvedValue({ ...selectedFile.source, modifiedTime: 'saved' });
@@ -123,6 +125,45 @@ afterEach(() => {
 });
 
 describe('MarkdownViewer rich editing', () => {
+  it('does not mount an editor or save a loading placeholder, including navigation away', async () => {
+    vi.useFakeTimers();
+    mocks.isLoading = true;
+    mocks.content = '';
+    const { rerender } = render(<MarkdownViewer />);
+    expect(screen.queryByRole('textbox')).toBeNull();
+    await vi.advanceTimersByTimeAsync(2000);
+    mocks.selectedFile = { ...selectedFile, id: 'next' };
+    rerender(<MarkdownViewer />);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(mocks.updateDriveFileText).not.toHaveBeenCalled();
+    expect(mocks.putNoteContent).not.toHaveBeenCalled();
+    mocks.content = 'Loaded note with ![](photo.png)';
+    mocks.isLoading = false;
+    rerender(<MarkdownViewer />);
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(mocks.content);
+    fireEvent.blur(screen.getByRole('textbox'));
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(mocks.updateDriveFileText).not.toHaveBeenCalled();
+  });
+
+  it('still autosaves deliberately emptying a loaded note', async () => {
+    vi.useFakeTimers();
+    render(<MarkdownViewer />);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '' } });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(mocks.updateDriveFileText).toHaveBeenCalledWith('valid-token', 'note', '');
+  });
+
+  it('cancels a pending autosave when the note enters initial loading', async () => {
+    vi.useFakeTimers();
+    const { rerender } = render(<MarkdownViewer />);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'local edit' } });
+    mocks.isLoading = true;
+    rerender(<MarkdownViewer />);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(mocks.updateDriveFileText).not.toHaveBeenCalled();
+  });
   it('opens notes in the rich editor by default', () => {
     render(<MarkdownViewer />);
     expect((screen.getByRole('textbox', { name: 'Rich note' }) as HTMLTextAreaElement).value).toBe('original body');

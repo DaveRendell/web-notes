@@ -53,6 +53,11 @@ export function MarkdownViewer() {
   const previousFileIdRef = useRef(selectedFile?.id);
   const previousFileRef = useRef(selectedFile);
   const [draft, setDraft] = useState('');
+  const [readyFileId, setReadyFileId] = useState<string | null>(null);
+  const previousReadyFileIdRef = useRef<string | null>(null);
+  const canSaveRef = useRef(false);
+  const canSave = Boolean(selectedFile && readyFileId === selectedFile.id && !isLoading && !error);
+  canSaveRef.current = canSave;
   const [editorMode, setEditorMode] = useState<NoteEditorMode>('rich');
   const [hasRemoteUpdate, setHasRemoteUpdate] = useState(false);
   const [needsAuthReconnect, setNeedsAuthReconnect] = useState(false);
@@ -147,6 +152,8 @@ export function MarkdownViewer() {
     const previousContent = previousContentRef.current;
     const previousFile = previousFileRef.current;
     const fileChanged = previousFileIdRef.current !== selectedFile?.id;
+    const previousReadyFileId = previousReadyFileIdRef.current;
+    previousReadyFileIdRef.current = !isLoading && !error ? selectedFile?.id ?? null : null;
     previousContentRef.current = content;
     previousFileIdRef.current = selectedFile?.id;
     previousFileRef.current = selectedFileRef.current;
@@ -155,6 +162,7 @@ export function MarkdownViewer() {
       const departingDraft = draftRef.current;
       if (
         previousFile &&
+        previousReadyFileId === previousFile.id &&
         departingDraft !== previousContent &&
         accessToken &&
         accountId &&
@@ -165,12 +173,26 @@ export function MarkdownViewer() {
       }
 
       setDraft(content);
+      setReadyFileId(!isLoading && !error ? selectedFile?.id ?? null : null);
       setEditorMode('rich');
       setHasRemoteUpdate(false);
       setNeedsAuthReconnect(false);
       setHasFailedSave(false);
       setSaveError(null);
       setIsSaving(isSaveInFlightRef.current || queuedSavesRef.current.size > 0);
+      return;
+    }
+
+    if (isLoading || error) {
+      setReadyFileId(null);
+      return;
+    }
+
+    // Hydrate the draft before mounting the editor or permitting any save path.
+    if (previousReadyFileId !== selectedFile?.id) {
+      setDraft(content);
+      setReadyFileId(selectedFile?.id ?? null);
+      setHasRemoteUpdate(false);
       return;
     }
 
@@ -195,6 +217,8 @@ export function MarkdownViewer() {
     accessToken,
     accountId,
     content,
+    error,
+    isLoading,
     isOnline,
     queueNoteSave,
     selectedFile,
@@ -227,7 +251,7 @@ export function MarkdownViewer() {
   }, [isNoteMenuOpen]);
 
   const persistDraft = useCallback(async (returnToRich = false) => {
-    if (!accessToken || !selectedFile || !isOnline) return;
+    if (!canSaveRef.current || !accessToken || !selectedFile || !isOnline) return;
     if (!hasUnsavedChanges && !hasFailedSave) {
       if (returnToRich) setEditorMode('rich');
       return;
@@ -250,10 +274,10 @@ export function MarkdownViewer() {
   ]);
 
   useEffect(() => {
-    if (editorMode !== 'rich' || !hasUnsavedChanges || hasFailedSave || isSaving || !isOnline) return;
+    if (!canSave || editorMode !== 'rich' || !hasUnsavedChanges || hasFailedSave || isSaving || !isOnline) return;
     const timeout = window.setTimeout(() => void persistDraft(), RICH_AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timeout);
-  }, [draft, editorMode, hasFailedSave, hasUnsavedChanges, isOnline, isSaving, persistDraft]);
+  }, [canSave, draft, editorMode, hasFailedSave, hasUnsavedChanges, isOnline, isSaving, persistDraft]);
 
   useEffect(() => {
     if ((!hasUnsavedChanges && !hasFailedSave) || !selectedFile) return;
@@ -267,6 +291,7 @@ export function MarkdownViewer() {
   }, [hasFailedSave, hasUnsavedChanges, selectedFile]);
 
   function handleDraftChange(nextDraft: string) {
+    if (!canSaveRef.current) return;
     setDraft(nextDraft);
     if (selectedFile) {
       cacheLocalDraft(selectedFile, nextDraft);
@@ -451,7 +476,7 @@ export function MarkdownViewer() {
         {refreshError && <p className="warning-text viewer-status">Showing cached content; Drive refresh failed: {refreshError}</p>}
         {hasRemoteUpdate && <p className="warning-text viewer-status">This note changed in Google Drive while you were editing. Saving will overwrite it with your draft.</p>}
         {saveError && <p className="error-text viewer-status">{saveError}</p>}
-        {!isLoading && !error && (
+        {canSave && (
           <section className="editor-pane" aria-label="Note editor">
             <NoteEditorShell
               blockMovementDisabled={!isOnline}

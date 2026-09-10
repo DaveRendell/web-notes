@@ -2,6 +2,7 @@ import { ImagePlus } from 'lucide-react';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useImages } from '../contexts/ImageContext';
 import { imageMarkdown } from '../lib/vaultImages';
+import { OPEN_IMAGE_DIALOG_EVENT } from '../lib/slashCommands';
 
 export function InsertImageButton({ onInsert, onOpen, disabled = false, pasteTarget }: { onInsert: (markdown: string) => void; onOpen?: () => void; disabled?: boolean; pasteTarget?: RefObject<HTMLDivElement | null> }) {
   const services = useImages();
@@ -60,6 +61,13 @@ export function InsertImageButton({ onInsert, onOpen, disabled = false, pasteTar
     };
     target.addEventListener('paste', paste, true);
     return () => target.removeEventListener('paste', paste, true);
+  }, [disabled, pasteTarget]);
+  useEffect(() => {
+    const target = pasteTarget?.current;
+    if (!target || disabled) return;
+    const open = () => trigger.current?.click();
+    target.addEventListener(OPEN_IMAGE_DIALOG_EVENT, open);
+    return () => target.removeEventListener(OPEN_IMAGE_DIALOG_EVENT, open);
   }, [disabled, pasteTarget]);
   function insert(markdown: string) {
     inserted.current = true;

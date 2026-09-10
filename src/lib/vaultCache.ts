@@ -24,8 +24,10 @@ export async function putVaultTree(record: CachedVaultRecord) {
 export async function deleteVault(accountId: string, vaultId: string) {
   await safelyWrite(async () => {
     const database = await getVaultCacheDatabase();
-    const transaction = database.transaction(['vaults', 'noteContents', 'noteIcons'], 'readwrite');
+    const transaction = database.transaction(['vaults', 'noteContents', 'noteIcons', 'images'], 'readwrite');
     await transaction.objectStore('vaults').delete([accountId, vaultId]);
+    const imageKeys = await transaction.objectStore('images').index('by-vault').getAllKeys([accountId, vaultId]);
+    await Promise.all(imageKeys.map((key) => transaction.objectStore('images').delete(key)));
 
     const noteKeys = await transaction.objectStore('noteContents').index('by-vault').getAllKeys([accountId, vaultId]);
     const iconKeys = await transaction.objectStore('noteIcons').index('by-vault').getAllKeys([accountId, vaultId]);
@@ -115,7 +117,9 @@ export async function deleteMissingNoteContents(
 export async function deleteAccountCache(accountId: string) {
   await safelyWrite(async () => {
     const database = await getVaultCacheDatabase();
-    const transaction = database.transaction(['vaults', 'noteContents', 'noteIcons'], 'readwrite');
+    const transaction = database.transaction(['vaults', 'noteContents', 'noteIcons', 'images'], 'readwrite');
+    const imageKeys = await transaction.objectStore('images').index('by-account').getAllKeys(accountId);
+    await Promise.all(imageKeys.map((key) => transaction.objectStore('images').delete(key)));
     const vaultStore = transaction.objectStore('vaults');
     const noteStore = transaction.objectStore('noteContents');
     const iconStore = transaction.objectStore('noteIcons');

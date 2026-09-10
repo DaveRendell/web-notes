@@ -40,4 +40,10 @@ describe('Markdown rich-editor envelope', () => {
     expect(areMarkdownBodiesSemanticallyEquivalent('- one\n- two\n', '* one\n* two\n')).toBe(true);
     expect(areMarkdownBodiesSemanticallyEquivalent('**bold**', 'plain')).toBe(false);
   });
+
+  it('allows the rich editor to join adjacent empty unordered lists without overlooking content', () => {
+    expect(areMarkdownBodiesSemanticallyEquivalent('-\n\n*', '*\n*')).toBe(true);
+    expect(areMarkdownBodiesSemanticallyEquivalent('- one\n\n* two', '* one\n* two')).toBe(false);
+    expect(areMarkdownBodiesSemanticallyEquivalent('-\n\n*', '*')).toBe(false);
+  });
 });

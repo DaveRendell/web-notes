@@ -1,6 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="12" fill="#24577a"/>
-  <path d="M18 14h22l8 8v28H18z" fill="#fbfcfd"/>
-  <path d="M40 14v10h10" fill="#dfeaf2"/>
-  <path d="M24 32h16M24 39h16M24 46h10" stroke="#24577a" stroke-width="4" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>Web Notes</title>
+  <path d="M8 3h12l7 7v16a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z"
+    fill="#fbfcfd" stroke="#49627f" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M20 3v5a2 2 0 0 0 2 2h5" fill="#dfeaf2"
+    stroke="#49627f" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M10 15h12M10 19h12M10 23h7"
+    fill="none" stroke="#49627f" stroke-width="2" stroke-linecap="round"/>
 </svg>

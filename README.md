@@ -4,6 +4,8 @@ A static React SPA for browsing and editing Markdown notes stored in Google Driv
 
 Notes open in an in-place rich-text surface. Its formatting toolbar stays out of the way until the note receives focus, and changes save to the local cache immediately before being pushed to Drive after one second of inactivity or when focus leaves the editor. Rich text supports common Markdown formatting, lists and checklists, links, wikilinks, tables, quotes, thematic breaks, and fenced code. Hover a block to reveal its grabber, then drag it to reorder or nest content; the same menu provides keyboard-accessible move, indent, outdent, and delete actions. Markdown remains the canonical stored format and an explicit source editor is available from the note menu; notes containing syntax that cannot be preserved safely automatically use source mode.
 
+Type `/` at the start of a block to open slash commands for headings, plain text, quotes, lists, to-dos, block background colours, and images. Continue typing to filter the list; recently selected commands appear first the next time the empty `/` menu opens. Slash commands work in both rich-text and Markdown source modes.
+
 Emoji are stored as standard Unicode in Markdown but displayed consistently using the Twemoji artwork in rich text and the surrounding interface. Twemoji graphics are licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 ## Setup
@@ -33,6 +35,7 @@ The app keeps an account-scoped cache in the browser's IndexedDB storage:
 
 - A cached vault tree is shown immediately after sign-in while the latest file metadata is fetched from Drive.
 - Note bodies are cached lazily when opened. Drive is only asked for the body again when its `modifiedTime` has changed or either timestamp is unavailable.
+- Vault images are cached lazily in IndexedDB, isolated by account and vault and validated against Drive's `modifiedTime`. Matching cached images work offline, and concurrent requests share one download. The image cache is limited to 100 MB per browser, evicting the oldest downloads first. Cache failures are non-fatal; externally hosted images use normal browser caching. Disconnect also clears the account's cached images.
 - A failed refresh leaves cached files and note content available read-only. The vault listing is retried when the browser comes back online.
 - Successful Drive mutations update the tree and body cache immediately. A remote update discovered while editing never replaces the local draft; the editor warns before the next save overwrites Drive.
 - **Sign out** retains cached data for the next session. **Disconnect Google Drive** removes all cached vaults and notes for that Drive account.
@@ -77,3 +80,16 @@ npm run test:browser:ui
 The Playwright suite starts its own Vite server on port 4173 and uses an isolated browser with a fake Drive session and intercepted Google requests. No real credentials, OAuth popup, or Drive writes are involved. Fixtures live in `e2e/vault.spec.ts`; extend them when adding browser regressions. The suite covers rich-text rendering, source-mode switching, search/navigation/history, autosaving, and cached rendering during a Drive outage. It is separate from Vitest so browser tests never accidentally run in jsdom. Worker counts are bounded (four for unit tests, two for browser tests) to avoid overloading local machines and CI.
 
 Failures retain screenshots and traces in `test-results/`; inspect them with `npx playwright show-report` or `npx playwright show-trace <trace.zip>`. CI uploads failure reports for seven days. On Linux, browser installation may also require `npx playwright install --with-deps chromium`.
+
+## Block background colours
+
+Click a block's grabber and choose a **Background colour**, or **Default** to remove it. Colours use theme-aware shades and are saved with the note as hidden Markdown comments:
+
+```markdown
+<!-- web-notes:background=yellow -->
+This paragraph is highlighted.
+
+- A highlighted item <!-- web-notes:background=blue -->
+```
+
+Standalone annotations apply to the next block; inline list annotations apply to the list item. Other Markdown viewers normally hide these comments and show ordinary, uncoloured content. The raw Markdown editor keeps the annotations visible and editable.

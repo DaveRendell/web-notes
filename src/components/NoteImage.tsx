@@ -14,7 +14,7 @@ export function NoteImage({ source, alt = '', title }: { source: string; alt?: s
   const [attempt, setAttempt] = useState(0);
   const key = JSON.stringify([scope, source, services?.version(source), services?.online, attempt]);
   useEffect(() => {
-    if (external || !loadRef.current || services?.online === false) return;
+    if (external || !loadRef.current) return;
     let cancelled = false;
     let objectUrl: string | undefined;
     void loadRef.current(source).then((blob) => {

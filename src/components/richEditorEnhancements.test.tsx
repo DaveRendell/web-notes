@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createRef, useEffect } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   MDXEditor,
   type MDXEditorMethods,
@@ -15,6 +15,7 @@ import { $getRoot } from 'lexical';
 import {
   emojiTrigger,
   richEditorEnhancementsPlugin,
+  slashCommandTrigger,
   wikiLinkTrigger,
 } from './richEditorEnhancements';
 
@@ -26,9 +27,21 @@ function SelectEditorStart() {
   return null;
 }
 
+function SelectEditorEnd() {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => editor.update(() => $getRoot().selectEnd()), [editor]);
+  return null;
+}
+
 const selectEditorStartPlugin = realmPlugin({
   init(realm) {
     realm.pub(addComposerChild$, SelectEditorStart);
+  },
+});
+
+const selectEditorEndPlugin = realmPlugin({
+  init(realm) {
+    realm.pub(addComposerChild$, SelectEditorEnd);
   },
 });
 
@@ -50,6 +63,44 @@ describe('rich editor enhancements', () => {
     ['ordinary:', null],
   ])('detects emoji query %s without treating ordinary colons as triggers', (text, expected) => {
     expect(emojiTrigger(text, null!)).toEqual(expected);
+  });
+
+  it.each([
+    ['/', { leadOffset: 0, matchingString: '', replaceableString: '/' }],
+    ['/hea', { leadOffset: 0, matchingString: 'hea', replaceableString: '/hea' }],
+    ['  /todo', { leadOffset: 2, matchingString: 'todo', replaceableString: '/todo' }],
+    ['text /todo', { leadOffset: 5, matchingString: 'todo', replaceableString: '/todo' }],
+    ['https://example.com', null],
+  ])('detects slash command query %s at a block start or after whitespace', (text, expected) => {
+    expect(slashCommandTrigger(text, null!)).toEqual(expected);
+  });
+
+  it('runs a slash command and removes the typed trigger', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+    Object.defineProperty(Range.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => new DOMRect(20, 20, 1, 18),
+    });
+    const editorRef = createRef<MDXEditorMethods>();
+    render(
+      <MDXEditor
+        ref={editorRef}
+        markdown="Existing /heading"
+        plugins={[
+          headingsPlugin(),
+          listsPlugin(),
+          richEditorEnhancementsPlugin({ notes: [], recentNotes: [] }),
+          selectEditorEndPlugin(),
+        ]}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('option', { name: /Heading 1/i }));
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toMatch(/^# Existing(?: |&#x20;)$/));
   });
 
   it('round-trips wikilink targets and aliases without escaping them', async () => {

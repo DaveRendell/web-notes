@@ -48,7 +48,7 @@ describe('cache connection lifecycle', () => {
     expect(blocked).not.toHaveBeenCalled();
     const fresh = await getVaultCacheDatabase();
     expect(fresh).not.toBe(old);
-    expect([...fresh.objectStoreNames]).toEqual(['noteContents', 'noteIcons', 'vaults']);
+    expect([...fresh.objectStoreNames]).toEqual(['images', 'noteContents', 'noteIcons', 'vaults']);
   });
 
   it('reconnects after an unexpected browser termination', async () => {

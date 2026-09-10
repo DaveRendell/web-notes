@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useRef, type ReactNode } from 'react';
+import { getCachedImage, putCachedImage } from '../lib/imageCache';
 import { useAuth } from './AuthContext';
 import { useVault } from './VaultContext';
 import { getDriveImage, isGoogleDriveAuthError } from '../lib/googleDrive';
@@ -19,17 +20,31 @@ const ImageContext = createContext<ImageServices | null>(null);
 export function ImageProvider({ children }: { children: ReactNode }) {
   const { accountId, ensureAccessToken, invalidateAccessToken } = useAuth();
   const { tree, selectedFile, selectedVault, isOnline, uploadImage } = useVault();
+  const pending = useRef(new Map<string, Promise<Blob>>());
   const load = useCallback(async (source: string) => {
-    if (!isOnline) throw new Error('Vault images are unavailable offline.');
     const node = resolveVaultImage(source, selectedFile?.path ?? '', tree);
-    if (!node || !accountId) throw new Error('Image not found in this vault.');
-    try { return await getDriveImage(await ensureAccessToken(), node.id); }
-    catch (error) {
-      if (!isGoogleDriveAuthError(error)) throw error;
-      invalidateAccessToken();
-      return getDriveImage(await ensureAccessToken(), node.id);
-    }
-  }, [accountId, ensureAccessToken, invalidateAccessToken, isOnline, selectedFile?.path, tree]);
+    if (!node || !accountId || !selectedVault) throw new Error('Image not found in this vault.');
+    const key = JSON.stringify([accountId, selectedVault.id, node.id, node.source.modifiedTime, isOnline]);
+    const existing = pending.current.get(key);
+    if (existing) return existing;
+    const request = (async () => {
+      const cached = await getCachedImage(accountId, selectedVault.id, node.id, node.source.modifiedTime);
+      if (cached) return cached;
+      if (!isOnline) throw new Error('Vault images are unavailable offline.');
+      let blob: Blob;
+      try { blob = await getDriveImage(await ensureAccessToken(), node.id); }
+      catch (error) {
+        if (!isGoogleDriveAuthError(error)) throw error;
+        invalidateAccessToken();
+        blob = await getDriveImage(await ensureAccessToken(), node.id);
+      }
+      await putCachedImage(accountId, selectedVault.id, node.id, node.source.modifiedTime, blob);
+      return blob;
+    })();
+    pending.current.set(key, request);
+    try { return await request; }
+    finally { pending.current.delete(key); }
+  }, [accountId, ensureAccessToken, invalidateAccessToken, isOnline, selectedFile?.path, selectedVault, tree]);
   const version = (source: string) => {
     const node = resolveVaultImage(source, selectedFile?.path ?? '', tree);
     return `${node?.id}:${node?.source.modifiedTime}`;

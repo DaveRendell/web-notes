@@ -5,6 +5,7 @@ import { createRef, useEffect, useRef } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { RichInsertImageButton } from './RichInsertImageButton';
 import { richEditorEnhancementsPlugin } from './richEditorEnhancements';
+import { OPEN_IMAGE_DIALOG_EVENT } from '../lib/slashCommands';
 
 const services = vi.hoisted(() => ({ scope: 'note', online: true, images: [], version: () => '', upload: vi.fn() }));
 vi.mock('../contexts/ImageContext', () => ({ useImages: () => services }));
@@ -56,4 +57,10 @@ it('retains the paste cursor throughout an asynchronous upload', async () => {
   await displaceCursor();
   await act(async () => finish({ path: 'image.png' }));
   await waitFor(() => expect(methods.current?.getMarkdown()).toContain('Second ![](/image.png)paragraph'));
+});
+it('opens the existing image flow for a slash-command request', async () => {
+  const methods = createRef<MDXEditorMethods>();
+  const { container } = render(<Fixture methods={methods} />);
+  fireEvent(container.firstElementChild!, new CustomEvent(OPEN_IMAGE_DIALOG_EVENT, { bubbles: true }));
+  expect((await screen.findByRole('dialog', { name: 'Insert image' })).hasAttribute('open')).toBe(true);
 });

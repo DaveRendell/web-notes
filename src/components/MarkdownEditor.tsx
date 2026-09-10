@@ -14,6 +14,7 @@ import {
   toggleMarkdownList,
 } from '../lib/markdownFormatting';
 import { createWikilinkCompletionSource } from '../lib/wikilinkCompletion';
+import { createSlashCommandCompletionSource, requestImageDialog } from '../lib/slashCommands';
 import type { VaultNode } from '../types/vault';
 import { InsertImageButton } from './InsertImageButton';
 
@@ -35,7 +36,11 @@ export function MarkdownEditor({ initialCursorOffset, notes, value, onChange, on
   onSaveRef.current = onSave;
   const editorCompletions = useMemo(
     () => autocompletion({
-      override: [createWikilinkCompletionSource(notes, recentNotes), createEmojiCompletionSource()],
+      override: [
+        createWikilinkCompletionSource(notes, recentNotes),
+        createEmojiCompletionSource(),
+        createSlashCommandCompletionSource(() => requestImageDialog(shellRef.current)),
+      ],
       addToOptions: [{
         position: 40,
         render: (completion) => {

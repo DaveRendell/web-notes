@@ -4,6 +4,9 @@ import { ImageProvider, useImages } from './ImageContext';
 import { useAuth } from './AuthContext';
 import { useVault } from './VaultContext';
 import { getDriveImage, isGoogleDriveAuthError } from '../lib/googleDrive';
+import { getCachedImage, putCachedImage } from '../lib/imageCache';
+
+vi.mock('../lib/imageCache', () => ({ getCachedImage: vi.fn(), putCachedImage: vi.fn() }));
 
 vi.mock('./AuthContext', () => ({ useAuth: vi.fn() }));
 vi.mock('./VaultContext', () => ({ useVault: vi.fn() }));
@@ -23,6 +26,22 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('ImageProvider loading', () => {
+  it('uses cached images offline without authentication', async () => {
+    const blob = new Blob(['cached']);
+    vi.mocked(getCachedImage).mockResolvedValue(blob);
+    vi.mocked(useVault).mockReturnValue({ ...useVault(), isOnline: false });
+    const { result } = renderHook(useImages, { wrapper: ImageProvider });
+    expect(await result.current!.load('/photo.png')).toBe(blob);
+    expect(ensureAccessToken).not.toHaveBeenCalled();
+  });
+  it('shares simultaneous downloads and caches the returned version', async () => {
+    const blob = new Blob(['image']);
+    vi.mocked(getDriveImage).mockResolvedValue(blob);
+    const { result } = renderHook(useImages, { wrapper: ImageProvider });
+    await Promise.all([result.current!.load('/photo.png'), result.current!.load('/photo.png')]);
+    expect(getDriveImage).toHaveBeenCalledOnce();
+    expect(putCachedImage).toHaveBeenCalledWith('account', 'vault', 'image', 'version', blob);
+  });
   it('downloads a resolved image and retries authentication once', async () => {
     const blob = new Blob(['image']);
     vi.mocked(getDriveImage).mockRejectedValueOnce(new Error('expired')).mockResolvedValueOnce(blob);

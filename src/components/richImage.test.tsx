@@ -6,11 +6,22 @@ import { ThemeProvider } from '../contexts/ThemeContext';
 import { areMarkdownBodiesSemanticallyEquivalent } from '../lib/markdownEnvelope';
 import RichMarkdownEditor from './RichMarkdownEditor';
 import { richEditorEnhancementsPlugin } from './richEditorEnhancements';
+import { richBlockBackgroundPlugin } from './richBlockBackground';
 
 afterEach(cleanup);
 beforeEach(() => localStorage.setItem('web-notes:theme', 'light'));
 
 describe('rich Markdown images', () => {
+  it('preserves coloured blocks followed by empty list items', async () => {
+    const source = '<!-- web-notes:background=red -->\n\n# 🌐 Web Notes\n\n![](/Projects/test%20%283%29.webp)\n\n<!-- web-notes:background=green -->\n\nTest\n\n<!-- web-notes:background=blue -->\n\nTest\n\n* Test <!-- web-notes:background=purple -->\n* test <!-- web-notes:background=blue -->\n* test <!-- web-notes:background=purple -->\n* test <!-- web-notes:background=red -->\n\n-\n\n*';
+    const ref = createRef<MDXEditorMethods>();
+    render(<MDXEditor ref={ref} markdown={source} plugins={[
+      headingsPlugin(), listsPlugin(), linkPlugin(), richEditorEnhancementsPlugin({ notes: [], recentNotes: [] }), richBlockBackgroundPlugin(),
+    ]} />);
+    await waitFor(() => expect(ref.current).not.toBeNull());
+    const normalized = ref.current!.getMarkdown();
+    expect(areMarkdownBodiesSemanticallyEquivalent(source, normalized), normalized).toBe(true);
+  });
   it('preserves the games note constructs together', async () => {
     const source = '# 🎮 2023 Games\n\nPrevious years: [[Media/2022/2022 Games|🎮2022 Games]] [[Media/2021/2021 Games|🎮2021 Games]] \n\n[![](2023%20Games/mural.png)](2023%20Games/mural.png)\n\n### 👤 Single player\n\n1. 🧛 Vampire Survivors - 8 hours\n2. 💀 *Hades (true ending) - 22 hours*\n3. *💛 Celeste (C-Sides) - 6 hours*\n\n**Souls games:**\n\n11. Elden Ring\n12. Dark Souls\n13. Bloodborne';
     const ref = createRef<MDXEditorMethods>();

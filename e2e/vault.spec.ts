@@ -58,6 +58,50 @@ test('retains cached note after reload when Drive is unavailable', async ({ page
   await expect(page.getByText(/Showing cached files/)).toBeVisible();
 });
 
+test('block background colours save as comments and survive reloading', async ({ page }) => {
+  let savedText = '';
+  await page.route('https://www.googleapis.com/upload/drive/v3/files/welcome?*', async (route) => {
+    savedText = route.request().postData() ?? '';
+    await route.fulfill({ json: { id: 'welcome', name: 'Welcome.md', mimeType: 'text/markdown', parents: ['vault'], modifiedTime: '2026-01-02T00:00:00Z' } });
+  });
+  await page.goto('/#/note/Welcome.md');
+  const paragraph = page.locator('.rich-markdown-content p').filter({ hasText: 'A browser-tested note.' });
+  await paragraph.hover();
+  await page.getByRole('button', { name: 'Move block' }).click();
+  await page.getByRole('menuitemradio', { name: 'yellow background' }).click();
+  await expect(paragraph).toHaveCSS('background-color', 'rgb(250, 240, 196)');
+  await expect.poll(() => savedText).toContain('<!-- web-notes:background=yellow -->');
+  await page.route('https://www.googleapis.com/drive/v3/files/welcome?*', route => route.fulfill({ contentType: 'text/plain', body: savedText }));
+  await page.reload();
+  await expect(paragraph).toHaveAttribute('data-block-background', 'yellow');
+  await expect(page.getByText(/Rich text normalization changed/)).toHaveCount(0);
+});
+
+test('aligns rich checklist text and markers with ordinary list content', async ({ page }) => {
+  await page.route('https://www.googleapis.com/drive/v3/files/welcome?*', route => route.fulfill({
+    contentType: 'text/plain',
+    body: '- Ordinary item\n\nParagraph\n\n- [ ] To-do item <!-- web-notes:background=green -->',
+  }));
+  await page.goto('/#/note/Welcome.md');
+
+  const ordinary = page.locator('.rich-markdown-content li').filter({ hasText: 'Ordinary item' });
+  const todo = page.locator('.rich-markdown-content li[role="checkbox"]');
+  await expect(todo).toHaveAttribute('data-block-background', 'green');
+  const alignment = await Promise.all([ordinary, todo].map(async (item) => {
+    const text = item.locator('[data-lexical-text]').first();
+    return { item: await item.boundingBox(), text: await text.boundingBox() };
+  }));
+  expect(Math.abs(alignment[0].text!.x - alignment[1].text!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(alignment[0].item!.x - alignment[1].item!.x)).toBeLessThanOrEqual(1);
+
+  const verticalOffset = await todo.evaluate((element) => {
+    const row = getComputedStyle(element);
+    const marker = getComputedStyle(element, '::before');
+    return Math.abs(Number.parseFloat(marker.top) + Number.parseFloat(marker.height) / 2 - Number.parseFloat(row.lineHeight) / 2);
+  });
+  expect(verticalOffset).toBeLessThanOrEqual(1);
+});
+
 test('autosaves rich-text changes through the Drive adapter', async ({ page }) => {
   let savedText = '';
   await page.route('https://www.googleapis.com/upload/drive/v3/files/welcome?*', async (route) => {
@@ -75,3 +119,36 @@ test('autosaves rich-text changes through the Drive adapter', async ({ page }) =
   await expect.poll(() => savedText).toContain('Edited in a real browser');
   await expect(editor).toContainText('Edited in a real browser');
 });
+
+for (const width of [320, 390]) {
+  test(`mobile ${width}px keeps the note full width and uses a dismissible file drawer`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/#/note/Welcome.md');
+    const editor = page.locator('.rich-markdown-content');
+    await expect(editor).toContainText('A browser-tested note.');
+    await expect(page.getByRole('button', { name: 'Show file sidebar' })).toBeVisible();
+    const viewer = await page.locator('.workspace-viewer').boundingBox();
+    expect(viewer?.width).toBe(width);
+    expect(viewer!.y).toBeLessThan(90);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    await page.screenshot({ path: testInfo.outputPath('mobile.png') });
+    await page.getByRole('button', { name: 'Show file sidebar' }).click();
+    await expect(page.getByRole('complementary', { name: 'Vault files' })).toBeVisible();
+    await expect(page.locator('.sidebar-container')).toHaveCSS('left', '0px');
+    await expect(page.locator('.sidebar')).toHaveCSS('opacity', '1');
+    await page.screenshot({ path: testInfo.outputPath('drawer.png') });
+    await page.locator('.tree-item').filter({ hasText: 'Second' }).click();
+    await expect(editor).toContainText('Another note.');
+    await expect(page.getByRole('button', { name: 'Show file sidebar' })).toBeVisible();
+    await page.getByRole('button', { name: 'Show file sidebar' }).click();
+    await page.getByRole('button', { name: 'Close file sidebar', exact: true }).click({ position: { x: width - 8, y: 120 } });
+    await expect(page.getByRole('button', { name: 'Show file sidebar' })).toBeFocused();
+    await page.getByRole('button', { name: 'Show file sidebar' }).click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Show file sidebar' })).toBeFocused();
+    await page.getByRole('button', { name: 'Open options menu' }).click();
+    await page.getByRole('menuitem', { name: 'Dark mode' }).click();
+    await expect(page.locator('.header-menu-popover')).toBeHidden();
+    await page.screenshot({ path: testInfo.outputPath('dark.png') });
+  });
+}
