@@ -81,4 +81,24 @@ describe('block backgrounds', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Move down' }));
     await waitFor(() => expect(ref.current!.getMarkdown()).toMatch(/Second\n[*-] First <!-- web-notes:background=pink -->/));
   });
+
+  it('groups only consecutive list items with the same background colour', async () => {
+    const { container } = setup([
+      '- First <!-- web-notes:background=blue -->',
+      '- Second <!-- web-notes:background=blue -->',
+      '- Third <!-- web-notes:background=green -->',
+      '- Fourth <!-- web-notes:background=blue -->',
+    ].join('\n'));
+
+    await waitFor(() => expect(container.querySelectorAll('li[data-block-background]')).toHaveLength(4));
+    const items = container.querySelectorAll<HTMLElement>('li');
+    expect(items[0].hasAttribute('data-block-background-join-before')).toBe(false);
+    expect(items[0].hasAttribute('data-block-background-join-after')).toBe(true);
+    expect(items[1].hasAttribute('data-block-background-join-before')).toBe(true);
+    expect(items[1].hasAttribute('data-block-background-join-after')).toBe(false);
+    expect(items[2].hasAttribute('data-block-background-join-before')).toBe(false);
+    expect(items[2].hasAttribute('data-block-background-join-after')).toBe(false);
+    expect(items[3].hasAttribute('data-block-background-join-before')).toBe(false);
+    expect(items[3].hasAttribute('data-block-background-join-after')).toBe(false);
+  });
 });

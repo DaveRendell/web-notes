@@ -76,6 +76,24 @@ function BackgroundStyles() {
         if ($isElementNode(node)) node.getChildren().forEach(walk);
       }
       walk($getRoot());
+
+      // List-item margins leave exactly enough room for the background shadows
+      // to meet. Mark adjacent items of the same colour so CSS can square only
+      // the touching corners, without changing document spacing or grouping
+      // differently coloured rows.
+      const root = editor.getRootElement();
+      const colouredItems = root?.querySelectorAll<HTMLElement>('li[data-block-background]') ?? [];
+      colouredItems.forEach((element) => {
+        delete element.dataset.blockBackgroundJoinBefore;
+        delete element.dataset.blockBackgroundJoinAfter;
+      });
+      colouredItems.forEach((element) => {
+        const next = element.nextElementSibling;
+        if (!(next instanceof HTMLElement) || next.tagName !== 'LI') return;
+        if (next.dataset.blockBackground !== element.dataset.blockBackground) return;
+        element.dataset.blockBackgroundJoinAfter = '';
+        next.dataset.blockBackgroundJoinBefore = '';
+      });
     });
     paint();
     return editor.registerUpdateListener(paint);

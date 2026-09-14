@@ -101,6 +101,31 @@ test('coloured list items extend their highlight behind native markers', async (
   expect(todoShadow).not.toContain('-32px 0px 0px 3px');
 });
 
+test('consecutive list items with matching colours share square inner corners', async ({ page }) => {
+  await page.route('https://www.googleapis.com/drive/v3/files/welcome?*', route => route.fulfill({
+    contentType: 'text/plain',
+    body: [
+      '- First <!-- web-notes:background=blue -->',
+      '- Second <!-- web-notes:background=blue -->',
+      '- Different <!-- web-notes:background=green -->',
+    ].join('\n'),
+  }));
+  await page.goto('/#/note/Welcome.md');
+
+  const items = page.locator('.rich-markdown-content li');
+  await expect(items).toHaveCount(3);
+  const corners = await items.evaluateAll(elements => elements.map(element => {
+    const style = getComputedStyle(element);
+    return [style.borderTopLeftRadius, style.borderBottomLeftRadius];
+  }));
+
+  expect(corners).toEqual([
+    ['4px', '0px'],
+    ['0px', '4px'],
+    ['4px', '4px'],
+  ]);
+});
+
 test('aligns rich checklist text and markers with ordinary list content', async ({ page }) => {
   await page.route('https://www.googleapis.com/drive/v3/files/welcome?*', route => route.fulfill({
     contentType: 'text/plain',

@@ -2972,6 +2972,18 @@ li.markdown-block > .markdown-block-controls {
     var(--block-marker-highlight-offset) 0 0 3px var(--block-bg);
 }
 
+/* Consecutive list rows with the same colour meet at the midpoint of their
+   existing margins. Square only that shared edge so they read as one group. */
+.rich-markdown-content li[data-block-background-join-before] {
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+.rich-markdown-content li[data-block-background-join-after] {
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+}
+
 /* Native bullets and numbers are painted outside the LI box. Add an
    overlapping background layer in their marker gutter so they receive the
    same treatment as checkboxes without changing list indentation or wrapping. */
