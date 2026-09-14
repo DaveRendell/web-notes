@@ -7,10 +7,13 @@ import type { VaultNode } from '../types/vault';
 const mocks = vi.hoisted(() => ({
   createDriveFolder: vi.fn(),
   createDriveMarkdownFile: vi.fn(),
+  createDriveTextFile: vi.fn(),
   deleteDriveFile: vi.fn(),
   deleteNoteContent: vi.fn(),
   ensureAccessToken: vi.fn(),
   getNoteIcons: vi.fn(),
+  getNoteContent: vi.fn(),
+  getDriveFileText: vi.fn(),
   loadDriveVaultSettings: vi.fn(),
   moveDriveFile: vi.fn(),
   invalidateAccessToken: vi.fn(),
@@ -37,10 +40,12 @@ vi.mock('./AuthContext', () => ({
 vi.mock('../lib/googleDrive', () => ({
   createDriveFolder: mocks.createDriveFolder,
   createDriveMarkdownFile: mocks.createDriveMarkdownFile,
+  createDriveTextFile: mocks.createDriveTextFile,
   deleteDriveFile: mocks.deleteDriveFile,
   isGoogleDriveAuthError: (error: unknown) => (
     typeof error === 'object' && error !== null && 'status' in error && error.status === 401
   ),
+  getDriveFileText: mocks.getDriveFileText,
   moveDriveFile: mocks.moveDriveFile,
   renameDriveFile: mocks.renameDriveFile,
   renameDriveFolder: mocks.renameDriveFolder,
@@ -50,6 +55,7 @@ vi.mock('../lib/googleDrive', () => ({
 vi.mock('../lib/vaultCache', () => ({
   deleteNoteContent: mocks.deleteNoteContent,
   getNoteIcons: mocks.getNoteIcons,
+  getNoteContent: mocks.getNoteContent,
   putNoteContent: mocks.putNoteContent,
   putNoteIcon: mocks.putNoteIcon,
   updateNoteContentVersion: mocks.updateNoteContentVersion,
@@ -84,6 +90,7 @@ import { useVault, VaultProvider } from './VaultContext';
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getNoteIcons.mockResolvedValue([]);
+  mocks.getNoteContent.mockResolvedValue(null);
   mocks.ensureAccessToken.mockResolvedValue('valid-token');
   mocks.loadDriveVaultSettings.mockResolvedValue({
     file: { id: 'settings', mimeType: 'application/json', name: '.web-notes.json' },
@@ -238,6 +245,82 @@ describe('VaultContext cache mutations', () => {
       expect.objectContaining({ id: 'nested', path: 'Folder/Nested', type: 'folder' }),
     );
     expect(mocks.putNoteContent).not.toHaveBeenCalled();
+  });
+
+  it('creates and opens a weekly note from the configured template', async () => {
+    mocks.createDriveFolder.mockReset();
+    mocks.createDriveFolder
+      .mockResolvedValueOnce(folder('templates', 'Templates'))
+      .mockResolvedValueOnce(folder('weeks', 'Weeks'))
+      .mockResolvedValueOnce(folder('year', '2026', 'weeks'));
+    mocks.createDriveMarkdownFile.mockResolvedValueOnce({
+      ...file('week-template', 'Week.md', 'template-version'),
+      parents: ['templates'],
+    });
+    mocks.getDriveFileText.mockResolvedValue('# Week $week, $year\n\nWeek $week');
+    mocks.createDriveTextFile.mockResolvedValue({
+      ...file('weekly-note', 'Week 38 2026.md', 'weekly-version'),
+      parents: ['year'],
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => <VaultProvider>{children}</VaultProvider>;
+    const { result } = renderHook(() => useVault(), { wrapper });
+
+    await act(async () => {
+      const templates = await result.current.createFolder(null, 'Templates');
+      await result.current.createNote(templates, 'Week');
+    });
+    let weeklyNote!: VaultNode;
+    await act(async () => {
+      weeklyNote = await result.current.openWeeklyNote(new Date('2026-09-14T12:00:00'));
+    });
+
+    expect(mocks.getDriveFileText).toHaveBeenCalledWith('valid-token', 'week-template');
+    expect(mocks.createDriveFolder).toHaveBeenNthCalledWith(2, 'valid-token', 'vault', 'Weeks');
+    expect(mocks.createDriveFolder).toHaveBeenNthCalledWith(3, 'valid-token', 'weeks', '2026');
+    expect(mocks.createDriveTextFile).toHaveBeenCalledWith(
+      'valid-token',
+      'year',
+      'Week 38 2026.md',
+      '# Week 38, 2026\n\nWeek 38',
+      'text/markdown',
+    );
+    expect(weeklyNote.path).toBe('Weeks/2026/Week 38 2026.md');
+    expect(result.current.selectedFile?.id).toBe('weekly-note');
+    expect(mocks.putNoteContent).toHaveBeenLastCalledWith(expect.objectContaining({
+      content: '# Week 38, 2026\n\nWeek 38',
+      fileId: 'weekly-note',
+      modifiedTime: 'weekly-version',
+    }));
+
+    mocks.createDriveFolder.mockClear();
+    mocks.createDriveTextFile.mockClear();
+    await act(async () => {
+      await result.current.openWeeklyNote(new Date('2026-09-14T18:00:00'));
+    });
+    expect(mocks.createDriveFolder).not.toHaveBeenCalled();
+    expect(mocks.createDriveTextFile).not.toHaveBeenCalled();
+  });
+
+  it('creates an empty weekly note when the template does not exist', async () => {
+    mocks.createDriveFolder.mockReset();
+    mocks.createDriveFolder
+      .mockResolvedValueOnce(folder('weeks', 'Weeks'))
+      .mockResolvedValueOnce(folder('year', '2026', 'weeks'));
+    mocks.createDriveTextFile.mockResolvedValue({
+      ...file('weekly-note', 'Week 38 2026.md', 'weekly-version'),
+      parents: ['year'],
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => <VaultProvider>{children}</VaultProvider>;
+    const { result } = renderHook(() => useVault(), { wrapper });
+
+    await act(async () => {
+      await result.current.openWeeklyNote(new Date('2026-09-14T12:00:00'));
+    });
+
+    expect(mocks.getDriveFileText).not.toHaveBeenCalled();
+    expect(mocks.createDriveTextFile).toHaveBeenCalledWith(
+      'valid-token', 'year', 'Week 38 2026.md', '', 'text/markdown',
+    );
   });
 
   it('updates cached bodies and tree metadata for create, rename, save, and delete', async () => {

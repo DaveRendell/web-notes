@@ -4,6 +4,8 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useVaultFavorites } from '../hooks/useVaultFavorites';
 import {
   createDriveFolder,
+  createDriveTextFile,
+  getDriveFileText,
   uploadDriveImage,
   createDriveMarkdownFile,
   isGoogleDriveAuthError,
@@ -15,6 +17,7 @@ import {
 } from '../lib/googleDrive';
 import {
   deleteNoteContent,
+  getNoteContent,
   getNoteIcons,
   putNoteContent,
   putNoteIcon,
@@ -22,6 +25,7 @@ import {
 } from '../lib/vaultCache';
 import { findLeadingEmoji } from '../lib/markdown';
 import { updatePageFavicon } from '../lib/pageFavicon';
+import { applyWeeklyNoteTemplate, getWeeklyNoteDetails } from '../lib/weeklyNote';
 import {
   containsVaultNode,
   createVaultNode,
@@ -63,6 +67,7 @@ type VaultContextValue = {
   isOnline: boolean;
   isRefreshing: boolean;
   moveNode: (node: VaultNode, destinationFolder: VaultNode | null) => Promise<VaultNode>;
+  openWeeklyNote: (date?: Date) => Promise<VaultNode>;
   noteIcons: Record<string, string | null>;
   notes: VaultNode[];
   recentNotes: VaultNode[];
@@ -259,6 +264,91 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     },
     [accessToken, ensureAccessToken, isOnline, selectedVault, setTree],
   );
+
+  const openWeeklyNote = useCallback(async (date = new Date()) => {
+    if (!accessToken || !selectedVault) {
+      throw new Error('Sign in and choose a vault before opening a weekly note.');
+    }
+
+    const details = getWeeklyNoteDetails(date);
+    const existingNote = findVaultNodeByPath(tree, details.path);
+    if (existingNote) {
+      if (existingNote.type !== 'markdown') throw new Error(`A non-note file already exists at ${details.path}.`);
+      selectFile(existingNote);
+      return existingNote;
+    }
+    if (!isOnline) throw new Error('Reconnect to the internet before creating this week’s note.');
+
+    async function driveRequest<T>(request: (token: string) => Promise<T>) {
+      try {
+        return await request(await ensureAccessToken());
+      } catch (requestError) {
+        if (!isGoogleDriveAuthError(requestError)) throw requestError;
+        invalidateAccessToken();
+        return request(await ensureAccessToken());
+      }
+    }
+
+    const templateNote = findVaultNodeByPath(tree, 'Templates/Week.md');
+    let template = '';
+    if (templateNote?.type === 'markdown') {
+      const cachedTemplate = accountId
+        ? await getNoteContent(accountId, selectedVault.id, templateNote.id)
+        : null;
+      const cacheIsCurrent = Boolean(
+        cachedTemplate?.modifiedTime
+        && templateNote.source.modifiedTime
+        && cachedTemplate.modifiedTime === templateNote.source.modifiedTime,
+      );
+      template = cacheIsCurrent
+        ? cachedTemplate!.content
+        : await driveRequest((token) => getDriveFileText(token, templateNote.id));
+    }
+    const content = applyWeeklyNoteTemplate(template, details.weekNumber, details.year);
+
+    let weeksFolder = findVaultNodeByPath(tree, details.weeksFolderPath);
+    if (weeksFolder && weeksFolder.type !== 'folder') {
+      throw new Error(`A non-folder file already exists at ${details.weeksFolderPath}.`);
+    }
+    if (!weeksFolder) {
+      const file = await driveRequest((token) => createDriveFolder(token, selectedVault.id, 'Weeks'));
+      weeksFolder = createVaultNode(file, '');
+      setTree((currentTree) => addNodeToTree(currentTree, null, weeksFolder!));
+    }
+
+    let yearFolder = findVaultNodeByPath(tree, details.yearFolderPath);
+    if (yearFolder && yearFolder.type !== 'folder') {
+      throw new Error(`A non-folder file already exists at ${details.yearFolderPath}.`);
+    }
+    if (!yearFolder) {
+      const file = await driveRequest((token) => createDriveFolder(token, weeksFolder!.id, String(details.year)));
+      yearFolder = createVaultNode(file, weeksFolder.path);
+      setTree((currentTree) => addNodeToTree(currentTree, weeksFolder!.id, yearFolder!));
+    }
+
+    const file = await driveRequest((token) => createDriveTextFile(
+      token,
+      yearFolder!.id,
+      details.filename,
+      content,
+      'text/markdown',
+    ));
+    const note = createVaultNode(file, yearFolder.path);
+    setTree((currentTree) => addNodeToTree(currentTree, yearFolder!.id, note));
+    if (accountId) {
+      void putNoteContent({
+        accountId,
+        vaultId: selectedVault.id,
+        fileId: note.id,
+        content,
+        modifiedTime: file.modifiedTime,
+        cachedAt: Date.now(),
+      });
+    }
+    cacheNoteIcon(note.id, content);
+    selectFile(note);
+    return note;
+  }, [accessToken, accountId, cacheNoteIcon, ensureAccessToken, invalidateAccessToken, isOnline, selectFile, selectedVault, setTree, tree]);
 
   const renameNote = useCallback(
     async (note: VaultNode, name: string) => {
@@ -616,6 +706,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       isOnline,
       isRefreshing,
       moveNode,
+      openWeeklyNote,
       noteIcons,
       notes,
       recentNotes,
@@ -650,6 +741,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       isOnline,
       isRefreshing,
       moveNode,
+      openWeeklyNote,
       noteIcons,
       notes,
       recentNotes,
@@ -697,6 +789,10 @@ function createVaultIndex(nodes: VaultNode[]): VaultIndex {
 
 function flattenVaultTree(nodes: VaultNode[]): VaultNode[] {
   return nodes.flatMap((node) => [node, ...(node.children ? flattenVaultTree(node.children) : [])]);
+}
+
+function findVaultNodeByPath(nodes: VaultNode[], path: string) {
+  return flattenVaultTree(nodes).find((node) => node.path === path) ?? null;
 }
 
 function normalizeWikilinkTarget(target: string) {
