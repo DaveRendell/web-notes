@@ -55,6 +55,7 @@ export default function RichMarkdownEditor({ markdown, blockMovementDisabled = f
   const { theme } = useTheme();
   const editorRef = useRef<MDXEditorMethods>(null);
   const shellRef = useRef<HTMLDivElement>(null);
+  const activeTableRef = useRef<HTMLTableElement | null>(null);
   const refreshingSpellcheckRef = useRef(false);
   const lastEmittedMarkdownRef = useRef(markdown);
   const plugins = useMemo(() => [
@@ -113,6 +114,30 @@ export default function RichMarkdownEditor({ markdown, blockMovementDisabled = f
     return cancelRefresh ?? undefined;
   }, [spellCheck]);
 
+  function clearActiveTable() {
+    activeTableRef.current?.removeAttribute('data-web-notes-controls-active');
+    activeTableRef.current = null;
+  }
+
+  function updateActiveTable(target: EventTarget | null) {
+    if (!(target instanceof Element)) return;
+
+    const table = target.closest<HTMLTableElement>('.rich-markdown-content table');
+    if (table && shellRef.current?.contains(table)) {
+      if (activeTableRef.current !== table) {
+        clearActiveTable();
+        table.setAttribute('data-web-notes-controls-active', 'true');
+        activeTableRef.current = table;
+      }
+      return;
+    }
+
+    // MDXEditor portals row and column menus outside the table. Keep their
+    // anchor table active while one of those menus is open.
+    if (activeTableRef.current?.querySelector('[data-state="open"]')) return;
+    clearActiveTable();
+  }
+
   return (
     <div
       ref={shellRef}
@@ -120,10 +145,12 @@ export default function RichMarkdownEditor({ markdown, blockMovementDisabled = f
       onBlurCapture={(event) => {
         if (refreshingSpellcheckRef.current) return;
         if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        clearActiveTable();
         onActiveChange(false);
         onBlur?.();
       }}
-      onFocusCapture={() => {
+      onFocusCapture={(event) => {
+        updateActiveTable(event.target);
         if (!refreshingSpellcheckRef.current) onActiveChange(true);
       }}
       onPointerDownCapture={onActivity}

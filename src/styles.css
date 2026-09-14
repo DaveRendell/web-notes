@@ -1483,6 +1483,27 @@ button {
   caret-color: #17202a;
 }
 
+/* MDXEditor renders a tool row and tool columns around every writable table.
+   Remove those gutters while the table is idle so it reads like an ordinary
+   Markdown table, then restore them when a cell or table menu has focus. The
+   data-tool-cell attribute is part of the rendered table structure and avoids
+   depending on MDXEditor's generated CSS-module class names. */
+.rich-markdown-content table:has(> thead [data-tool-cell="true"]):not([data-web-notes-controls-active="true"]) > thead,
+.rich-markdown-content table:has(> thead [data-tool-cell="true"]):not([data-web-notes-controls-active="true"]) > tbody > tr > [data-tool-cell="true"],
+.rich-markdown-content table:has(> thead [data-tool-cell="true"]):not([data-web-notes-controls-active="true"]) > tfoot {
+  display: none;
+}
+
+.rich-markdown-content table:has(> thead [data-tool-cell="true"]):not([data-web-notes-controls-active="true"]) > colgroup > col:first-child,
+.rich-markdown-content table:has(> thead [data-tool-cell="true"]):not([data-web-notes-controls-active="true"]) > colgroup > col:last-child {
+  width: 0;
+  visibility: collapse;
+}
+
+.rich-markdown-editor .rich-markdown-content table > tbody > tr > :not([data-tool-cell="true"]) {
+  min-width: 4rem;
+}
+
 .rich-image-node {
   display: inline-block;
   width: min(100%, 520px);
