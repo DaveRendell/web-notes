@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { GoogleTokenResponse } from '../types/google';
+import type { GoogleTokenClientConfig, GoogleTokenResponse } from '../types/google';
 import { CALENDAR_SCOPES, DRIVE_SCOPE, useGoogleAuth } from './useGoogleAuth';
 
 afterEach(() => {
@@ -15,19 +15,28 @@ describe('Google authentication scopes', () => {
     }));
     let callback: ((response: GoogleTokenResponse) => void) | undefined;
     const requestAccessToken = vi.fn();
+    const initTokenClient = vi.fn((config: GoogleTokenClientConfig) => {
+      callback = config.callback;
+      return { requestAccessToken };
+    });
     window.google = { accounts: { oauth2: {
       hasGrantedAllScopes: vi.fn(() => true),
-      initTokenClient: (config) => { callback = config.callback; return { requestAccessToken }; },
+      initTokenClient,
       revoke: vi.fn(),
     } } };
 
     const { result } = renderHook(() => useGoogleAuth());
-    await waitFor(() => expect(result.current.status).toBe('authenticated'));
+    // A restored token reports as authenticated before the effect that creates
+    // Google's OAuth client has necessarily completed. Calendar authorization
+    // must wait for that client rather than fail during this initialization gap.
     let request!: Promise<string>;
     act(() => { request = result.current.requestCalendarAccess(); });
-    expect(requestAccessToken).toHaveBeenCalledWith(expect.objectContaining({
-      scope: [DRIVE_SCOPE, ...CALENDAR_SCOPES].join(' '),
-    }));
+    await waitFor(() => {
+      expect(initTokenClient).toHaveBeenCalledOnce();
+      expect(requestAccessToken).toHaveBeenCalledWith(expect.objectContaining({
+        scope: [DRIVE_SCOPE, ...CALENDAR_SCOPES].join(' '),
+      }));
+    });
 
     await act(async () => {
       callback?.({ access_token: 'combined-token', expires_in: 3600, scope: [DRIVE_SCOPE, ...CALENDAR_SCOPES].join(' ') });

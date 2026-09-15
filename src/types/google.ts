@@ -14,7 +14,7 @@ declare global {
   }
 }
 
-type GoogleTokenClientConfig = {
+export type GoogleTokenClientConfig = {
   client_id: string;
   scope?: string;
   include_granted_scopes?: boolean;

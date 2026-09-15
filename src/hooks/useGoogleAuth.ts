@@ -25,6 +25,12 @@ type PendingRefresh = {
   resolve: (accessToken: string) => void;
 };
 
+type PendingTokenClient = {
+  promise: Promise<GoogleTokenClient>;
+  reject: (reason: Error) => void;
+  resolve: (client: GoogleTokenClient) => void;
+};
+
 type StoredToken = {
   accessToken: string;
   accountId?: string;
@@ -39,6 +45,8 @@ export function useGoogleAuth() {
   const [isAccountResolved, setIsAccountResolved] = useState(Boolean(token?.accountId));
   const [error, setError] = useState<string | null>(null);
   const tokenClientRef = useRef<GoogleTokenClient | null>(null);
+  const pendingTokenClientRef = useRef<PendingTokenClient | null>(null);
+  if (!pendingTokenClientRef.current) pendingTokenClientRef.current = createPendingTokenClient();
   const pendingRequestRef = useRef<AuthRequestType>('interactive');
   const pendingRefreshRef = useRef<PendingRefresh | null>(null);
   const accessToken = token?.accessToken ?? null;
@@ -84,7 +92,7 @@ export function useGoogleAuth() {
           return;
         }
 
-        tokenClientRef.current = window.google!.accounts.oauth2.initTokenClient({
+        const tokenClient = window.google!.accounts.oauth2.initTokenClient({
           client_id: clientId,
           scope: DRIVE_SCOPE,
           include_granted_scopes: true,
@@ -148,6 +156,8 @@ export function useGoogleAuth() {
             setError(message);
           },
         });
+        tokenClientRef.current = tokenClient;
+        pendingTokenClientRef.current?.resolve(tokenClient);
 
         setStatus(tokenRef.current ? 'authenticated' : 'idle');
 
@@ -157,8 +167,12 @@ export function useGoogleAuth() {
       })
       .catch((scriptError: unknown) => {
         if (!mounted) return;
+        const resolvedError = scriptError instanceof Error
+          ? scriptError
+          : new Error('Failed to load Google Identity Services.');
+        pendingTokenClientRef.current?.reject(resolvedError);
         setStatus('error');
-        setError(scriptError instanceof Error ? scriptError.message : 'Failed to load Google Identity Services.');
+        setError(resolvedError.message);
       });
 
     return () => {
@@ -189,10 +203,10 @@ export function useGoogleAuth() {
     setError(null);
   }, [setCurrentToken]);
 
-  const reconnect = useCallback((requiredScopes: readonly string[] = tokenRef.current?.scopes ?? [DRIVE_SCOPE]) => {
-    if (!tokenClientRef.current) {
-      return Promise.reject(new Error('Google authentication is still loading. Try again in a moment.'));
-    }
+  const reconnect = useCallback(async (
+    requiredScopes: readonly string[] = tokenRef.current?.scopes ?? [DRIVE_SCOPE],
+  ) => {
+    const tokenClient = tokenClientRef.current ?? await pendingTokenClientRef.current!.promise;
 
     if (pendingRefreshRef.current) {
       if (requiredScopes.every((scope) => pendingRefreshRef.current?.scopes.includes(scope))) {
@@ -214,7 +228,7 @@ export function useGoogleAuth() {
 
     const scopes = uniqueScopes([DRIVE_SCOPE, ...(tokenRef.current?.scopes ?? []), ...requiredScopes]);
     pendingRefreshRef.current = { promise, reject: rejectRefresh, resolve: resolveRefresh, scopes };
-    tokenClientRef.current.requestAccessToken({ prompt: '', scope: scopes.join(' ') });
+    tokenClient.requestAccessToken({ prompt: '', scope: scopes.join(' ') });
     return promise;
   }, []);
 
@@ -332,6 +346,20 @@ function storeToken(storedToken: StoredToken) {
 
 function clearStoredToken() {
   removeMigratedStorage(sessionStorage, STORED_TOKEN_KEY, LEGACY_STORED_TOKEN_KEY);
+}
+
+function createPendingTokenClient(): PendingTokenClient {
+  let reject!: (reason: Error) => void;
+  let resolve!: (client: GoogleTokenClient) => void;
+  const promise = new Promise<GoogleTokenClient>((promiseResolve, promiseReject) => {
+    reject = promiseReject;
+    resolve = promiseResolve;
+  });
+  // Initialization errors are also reflected in auth state. Attach a handler
+  // now so browsers do not report an unhandled rejection if nobody requested
+  // authorization while the Google script was loading.
+  void promise.catch(() => undefined);
+  return { promise, reject, resolve };
 }
 
 function loadGoogleIdentityScript() {
