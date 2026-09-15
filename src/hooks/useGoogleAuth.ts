@@ -87,8 +87,12 @@ export function useGoogleAuth() {
 
         const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
         if (!clientId) {
+          const configurationError = new Error(
+            'Missing VITE_GOOGLE_CLIENT_ID. Add it to .env.local and restart the dev server.',
+          );
+          pendingTokenClientRef.current?.reject(configurationError);
           setStatus('error');
-          setError('Missing VITE_GOOGLE_CLIENT_ID. Add it to .env.local and restart the dev server.');
+          setError(configurationError.message);
           return;
         }
 

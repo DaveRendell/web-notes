@@ -6,10 +6,12 @@ import { CALENDAR_SCOPES, DRIVE_SCOPE, useGoogleAuth } from './useGoogleAuth';
 afterEach(() => {
   sessionStorage.clear();
   delete window.google;
+  vi.unstubAllEnvs();
 });
 
 describe('Google authentication scopes', () => {
   it('requests Calendar incrementally while retaining Drive access', async () => {
+    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id');
     sessionStorage.setItem('web-notes:google-access-token', JSON.stringify({
       accessToken: 'drive-token', accountId: 'account', expiresAt: Date.now() + 3_600_000, scopes: [DRIVE_SCOPE],
     }));
@@ -44,5 +46,20 @@ describe('Google authentication scopes', () => {
     });
     expect(result.current.hasCalendarAccess).toBe(true);
     await expect(result.current.ensureAccessToken()).resolves.toBe('combined-token');
+  });
+
+  it('rejects authorization cleanly when the Google client ID is missing', async () => {
+    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', '');
+    window.google = { accounts: { oauth2: {
+      hasGrantedAllScopes: vi.fn(() => false),
+      initTokenClient: vi.fn(),
+      revoke: vi.fn(),
+    } } };
+
+    const { result } = renderHook(() => useGoogleAuth());
+    const request = result.current.requestCalendarAccess();
+
+    await expect(request).rejects.toThrow('Missing VITE_GOOGLE_CLIENT_ID');
+    await waitFor(() => expect(result.current.status).toBe('error'));
   });
 });
