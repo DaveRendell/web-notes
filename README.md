@@ -6,7 +6,7 @@ Web Notes is installable as a Progressive Web App in supporting browsers. Its ap
 
 Notes open in an in-place rich-text surface. Its formatting toolbar stays out of the way until the note receives focus, and changes save to the local cache immediately before being pushed to Drive after one second of inactivity or when focus leaves the editor. Rich text supports common Markdown formatting, lists and checklists, links, wikilinks, tables, quotes, thematic breaks, and fenced code. Hover a block to reveal its grabber, then drag it to reorder or nest content; the same menu provides keyboard-accessible move, indent, outdent, and delete actions. Markdown remains the canonical stored format and an explicit source editor is available from the note menu; notes containing syntax that cannot be preserved safely automatically use source mode.
 
-Type `/` at the start of a block to open slash commands for headings, plain text, quotes, lists, to-dos, block background colours, and images. Continue typing to filter the list; recently selected commands appear first the next time the empty `/` menu opens. Slash commands work in both rich-text and Markdown source modes.
+Type `/` after whitespace to open slash commands for headings, plain text, quotes, lists, to-dos, block background colours, images, and calendar widgets. Continue typing to filter the list; recently selected commands appear first the next time the empty `/` menu opens. Slash commands work in both rich-text and Markdown source modes.
 
 Emoji are stored as standard Unicode in Markdown but displayed consistently using the Twemoji artwork in rich text and the surrounding interface. Twemoji graphics are licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
@@ -28,6 +28,8 @@ npm run dev
 ```
 
 The app requests `https://www.googleapis.com/auth/drive` so it can read and edit Markdown files in the selected vault. Drive access stays client-side using Google's short-lived OAuth access tokens; the app has no client secret or backend token store.
+
+Google Calendar access is optional and requested only when a user connects a calendar widget. It uses the read-only event and calendar-list scopes documented in the setup guide.
 
 Google normally asks for Drive consent only the first time access is granted. **Sign out** clears the local browser session without revoking that grant, making future sign-ins quicker. **Disconnect Google Drive** clears the session and revokes the grant, so Google will ask for consent again next time.
 
@@ -57,6 +59,26 @@ Pasting a clipboard image into either editor starts the same upload flow automat
 Image action menus in the file picker and image viewer offer Rename and Delete. Renaming preserves the image extension; deletion requires confirmation. These actions update the cached file tree after Drive confirms success, but do not rewrite image references in notes.
 
 Image files appear in the file picker and open in an image viewer. Private vault images are fetched using Drive authentication, never public sharing links. Missing or unsupported images display a placeholder without hiding the note. External images contact their host without sending a referrer. Image bytes are not stored in the offline IndexedDB cache; uploads require an internet connection. Moving or renaming an image does not rewrite existing Markdown references.
+
+## Weekly notes
+
+The weekly-note button opens or creates `Weeks/YYYY/Week N YYYY.md` from `Templates/Week.md`. The template supports `$week`, `$year`, `$monday`, and `$sunday`; dates use `YYYY-MM-DD` and Monday/Sunday describe the complete ISO week. Variables are expanded everywhere in the raw template, including HTML comments, so a calendar widget for the current week can be included as:
+
+```markdown
+<!-- web-notes:calendar {"start":"$monday","end":"$sunday","timezone":"Europe/London","calendars":["primary"]} -->
+```
+
+## Calendar widgets
+
+Use the calendar toolbar button or `/calendar` slash command to insert a date-range widget. Each widget can combine the primary calendar with any readable secondary or shared calendars. Events are loaded directly from Google Calendar in rich-text mode, remain external links, and are cached in memory for five minutes; event details are never written to the note or IndexedDB.
+
+The portable Markdown representation is a standalone HTML comment:
+
+```markdown
+<!-- web-notes:calendar {"start":"2026-09-14","end":"2026-09-20","timezone":"Europe/London","calendars":["primary","team@example.com"]} -->
+```
+
+Calendar dates are inclusive. Users who open a shared note need access to every referenced calendar; unavailable calendars fail independently while accessible events remain visible.
 
 ## Checks
 

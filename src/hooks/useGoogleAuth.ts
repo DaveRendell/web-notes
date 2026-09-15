@@ -5,7 +5,10 @@ import { deleteAccountCache } from '../lib/vaultCache';
 import { readMigratedStorage, removeMigratedStorage, safeLocalStorage as localStorage, safeSessionStorage as sessionStorage } from '../lib/browserStorage';
 
 const GOOGLE_IDENTITY_SCRIPT = 'https://accounts.google.com/gsi/client';
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
+export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
+export const CALENDAR_EVENT_SCOPE = 'https://www.googleapis.com/auth/calendar.events.readonly';
+export const CALENDAR_LIST_SCOPE = 'https://www.googleapis.com/auth/calendar.calendarlist.readonly';
+export const CALENDAR_SCOPES = [CALENDAR_EVENT_SCOPE, CALENDAR_LIST_SCOPE] as const;
 const STORED_TOKEN_KEY = 'web-notes:google-access-token';
 const LEGACY_STORED_TOKEN_KEY = 'vault-web-viewer:google-access-token';
 const LEGACY_AUTO_RECONNECT_KEY = 'vault-web-viewer:auto-reconnect-google';
@@ -18,6 +21,7 @@ type AuthRequestType = 'interactive' | 'refresh';
 type PendingRefresh = {
   promise: Promise<string>;
   reject: (reason: Error) => void;
+  scopes: string[];
   resolve: (accessToken: string) => void;
 };
 
@@ -25,7 +29,7 @@ type StoredToken = {
   accessToken: string;
   accountId?: string;
   expiresAt: number;
-  scope: string;
+  scopes: string[];
 };
 
 export function useGoogleAuth() {
@@ -39,6 +43,7 @@ export function useGoogleAuth() {
   const pendingRefreshRef = useRef<PendingRefresh | null>(null);
   const accessToken = token?.accessToken ?? null;
   const accountId = token?.accountId ?? null;
+  const hasCalendarAccess = CALENDAR_SCOPES.every((scope) => token?.scopes.includes(scope));
 
   const setCurrentToken = useCallback((nextToken: StoredToken | null) => {
     tokenRef.current = nextToken;
@@ -82,6 +87,7 @@ export function useGoogleAuth() {
         tokenClientRef.current = window.google!.accounts.oauth2.initTokenClient({
           client_id: clientId,
           scope: DRIVE_SCOPE,
+          include_granted_scopes: true,
           callback: (response) => {
             if (response.error) {
               const message = response.error_description ?? response.error;
@@ -104,14 +110,21 @@ export function useGoogleAuth() {
                 response.access_token,
                 response.expires_in,
                 tokenRef.current?.accountId,
+                parseGrantedScopes(response.scope, pendingRefreshRef.current?.scopes ?? [DRIVE_SCOPE]),
               );
 
               setCurrentToken(nextToken);
               storeToken(nextToken);
               setStatus('authenticated');
               setError(null);
-              pendingRefreshRef.current?.resolve(response.access_token);
+              const pending = pendingRefreshRef.current;
               pendingRefreshRef.current = null;
+
+              if (pending && pending.scopes.every((scope) => nextToken.scopes.includes(scope))) {
+                pending.resolve(response.access_token);
+              } else if (pending) {
+                pending.reject(new Error('Google Calendar permission was not granted.'));
+              }
 
               if (nextToken.accountId) {
                 setIsAccountResolved(true);
@@ -163,7 +176,7 @@ export function useGoogleAuth() {
     pendingRequestRef.current = 'interactive';
     setStatus('loading');
     setError(null);
-    tokenClientRef.current.requestAccessToken({ prompt: '' });
+    tokenClientRef.current.requestAccessToken({ prompt: '', scope: DRIVE_SCOPE });
   }, []);
 
   const signOut = useCallback(() => {
@@ -176,13 +189,16 @@ export function useGoogleAuth() {
     setError(null);
   }, [setCurrentToken]);
 
-  const reconnect = useCallback(() => {
+  const reconnect = useCallback((requiredScopes: readonly string[] = tokenRef.current?.scopes ?? [DRIVE_SCOPE]) => {
     if (!tokenClientRef.current) {
       return Promise.reject(new Error('Google authentication is still loading. Try again in a moment.'));
     }
 
     if (pendingRefreshRef.current) {
-      return pendingRefreshRef.current.promise;
+      if (requiredScopes.every((scope) => pendingRefreshRef.current?.scopes.includes(scope))) {
+        return pendingRefreshRef.current.promise;
+      }
+      return Promise.reject(new Error('Another Google authorization request is already in progress.'));
     }
 
     pendingRequestRef.current = 'refresh';
@@ -196,18 +212,25 @@ export function useGoogleAuth() {
       resolveRefresh = resolve;
     });
 
-    pendingRefreshRef.current = { promise, reject: rejectRefresh, resolve: resolveRefresh };
-    tokenClientRef.current.requestAccessToken({ prompt: '' });
+    const scopes = uniqueScopes([DRIVE_SCOPE, ...(tokenRef.current?.scopes ?? []), ...requiredScopes]);
+    pendingRefreshRef.current = { promise, reject: rejectRefresh, resolve: resolveRefresh, scopes };
+    tokenClientRef.current.requestAccessToken({ prompt: '', scope: scopes.join(' ') });
     return promise;
   }, []);
 
-  const ensureAccessToken = useCallback(() => {
-    if (token && token.expiresAt > Date.now() + TOKEN_EXPIRY_BUFFER_MS) {
+  const ensureAccessToken = useCallback((requiredScopes: readonly string[] = [DRIVE_SCOPE]) => {
+    if (token && token.expiresAt > Date.now() + TOKEN_EXPIRY_BUFFER_MS
+      && requiredScopes.every((scope) => token.scopes.includes(scope))) {
       return Promise.resolve(token.accessToken);
     }
 
-    return reconnect();
+    return reconnect(requiredScopes);
   }, [reconnect, token]);
+
+  const requestCalendarAccess = useCallback(
+    () => ensureAccessToken(CALENDAR_SCOPES),
+    [ensureAccessToken],
+  );
 
   const disconnect = useCallback(async () => {
     if (!window.google) {
@@ -245,9 +268,11 @@ export function useGoogleAuth() {
     disconnect,
     ensureAccessToken,
     error,
+    hasCalendarAccess,
     invalidateAccessToken,
     isAccountResolved,
     isAuthenticated: Boolean(accessToken),
+    requestCalendarAccess,
     signIn,
     signOut,
     status,
@@ -264,27 +289,41 @@ function readStoredToken(): StoredToken | null {
   try {
     const storedToken = JSON.parse(storedValue) as StoredToken;
 
-    if (storedToken.scope !== DRIVE_SCOPE || storedToken.expiresAt <= Date.now() + TOKEN_EXPIRY_BUFFER_MS) {
+    const scopes = Array.isArray(storedToken.scopes)
+      ? storedToken.scopes.filter((scope): scope is string => typeof scope === 'string')
+      : typeof (storedToken as StoredToken & { scope?: unknown }).scope === 'string'
+        ? [(storedToken as StoredToken & { scope: string }).scope]
+        : [];
+
+    if (!scopes.includes(DRIVE_SCOPE) || storedToken.expiresAt <= Date.now() + TOKEN_EXPIRY_BUFFER_MS) {
       removeMigratedStorage(sessionStorage, STORED_TOKEN_KEY, LEGACY_STORED_TOKEN_KEY);
       return null;
     }
 
-    return storedToken;
+    return { ...storedToken, scopes };
   } catch {
     removeMigratedStorage(sessionStorage, STORED_TOKEN_KEY, LEGACY_STORED_TOKEN_KEY);
     return null;
   }
 }
 
-function createStoredToken(accessToken: string, expiresInSeconds?: number, accountId?: string): StoredToken {
+function createStoredToken(accessToken: string, expiresInSeconds?: number, accountId?: string, scopes = [DRIVE_SCOPE]): StoredToken {
   const lifetimeMs = expiresInSeconds ? expiresInSeconds * 1000 : DEFAULT_TOKEN_LIFETIME_MS;
 
   return {
     accessToken,
     accountId,
     expiresAt: Date.now() + lifetimeMs,
-    scope: DRIVE_SCOPE,
+    scopes: uniqueScopes(scopes),
   };
+}
+
+function parseGrantedScopes(scope: string | undefined, fallback: string[]) {
+  return uniqueScopes(scope?.split(/\s+/).filter(Boolean) ?? fallback);
+}
+
+function uniqueScopes(scopes: readonly string[]) {
+  return [...new Set(scopes)];
 }
 
 function storeToken(storedToken: StoredToken) {

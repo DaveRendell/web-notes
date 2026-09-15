@@ -17,9 +17,16 @@ export function getIsoWeek(date: Date): IsoWeek {
 
 export function getWeeklyNoteDetails(date: Date) {
   const { weekNumber, year } = getIsoWeek(date);
+  const mondayDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const weekday = mondayDate.getDay() || 7;
+  mondayDate.setDate(mondayDate.getDate() - weekday + 1);
+  const sundayDate = new Date(mondayDate);
+  sundayDate.setDate(sundayDate.getDate() + 6);
   const filename = `Week ${weekNumber} ${year}.md`;
   return {
     filename,
+    monday: formatLocalDate(mondayDate),
+    sunday: formatLocalDate(sundayDate),
     weekNumber,
     year,
     weeksFolderPath: 'Weeks',
@@ -28,8 +35,20 @@ export function getWeeklyNoteDetails(date: Date) {
   };
 }
 
-export function applyWeeklyNoteTemplate(template: string, weekNumber: number, year: number) {
+export function applyWeeklyNoteTemplate(
+  template: string,
+  values: Pick<ReturnType<typeof getWeeklyNoteDetails>, 'monday' | 'sunday' | 'weekNumber' | 'year'>,
+) {
   return template
-    .replaceAll('$week', String(weekNumber))
-    .replaceAll('$year', String(year));
+    .replaceAll('$week', String(values.weekNumber))
+    .replaceAll('$year', String(values.year))
+    .replaceAll('$monday', values.monday)
+    .replaceAll('$sunday', values.sunday);
+}
+
+function formatLocalDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }

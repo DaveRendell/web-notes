@@ -5,7 +5,11 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     sessionStorage.setItem('web-notes:google-access-token', JSON.stringify({
       accessToken: 'fake-browser-test-token', accountId: 'test-account',
-      expiresAt: Date.now() + 3_600_000, scope: 'https://www.googleapis.com/auth/drive',
+      expiresAt: Date.now() + 3_600_000, scopes: [
+        'https://www.googleapis.com/auth/drive',
+        'https://www.googleapis.com/auth/calendar.events.readonly',
+        'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+      ],
     }));
     localStorage.setItem('web-notes:selected-vault', JSON.stringify({ id: 'vault', name: 'Test vault' }));
   });
@@ -23,7 +27,22 @@ test.beforeEach(async ({ page }) => {
       { id: 'welcome', name: 'Welcome.md', mimeType: 'text/markdown', parents: ['vault'], modifiedTime: '2026-01-01T00:00:00Z' },
       { id: 'second', name: 'Second.md', mimeType: 'text/markdown', parents: ['vault'], modifiedTime: '2026-01-01T00:00:00Z' },
     ];
-    if (url.pathname.endsWith('/files') && route.request().method() === 'GET') {
+    if (url.pathname === '/calendar/v3/users/me/calendarList') {
+      await route.fulfill({ json: { items: [
+        { id: 'personal@example.com', summary: 'Personal', primary: true, accessRole: 'owner', backgroundColor: '#4f79a7' },
+        { id: 'team@example.com', summary: 'Team', accessRole: 'reader', backgroundColor: '#4c9b69' },
+      ] } });
+    } else if (url.pathname.startsWith('/calendar/v3/calendars/')) {
+      const team = url.pathname.includes('team%40example.com');
+      await route.fulfill({ json: { items: [{
+        id: team ? 'team-event' : 'personal-event',
+        iCalUID: team ? 'team-event@example.com' : 'personal-event@example.com',
+        summary: team ? 'Team planning' : 'Dentist',
+        htmlLink: `https://calendar.google.com/calendar/event?eid=${team ? 'team' : 'personal'}`,
+        start: { dateTime: team ? '2026-09-16T10:00:00Z' : '2026-09-15T08:30:00Z' },
+        end: { dateTime: team ? '2026-09-16T11:00:00Z' : '2026-09-15T09:00:00Z' },
+      }] } });
+    } else if (url.pathname.endsWith('/files') && route.request().method() === 'GET') {
       await route.fulfill({ json: { files: url.searchParams.get('q')?.includes('.web-notes.json') ? [] : files } });
     } else if (url.searchParams.get('alt') === 'media') {
       await route.fulfill({ contentType: 'text/plain', body: url.pathname.endsWith('/welcome') ? '# Welcome\n\nA browser-tested note.\n' : '# Second\n\nAnother note.\n' });
@@ -31,6 +50,45 @@ test.beforeEach(async ({ page }) => {
       await route.fulfill({ status: 500, json: { error: { message: `Unexpected test request: ${url.pathname}` } } });
     }
   });
+});
+
+test('renders comment-backed events from primary and shared calendars', async ({ page }) => {
+  const widget = '<!-- web-notes:calendar {"start":"2026-09-14","end":"2026-09-20","timezone":"Europe/London","calendars":["primary","team@example.com"]} -->';
+  await page.route('https://www.googleapis.com/drive/v3/files/welcome?*', route => route.fulfill({ contentType: 'text/plain', body: `# This week\n\n${widget}\n` }));
+  await page.goto('/#/note/Welcome.md');
+
+  await expect(page.locator('.calendar-widget')).toBeVisible();
+  await expect(page.getByText('Dentist')).toBeVisible();
+  await expect(page.getByText('Team planning')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Team planning' })).toHaveAttribute('href', /calendar\.google\.com/);
+  await page.getByRole('button', { name: 'Markdown', exact: true }).click();
+  await expect(page.locator('.cm-content')).toContainText('web-notes:calendar');
+});
+
+test('calendar picker has balanced controls and can select every discovered calendar', async ({ page }) => {
+  await page.goto('/#/note/Welcome.md');
+  await page.locator('.rich-markdown-content p').click();
+  await page.getByRole('button', { name: 'Insert calendar' }).click();
+
+  const modal = page.getByRole('dialog', { name: 'Insert calendar' });
+  await expect(modal).toBeVisible();
+  await expect(modal.getByText('Team (Primary)')).toHaveCount(0);
+  await expect(modal.getByText('Personal (Primary)')).toBeVisible();
+  await expect(modal.getByText('Team', { exact: true })).toBeVisible();
+  const dateFont = await modal.getByLabel('Start date').evaluate((element) => getComputedStyle(element).fontFamily);
+  const labelFont = await modal.getByText('Start date', { exact: true }).evaluate((element) => getComputedStyle(element).fontFamily);
+  expect(dateFont).toBe(labelFont);
+
+  await modal.getByLabel('Select all').check();
+  await expect(modal.getByLabel('Personal (Primary)')).toBeChecked();
+  await expect(modal.getByLabel('Team', { exact: true })).toBeChecked();
+
+  const [cancelBox, insertBox] = await Promise.all([
+    modal.getByRole('button', { name: 'Cancel' }).boundingBox(),
+    modal.getByRole('button', { name: 'Insert', exact: true }).boundingBox(),
+  ]);
+  expect(cancelBox?.width).toBe(insertBox?.width);
+  expect(cancelBox?.height).toBe(insertBox?.height);
 });
 
 test('opens rich text, switches to source, and follows browser history', async ({ page }) => {

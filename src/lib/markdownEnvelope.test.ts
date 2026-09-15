@@ -27,6 +27,12 @@ describe('Markdown rich-editor envelope', () => {
     expect(result.compatible).toBe(true);
   });
 
+  it('treats equivalent calendar widget JSON spacing as the same semantic block', () => {
+    const compact = '<!-- web-notes:calendar {"start":"2026-09-14","end":"2026-09-20","timezone":"UTC","calendars":["primary"]} -->';
+    const spaced = '<!-- web-notes:calendar { "start": "2026-09-14", "end": "2026-09-20", "timezone": "UTC", "calendars": ["primary"] } -->';
+    expect(areMarkdownBodiesSemanticallyEquivalent(compact, spaced)).toBe(true);
+  });
+
   it.each([
     ['raw HTML', '<details>hidden</details>'],
     ['reference links', '[text][ref]\n\n[ref]: https://example.com'],

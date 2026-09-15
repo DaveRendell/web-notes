@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import type { Nodes, Parent } from 'mdast';
 import type { Extension } from 'mdast-util-from-markdown';
 import { backgroundComment, extractBlockBackgrounds, nodeBackground, parseBlockBackground } from '../lib/blockBackground';
+import { transformCalendarWidgetComments } from '../lib/calendarWidget';
 
 export const blockBackgroundState = createState('webNotesBackground', {
   parse: parseBlockBackground,
@@ -24,7 +25,7 @@ const backgroundMarkdownExtension: Extension = {
     if (node.type === 'html') node.value = this.sliceSerialize(token);
     this.exit(token);
   } },
-  transforms: [extractBlockBackgrounds],
+  transforms: [transformCalendarWidgetComments, extractBlockBackgrounds],
 };
 
 const importer: MdastImportVisitor<Nodes> = {

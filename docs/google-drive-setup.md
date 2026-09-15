@@ -26,11 +26,12 @@ Restart the Vite dev server after changing `.env.local`.
 
 1. Open the Google Cloud Console.
 2. Create or select a project for this app.
-3. Enable the Google Drive API:
+3. Enable the required APIs:
    - Go to APIs & Services.
    - Open Library.
    - Search for Google Drive API.
    - Enable it for the selected project.
+   - Search for Google Calendar API and enable it as well if calendar widgets will be used.
 4. Configure the OAuth consent screen:
    - Go to Google Auth platform.
    - Fill in the app name, support email, and developer contact email.
@@ -42,6 +43,15 @@ https://www.googleapis.com/auth/drive
 ```
 
 The app uses this scope because it can edit existing markdown files in the selected vault folder. If you previously configured the app with `https://www.googleapis.com/auth/drive.readonly`, update the scope in Google Cloud and sign in again so Google can ask for the new permission.
+
+For optional calendar widgets, also add these scopes under Google Auth platform > Data Access:
+
+```txt
+https://www.googleapis.com/auth/calendar.events.readonly
+https://www.googleapis.com/auth/calendar.calendarlist.readonly
+```
+
+These scopes only read events and discover calendars already available to the user. Web Notes requests them incrementally when the user connects Google Calendar, so ordinary Drive sign-in does not require Calendar access. A shared calendar must grant at least reader access to display event details; free/busy-only calendars are not offered by the picker.
 
 6. Create an OAuth client:
    - Go to Google Auth platform > Clients.
@@ -81,7 +91,7 @@ https://your-github-username.github.io
 
 ## API Keys
 
-The current app does not require a Google API key. Drive requests are made with the user's OAuth access token.
+The current app does not require a Google API key. Drive and Calendar requests are made directly with the user's OAuth access token.
 
 If a future change introduces `VITE_GOOGLE_API_KEY`, treat it as public browser configuration and restrict it in Google Cloud:
 
@@ -101,4 +111,5 @@ If a future change introduces `VITE_GOOGLE_API_KEY`, treat it as public browser 
 
 - Google Drive JavaScript quickstart: https://developers.google.com/drive/api/quickstart/js
 - Google Identity Services client ID guide: https://developers.google.com/identity/oauth2/web/guides/get-google-api-clientid
+- Google Calendar authorization scopes: https://developers.google.com/workspace/calendar/api/auth
 - Google Cloud API key restrictions: https://cloud.google.com/docs/authentication/api-keys

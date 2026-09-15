@@ -14,9 +14,11 @@ import {
   toggleMarkdownList,
 } from '../lib/markdownFormatting';
 import { createWikilinkCompletionSource } from '../lib/wikilinkCompletion';
-import { createSlashCommandCompletionSource, requestImageDialog } from '../lib/slashCommands';
+import { createSlashCommandCompletionSource, requestCalendarDialog, requestImageDialog } from '../lib/slashCommands';
+import { calendarWidgetInsertion } from '../lib/calendarWidget';
 import type { VaultNode } from '../types/vault';
 import { InsertImageButton } from './InsertImageButton';
+import { InsertCalendarButton } from './InsertCalendarButton';
 
 type MarkdownEditorProps = {
   initialCursorOffset?: number | null;
@@ -32,6 +34,7 @@ export function MarkdownEditor({ initialCursorOffset, notes, value, onChange, on
   const editorViewRef = useRef<EditorView | null>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const imageSelectionRef = useRef<{ from: number; to: number } | null>(null);
+  const calendarSelectionRef = useRef<{ from: number; to: number } | null>(null);
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
   const editorCompletions = useMemo(
@@ -39,7 +42,10 @@ export function MarkdownEditor({ initialCursorOffset, notes, value, onChange, on
       override: [
         createWikilinkCompletionSource(notes, recentNotes),
         createEmojiCompletionSource(),
-        createSlashCommandCompletionSource(() => requestImageDialog(shellRef.current)),
+        createSlashCommandCompletionSource(
+          () => requestImageDialog(shellRef.current),
+          () => requestCalendarDialog(shellRef.current),
+        ),
       ],
       addToOptions: [{
         position: 40,
@@ -160,6 +166,18 @@ export function MarkdownEditor({ initialCursorOffset, notes, value, onChange, on
           const from = Math.min(range.from, view.state.doc.length);
           const to = Math.min(range.to, view.state.doc.length);
           view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length } });
+          view.focus();
+        }} />
+        <InsertCalendarButton pasteTarget={shellRef} disabled={readOnly} onOpen={() => {
+          calendarSelectionRef.current = editorViewRef.current?.state.selection.main ?? null;
+        }} onInsert={(config) => {
+          const view = editorViewRef.current;
+          if (!view) return;
+          const range = calendarSelectionRef.current ?? view.state.selection.main;
+          const from = Math.min(range.from, view.state.doc.length);
+          const to = Math.min(range.to, view.state.doc.length);
+          const change = calendarWidgetInsertion(view.state.doc.toString(), from, to, config);
+          view.dispatch({ changes: { from, to, insert: change.insert }, selection: { anchor: change.cursor } });
           view.focus();
         }} />
       </div>

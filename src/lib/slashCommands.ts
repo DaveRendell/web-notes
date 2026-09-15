@@ -4,12 +4,13 @@ import { backgroundComment, BLOCK_BACKGROUNDS, type BlockBackground } from './bl
 import { isProseCompletionContext } from './markdownCompletion';
 
 export const OPEN_IMAGE_DIALOG_EVENT = 'web-notes:open-image-dialog';
+export const OPEN_CALENDAR_DIALOG_EVENT = 'web-notes:open-calendar-dialog';
 const RECENT_COMMANDS_KEY = 'web-notes:recent-slash-commands';
 const MAX_RECENT_COMMANDS = 8;
 
 export type SlashCommandId =
   | 'paragraph' | 'heading' | 'heading2' | 'heading3' | 'quote'
-  | 'todo' | 'bullet' | 'numbered' | 'image'
+  | 'todo' | 'bullet' | 'numbered' | 'image' | 'calendar'
   | BlockBackground;
 
 export type SlashCommand = {
@@ -37,6 +38,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     kind: 'background',
   })),
   { id: 'image', label: 'Image', detail: 'Upload or link an image', keywords: ['image', 'picture', 'photo', 'upload'], kind: 'insert' },
+  { id: 'calendar', label: 'Calendar', detail: 'Show Google Calendar events', keywords: ['calendar', 'events', 'agenda', 'schedule'], kind: 'insert' },
 ];
 
 export function getSlashCommandSuggestions(query: string, recentIds = readRecentSlashCommands()) {
@@ -78,9 +80,13 @@ export function requestImageDialog(element: HTMLElement | null) {
   element?.dispatchEvent(new CustomEvent(OPEN_IMAGE_DIALOG_EVENT, { bubbles: true }));
 }
 
+export function requestCalendarDialog(element: HTMLElement | null) {
+  element?.dispatchEvent(new CustomEvent(OPEN_CALENDAR_DIALOG_EVENT, { bubbles: true }));
+}
+
 type SlashCompletion = Completion & { command: SlashCommand };
 
-export function createSlashCommandCompletionSource(openImage: () => void) {
+export function createSlashCommandCompletionSource(openImage: () => void, openCalendar: () => void = () => undefined) {
   return (context: CompletionContext): CompletionResult | null => {
     if (!isProseCompletionContext(context)) return null;
     const line = context.state.doc.lineAt(context.pos);
@@ -94,18 +100,23 @@ export function createSlashCommandCompletionSource(openImage: () => void) {
       type: command.kind,
       command,
       apply(view, _completion, completionFrom, to) {
-        applyMarkdownSlashCommand(view, command, completionFrom, to, openImage);
+        applyMarkdownSlashCommand(view, command, completionFrom, to, openImage, openCalendar);
       },
     }));
     return { from, options, validFor: /^\/[A-Za-z0-9]*$/ };
   };
 }
 
-export function applyMarkdownSlashCommand(view: EditorView, command: SlashCommand, from: number, to: number, openImage: () => void) {
+export function applyMarkdownSlashCommand(view: EditorView, command: SlashCommand, from: number, to: number, openImage: () => void, openCalendar: () => void = () => undefined) {
   rememberSlashCommand(command.id);
   if (command.id === 'image') {
     view.dispatch({ changes: { from, to, insert: '' }, selection: { anchor: from } });
     openImage();
+    return;
+  }
+  if (command.id === 'calendar') {
+    view.dispatch({ changes: { from, to, insert: '' }, selection: { anchor: from } });
+    openCalendar();
     return;
   }
   const prefixes: Partial<Record<SlashCommandId, string>> = {

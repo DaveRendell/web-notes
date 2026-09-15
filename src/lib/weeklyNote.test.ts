@@ -13,7 +13,9 @@ describe('weekly notes', () => {
   it('builds the hardcoded weekly note path', () => {
     expect(getWeeklyNoteDetails(new Date('2026-09-14T12:00:00'))).toEqual({
       filename: 'Week 38 2026.md',
+      monday: '2026-09-14',
       path: 'Weeks/2026/Week 38 2026.md',
+      sunday: '2026-09-20',
       weekNumber: 38,
       weeksFolderPath: 'Weeks',
       year: 2026,
@@ -22,7 +24,30 @@ describe('weekly notes', () => {
   });
 
   it('replaces every template placeholder', () => {
-    expect(applyWeeklyNoteTemplate('# Week $week, $year\n\n[Week $week]', 38, 2026))
-      .toBe('# Week 38, 2026\n\n[Week 38]');
+    const details = getWeeklyNoteDetails(new Date('2026-09-14T12:00:00'));
+    const template = [
+      '# Week $week, $year',
+      '',
+      '[Week $week]',
+      '',
+      '<!-- web-notes:calendar {"start":"$monday","end":"$sunday","timezone":"Europe/London","calendars":["primary"]} -->',
+    ].join('\n');
+
+    expect(applyWeeklyNoteTemplate(template, details)).toBe([
+      '# Week 38, 2026',
+      '',
+      '[Week 38]',
+      '',
+      '<!-- web-notes:calendar {"start":"2026-09-14","end":"2026-09-20","timezone":"Europe/London","calendars":["primary"]} -->',
+    ].join('\n'));
+  });
+
+  it('uses the correct dates for an ISO week crossing a calendar year', () => {
+    expect(getWeeklyNoteDetails(new Date('2024-12-30T12:00:00'))).toEqual(expect.objectContaining({
+      monday: '2024-12-30',
+      sunday: '2025-01-05',
+      weekNumber: 1,
+      year: 2025,
+    }));
   });
 });

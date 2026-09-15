@@ -304,7 +304,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         ? cachedTemplate!.content
         : await driveRequest((token) => getDriveFileText(token, templateNote.id));
     }
-    const content = applyWeeklyNoteTemplate(template, details.weekNumber, details.year);
+    // Expand the raw template before the rich-text parser interprets HTML comments,
+    // allowing date variables to be used inside calendar widget configuration.
+    const content = applyWeeklyNoteTemplate(template, details);
 
     let weeksFolder = findVaultNodeByPath(tree, details.weeksFolderPath);
     if (weeksFolder && weeksFolder.type !== 'folder') {

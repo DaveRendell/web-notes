@@ -66,6 +66,7 @@ import { getNoteSuggestions, getNoteTitle } from '../lib/noteSearch';
 import {
   getSlashCommandSuggestions,
   rememberSlashCommand,
+  requestCalendarDialog,
   requestImageDialog,
   type SlashCommand,
 } from '../lib/slashCommands';
@@ -416,6 +417,10 @@ function applyRichSlashCommand(editor: LexicalEditor, queryNode: TextNode, comma
 
   if (command.id === 'image') {
     window.requestAnimationFrame(() => requestImageDialog(editor.getRootElement()));
+    return;
+  }
+  if (command.id === 'calendar') {
+    window.requestAnimationFrame(() => requestCalendarDialog(editor.getRootElement()));
     return;
   }
   if (command.kind === 'background') {

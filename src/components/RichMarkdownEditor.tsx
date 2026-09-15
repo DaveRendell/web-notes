@@ -34,6 +34,8 @@ import { richBlockDragPlugin } from './richBlockDrag';
 import { richBlockBackgroundPlugin } from './richBlockBackground';
 import { richEditorIcon } from './richEditorIcons';
 import { RichInsertImageButton } from './RichInsertImageButton';
+import { RichInsertCalendarButton } from './RichInsertCalendarButton';
+import { richCalendarPlugin } from './richCalendar';
 
 type RichMarkdownEditorProps = {
   markdown: string;
@@ -70,6 +72,7 @@ export default function RichMarkdownEditor({ markdown, blockMovementDisabled = f
     codeMirrorPlugin({ codeBlockLanguages: { '': 'Plain text' }, autoLoadLanguageSupport: false }),
     richEditorEnhancementsPlugin({ notes, recentNotes }),
     richBlockBackgroundPlugin(),
+    richCalendarPlugin(),
     richBlockDragPlugin({ disabled: blockMovementDisabled || readOnly }),
     markdownShortcutPlugin(),
     toolbarPlugin({
@@ -86,6 +89,7 @@ export default function RichMarkdownEditor({ markdown, blockMovementDisabled = f
           <ListsToggle options={['bullet', 'number', 'check']} />
           <CreateLink />
           <RichInsertImageButton pasteTarget={shellRef} disabled={readOnly} />
+          <RichInsertCalendarButton pasteTarget={shellRef} disabled={readOnly} />
           <InsertTable />
           <InsertCodeBlock />
           <InsertThematicBreak />

@@ -19,10 +19,11 @@ afterEach(() => {
 describe('slash commands', () => {
   it('offers all command groups and filters aliases', () => {
     expect(SLASH_COMMANDS.map(({ id }) => id)).toEqual(expect.arrayContaining([
-      'paragraph', 'heading', 'todo', 'bullet', 'numbered', 'gray', 'green', 'image',
+      'paragraph', 'heading', 'todo', 'bullet', 'numbered', 'gray', 'green', 'image', 'calendar',
     ]));
     expect(getSlashCommandSuggestions('check').map(({ id }) => id)).toContain('todo');
     expect(getSlashCommandSuggestions('pic').map(({ id }) => id)).toEqual(['image']);
+    expect(getSlashCommandSuggestions('agenda').map(({ id }) => id)).toEqual(['calendar']);
   });
 
   it('puts recently used commands first and tolerates malformed storage', () => {
@@ -81,6 +82,12 @@ describe('slash commands', () => {
     applyMarkdownSlashCommand(view, SLASH_COMMANDS.find(({ id }) => id === 'image')!, 0, 6, image);
     expect(view.state.doc.toString()).toBe('');
     expect(image).toHaveBeenCalledOnce();
+
+    const calendar = vi.fn();
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '/calendar' } });
+    applyMarkdownSlashCommand(view, SLASH_COMMANDS.find(({ id }) => id === 'calendar')!, 0, 9, image, calendar);
+    expect(view.state.doc.toString()).toBe('');
+    expect(calendar).toHaveBeenCalledOnce();
     view.destroy();
   });
 });

@@ -257,7 +257,9 @@ describe('VaultContext cache mutations', () => {
       ...file('week-template', 'Week.md', 'template-version'),
       parents: ['templates'],
     });
-    mocks.getDriveFileText.mockResolvedValue('# Week $week, $year\n\nWeek $week');
+    mocks.getDriveFileText.mockResolvedValue(
+      '# Week $week, $year\n\nWeek $week\n\n<!-- web-notes:calendar {"start":"$monday","end":"$sunday","timezone":"Europe/London","calendars":["primary"]} -->',
+    );
     mocks.createDriveTextFile.mockResolvedValue({
       ...file('weekly-note', 'Week 38 2026.md', 'weekly-version'),
       parents: ['year'],
@@ -281,13 +283,13 @@ describe('VaultContext cache mutations', () => {
       'valid-token',
       'year',
       'Week 38 2026.md',
-      '# Week 38, 2026\n\nWeek 38',
+      '# Week 38, 2026\n\nWeek 38\n\n<!-- web-notes:calendar {"start":"2026-09-14","end":"2026-09-20","timezone":"Europe/London","calendars":["primary"]} -->',
       'text/markdown',
     );
     expect(weeklyNote.path).toBe('Weeks/2026/Week 38 2026.md');
     expect(result.current.selectedFile?.id).toBe('weekly-note');
     expect(mocks.putNoteContent).toHaveBeenLastCalledWith(expect.objectContaining({
-      content: '# Week 38, 2026\n\nWeek 38',
+      content: '# Week 38, 2026\n\nWeek 38\n\n<!-- web-notes:calendar {"start":"2026-09-14","end":"2026-09-20","timezone":"Europe/London","calendars":["primary"]} -->',
       fileId: 'weekly-note',
       modifiedTime: 'weekly-version',
     }));

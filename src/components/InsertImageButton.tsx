@@ -75,7 +75,7 @@ export function InsertImageButton({ onInsert, onOpen, disabled = false, pasteTar
     onInsert(markdown);
   }
   return <>
-    <button ref={trigger} type="button" disabled={disabled} aria-label="Insert image" title="Insert image" onMouseDown={(event) => event.preventDefault()} onClick={() => { onOpen?.(); inserted.current = false; setError(''); dialog.current?.showModal(); }}><ImagePlus size={18} /></button>
+    <button className="rich-toolbar-action" ref={trigger} type="button" disabled={disabled} aria-label="Insert image" title="Insert image" onMouseDown={(event) => event.preventDefault()} onClick={() => { onOpen?.(); inserted.current = false; setError(''); dialog.current?.showModal(); }}><ImagePlus size={18} /></button>
     <dialog className="image-dialog" ref={dialog} aria-label="Insert image" onClose={() => { if (!inserted.current) trigger.current?.focus(); }} onCancel={(event) => { if (busy) event.preventDefault(); }}>
       <form onSubmit={(event) => {
         event.preventDefault();

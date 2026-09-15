@@ -4,6 +4,7 @@ import remarkParse from 'remark-parse';
 import { unified } from 'unified';
 import { visit } from 'unist-util-visit';
 import { readBackgroundComment } from './blockBackground';
+import { isCalendarWidgetComment, parseCalendarWidgetComment, transformCalendarWidgetComments } from './calendarWidget';
 
 export type MarkdownEnvelope = {
   frontmatterSource: string;
@@ -17,7 +18,7 @@ export type RichMarkdownCompatibility =
   | { compatible: false; envelope: MarkdownEnvelope; reason: string };
 
 const FRONTMATTER_PATTERN = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/;
-const parser = unified().use(remarkParse).use(remarkGfm);
+const parser = unified().use(remarkParse).use(remarkGfm).use(() => transformCalendarWidgetComments);
 
 const SUPPORTED_NODE_TYPES = new Set([
   'root',
@@ -39,6 +40,7 @@ const SUPPORTED_NODE_TYPES = new Set([
   'table',
   'tableRow',
   'tableCell',
+  'calendarWidget',
 ]);
 
 export function splitMarkdownEnvelope(markdown: string): MarkdownEnvelope {
@@ -74,6 +76,10 @@ export function checkRichMarkdownCompatibility(markdown: string): RichMarkdownCo
 
     visit(tree, (node) => {
       if (node.type === 'html' && readBackgroundComment(node.value)) return;
+      if (node.type === 'html' && isCalendarWidgetComment(node.value) && !parseCalendarWidgetComment(node.value)) {
+        unsupportedType ??= 'invalid calendar widget';
+        return;
+      }
       if (!SUPPORTED_NODE_TYPES.has(node.type)) unsupportedType ??= node.type;
     });
 
