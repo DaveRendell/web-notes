@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "generate:pwa-icons": "node scripts/generate-pwa-icons.mjs",
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "vitest run",
@@ -63,6 +64,7 @@
     "jsdom": "^29.1.1",
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.18.0",
+    "vite-plugin-pwa": "^1.3.0",
     "vitest": "^4.1.11"
   }
 }

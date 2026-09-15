@@ -2,6 +2,8 @@
 
 A static React SPA for browsing and editing Markdown notes stored in Google Drive.
 
+Web Notes is installable as a Progressive Web App in supporting browsers. Its app shell is cached for offline launch; previously cached vault listings, notes, and images remain available under the existing read-only offline rules below. Drive authentication and writes still require a network connection.
+
 Notes open in an in-place rich-text surface. Its formatting toolbar stays out of the way until the note receives focus, and changes save to the local cache immediately before being pushed to Drive after one second of inactivity or when focus leaves the editor. Rich text supports common Markdown formatting, lists and checklists, links, wikilinks, tables, quotes, thematic breaks, and fenced code. Hover a block to reveal its grabber, then drag it to reorder or nest content; the same menu provides keyboard-accessible move, indent, outdent, and delete actions. Markdown remains the canonical stored format and an explicit source editor is available from the note menu; notes containing syntax that cannot be preserved safely automatically use source mode.
 
 Type `/` at the start of a block to open slash commands for headings, plain text, quotes, lists, to-dos, block background colours, and images. Continue typing to filter the list; recently selected commands appear first the next time the empty `/` menu opens. Slash commands work in both rich-text and Markdown source modes.
