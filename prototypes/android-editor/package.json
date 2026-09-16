@@ -1,0 +1,44 @@
+{
+  "name": "web-notes-android-editor-prototype",
+  "private": true,
+  "version": "0.0.1",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "bundle": "EXPO_NO_BUNDLE_SPLITTING=1 expo export --platform android --output-dir dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@atlaskit/pragmatic-drag-and-drop": "^3.0.0",
+    "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^3.2.0",
+    "@codemirror/autocomplete": "6.20.2",
+    "@codemirror/lang-markdown": "6.5.0",
+    "@codemirror/language": "6.11.3",
+    "@codemirror/view": "6.43.9",
+    "@expo/dom-webview": "57.0.1",
+    "@expo/metro-runtime": "57.0.15",
+    "@lexical/link": "0.48.0",
+    "@lexical/list": "0.48.0",
+    "@lexical/react": "0.48.0",
+    "@lexical/rich-text": "0.48.0",
+    "@lexical/selection": "0.48.0",
+    "@mdxeditor/editor": "4.2.3",
+    "@twemoji/parser": "17.0.2",
+    "@uiw/react-codemirror": "4.25.10",
+    "emojilib": "4.0.3",
+    "expo": "57.0.23",
+    "lexical": "0.48.0",
+    "lucide-react": "0.468.0",
+    "mdast-util-from-markdown": "2.0.3",
+    "mdast-util-to-markdown": "2.1.2",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-web": "0.21.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.0",
+    "typescript": "~5.9.2"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@mdxeditor/editor": ["./node_modules/@mdxeditor/editor"],
+      "@mdxeditor/gurx": ["./node_modules/@mdxeditor/gurx"],
+      "@codemirror/*": ["./node_modules/@codemirror/*"],
+      "@lexical/*": ["./node_modules/@lexical/*/dist/index.d.ts"],
+      "lexical": ["./node_modules/lexical/dist/index.d.ts"]
+    },
+    "types": ["vite/client"]
+  },
+  "include": ["**/*.ts", "**/*.tsx", "../../src/test/richMarkdownCorpus.ts"]
+}

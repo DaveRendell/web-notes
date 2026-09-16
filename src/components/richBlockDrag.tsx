@@ -30,8 +30,8 @@ const RICH_BLOCK_DRAG_TYPE = 'web-notes-rich-block';
 const GUTTER_TARGET_OVERSCAN = 36;
 const disabled$ = Cell(false);
 
-type Placement = 'before' | 'after' | 'nest' | 'outdent';
-type Candidate = { element: HTMLElement; key: NodeKey; listItem: boolean; taskItem: boolean };
+export type Placement = 'before' | 'after' | 'nest' | 'outdent';
+export type Candidate = { element: HTMLElement; key: NodeKey; listItem: boolean; taskItem: boolean };
 type DropState = { key: NodeKey; placement: Placement } | null;
 
 export const richBlockDragPlugin = realmPlugin<{ disabled: boolean }>({
@@ -401,7 +401,7 @@ function RichBlockGutterRail({ candidates, editor, rootElement }: {
 
 const EMPTY_ACTIONS = { up: false, down: false, indent: false, outdent: false };
 
-function getCandidates(editor: LexicalEditor): Candidate[] {
+export function getCandidates(editor: LexicalEditor): Candidate[] {
   return editor.getEditorState().read(() => {
     const result: Candidate[] = [];
     const addListItems = (node: LexicalNode) => {
@@ -441,7 +441,7 @@ function getVisibleListItems(node: LexicalNode) {
     : [];
 }
 
-function findCandidateForTarget(candidates: Candidate[], target: Node) {
+export function findCandidateForTarget(candidates: Candidate[], target: Node) {
   const element = target instanceof Element ? target : target.parentElement;
   if (!element) return null;
   const listItem = element.closest('li');
@@ -465,7 +465,7 @@ function findCandidateInGutter(candidates: Candidate[], pointerX: number, pointe
   return null;
 }
 
-function findCandidateAtY(candidates: Candidate[], pointerY: number) {
+export function findCandidateAtY(candidates: Candidate[], pointerY: number) {
   for (let index = candidates.length - 1; index >= 0; index -= 1) {
     const candidate = candidates[index];
     const rect = getCandidateInteractionRect(candidate);
@@ -478,14 +478,14 @@ function findCandidateAtY(candidates: Candidate[], pointerY: number) {
   }, { candidate: null, distance: Number.POSITIVE_INFINITY }).candidate;
 }
 
-function getPlacement(candidate: Candidate, pointerY: number, allowNesting = true): Placement {
+export function getPlacement(candidate: Candidate, pointerY: number, allowNesting = true): Placement {
   const rect = getCandidateInteractionRect(candidate);
   const ratio = rect.height ? (pointerY - rect.top) / rect.height : 0;
   if (allowNesting && candidate.listItem && ratio >= 0.42 && ratio <= 0.58) return 'nest';
   return ratio < 0.5 ? 'before' : 'after';
 }
 
-function getCandidateInteractionRect(candidate: Candidate) {
+export function getCandidateInteractionRect(candidate: Candidate) {
   const rect = candidate.element.getBoundingClientRect();
   if (!candidate.listItem) return rect;
   const childList = Array.from(candidate.element.children).find((child) => child.matches('ul, ol'));
@@ -548,7 +548,7 @@ function getDropState(data: Record<string, unknown> | undefined): DropState {
     : null;
 }
 
-function canMove(editor: LexicalEditor, sourceKey: NodeKey, targetKey: NodeKey, placement?: Placement) {
+export function canMove(editor: LexicalEditor, sourceKey: NodeKey, targetKey: NodeKey, placement?: Placement) {
   return editor.getEditorState().read(() => {
     const source = $getNodeByKey(sourceKey);
     const target = $getNodeByKey(targetKey);

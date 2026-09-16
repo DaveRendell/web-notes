@@ -1,7 +1,7 @@
 # React Native Android Companion App
 
-Status: revised implementation proposal; Android implementation has not started.
-Reviewed against the current source on 2026-09-10, including commit `68215ca`.
+Status: revised implementation proposal; Phase 0 has a disposable Android editor prototype and a debug-signed release APK. Initial rendering was checked on one device, but IME, touch dragging, offline launch and auth remain unvalidated.
+Reviewed against the current source on 2026-09-16. Track gate evidence in [Android Phase 0 validation](android-phase-0-validation.md).
 
 ## Recommendation and changes to the original plan
 
@@ -36,7 +36,7 @@ The older [WYSIWYG plan](wysiwyg-markdown-editor-plan.md) is historical context,
 | Markdown source and compatibility fallback | Shared CodeMirror, subject to keyboard testing; native plain-text emergency fallback if the DOM surface fails |
 | Formatting, lists/tasks, links, tables, quotes, code and thematic breaks | Shared plugins, keyboard accessory toolbar and overflow sheet |
 | Wikilink, emoji and slash completion | Same detection, ranking and commands; touch-sized keyboard-safe suggestions |
-| Block dragging and move/indent/outdent/delete menu | Touch handle adapter invoking existing Lexical operations |
+| Block dragging and move/indent/outdent/delete menu | Long-press a block to drag without a grabber; accessible action menu invokes the same Lexical operations |
 | Hidden-comment background colours | Same nine colours, theme palette, Default removal and comment serialization |
 | Twemoji artwork | Same Unicode Markdown and artwork/version/attribution; local assets for offline use |
 | External/vault images, upload/paste and image viewer | Native picker/upload flow, authenticated image service, cache and full-screen image viewer |
@@ -45,6 +45,8 @@ The older [WYSIWYG plan](wysiwyg-markdown-editor-plan.md) is historical context,
 | Toolbar/spelling indications hide after 10 seconds; Ctrl+S hides both | Shared activity state with Android-specific IME/spellcheck validation |
 | Keyboard shortcuts and browser history | Hardware commands when Android delivers them; native Back and ID-based routes |
 | Independent document/sidebar scrolling | Phone stack and tablet two-pane layout with explicit scroll ownership |
+| Google Calendar widgets in Markdown comments | Shared comment parser and DOM widget; native host supplies optional, separately authorized read-only calendar/list access without sending credentials into the editor |
+| Weekly-note template variables | Reuse `$week`, `$year`, `$monday` and `$sunday` substitution in raw template comments as well as prose |
 
 Keep sequential-note logic unchanged during extraction: take the **first numeric token in the filename**, replace matching complete numeric tokens throughout the path, and retain padding only when intentional. Reuse `noteSequence.test.ts`, including Week 9/10 and Week 20 in a 2021 path. Display the current number and disabled missing neighbours as on the website.
 
@@ -85,6 +87,7 @@ Begin package extraction while the web app remains at repository root. Move it u
 | `NoteEditorShell`, `RichMarkdownEditor`, rich plugins/nodes, `MarkdownEditor` | Shared DOM editor with injected host actions instead of web contexts/window events |
 | `richBlockDrag.tsx` | Separate Lexical operations/menu availability from desktop drag registration |
 | `ImageContext`, insert-image components | Image-service contract, native picker action and editor-side selection bookmarks |
+| `calendarWidget`, `googleCalendar`, calendar insertion components | Portable widget syntax and date validation; native calendar service/authorization; DOM display and insertion UI |
 | Spellcheck helpers, popovers, icons and editor CSS | Shared DOM behavior with explicit Android overrides/tests where needed |
 
 Do not merge the legacy source-slice block mover with Lexical movement merely because both move blocks. The rich editor serializes its AST and may normalize Markdown body formatting after a real edit; the source mover has different preservation guarantees. Preserve the latest cross-list rich behavior: source list type, task state, numbering intent and subtree remain intact.
@@ -122,7 +125,7 @@ type EditorChange = EditorSession & {
 };
 ```
 
-Define ready/load/hydrated, user-change, draft-persisted acknowledgement, flush/snapshot, activity/focus, mode, error, navigation, image-request/result and accessible block-action messages. Requests/replies include session and request IDs. Discard stale, duplicate, wrong-account and out-of-order events. Distinguish a hydrated intentionally empty note from uninitialized content.
+Define ready/load/hydrated, user-change, draft-persisted acknowledgement, flush/snapshot, activity/focus, mode, error, navigation, image-request/result, calendar-request/result and accessible block-action messages. Requests/replies include session and request IDs. Discard stale, duplicate, wrong-account and out-of-order events. Distinguish a hydrated intentionally empty note from uninitialized content.
 
 The editor owns selection, undo and IME composition. The native host owns durable drafts and Drive writes. Send initial Markdown once per session; do not echo every draft through MDXEditor's initial prop or call `setMarkdown` when a save succeeds. Remote replacement requires a clean draft or explicit conflict resolution. Persist revisions in order; a flush waits for acknowledgement of its latest snapshot.
 
@@ -146,9 +149,11 @@ Autocomplete preserves the current rules:
 
 Use a suggestion tray above the keyboard when caret popups are cramped. Touch selection must retain the editor range; Enter/arrows/Escape support external keyboards. Recents and command history remain device-local; favourites use the vault settings file.
 
+Calendar widgets retain the hidden-comment syntax and inclusive date range. The editor must display a useful unavailable/reauthorize state for calendars the account cannot read while still showing events from accessible selected calendars. Keep event details in memory only, as on web; no event payloads belong in note caches or draft records. Prove the widget does not cause a note write on mount or refresh.
+
 ### Block dragging and colours
 
-Keep Pragmatic Drag and Drop for desktop DOM interactions. Do not assume its browser drag behavior works for Android touch. Implement a handle-only long-press/pointer adapter inside the DOM surface, with pointer capture after intentional activation and safe cancellation on lost capture, navigation or additional touches. Prevent scrolling only for activated handles, preserving ordinary document scrolling/selection.
+Keep Pragmatic Drag and Drop for desktop DOM interactions. Do not assume its browser drag behavior works for Android touch. Prototype a handle-free long press on a text block, with a clear activation cue, visual source/target feedback and cancellation on scrolling, extra touches or navigation. Prevent scrolling only after activation; ordinary taps must keep editing, links and checkboxes intact. Long-press text selection competes with this gesture, so physical-device testing must establish whether the timing and cancellation are comfortable. If it is not, retain an accessible block action menu and reconsider a small explicit drag affordance rather than suppressing text selection globally.
 
 Share Lexical move operations and rejection rules. Hit-test DOM block rectangles including the gutter, prioritize generous before/after zones and require deliberate horizontal intent for nesting. Highlight the effective target, dim the full source subtree and auto-scroll near viewport edges. Reject self/descendants/stale targets and show a preview without mutating content.
 
@@ -224,6 +229,8 @@ The native image viewer includes filename, type, size, zoom/pan and rename/delet
 
 Use native Google authorization outside the editor. Prototype `@react-native-google-signin/google-signin`, recording the API variant, license, version and Expo config. Do not mix Original `getTokens` examples with newer Universal authorization methods. Google sign-in and authorization for Drive are distinct; an ID token cannot make Drive API requests. See [library API](https://react-native-google-signin.github.io/docs/api), [migration guidance](https://react-native-google-signin.github.io/docs/migrating) and [Android authorization](https://developer.android.com/identity/authorization).
 
+Calendar access is a separate optional grant, requested when a widget is used. Validate both `calendar.events.readonly` and `calendar.calendarlist.readonly` on Android, including incremental authorization, shared-calendar visibility, refusal/revocation and account switching. A Drive-authorized token alone is not sufficient. Do not block note hydration on Calendar consent.
+
 Configure Android OAuth clients for the package and development/release/Play signing fingerprints. Test real-vault listing/upload, silent restoration, revoked permissions and account switching. Resolve `about.get(user.permissionId)` before exposing private cache. Let the SDK manage credentials and keep short-lived tokens out of SQLite, logs and the DOM bridge. Coalesce renewal; invalidate/reacquire once on auth failure. Never open interactive authorization in the background; cancellation preserves drafts.
 
 Initially retain full Drive scope for arbitrary existing vaults. `drive.file` is per-file access and must not be assumed to recursively authorize an existing folder. Consider narrowing only after a proven selection/migration workflow. Full Drive access is restricted; plan OAuth verification and evaluate assessment obligations against actual data handling before release. See [Drive scope guidance](https://developers.google.com/workspace/drive/api/guides/api-specific-auth).
@@ -246,7 +253,7 @@ Each phase should be a reviewable change with an explicit exit condition. Do not
 
 ### 0. Baseline and feasibility
 
-- Turn the feature matrix into an acceptance checklist and promote existing rich regression cases into reusable fixtures.
+- Turn the feature matrix into an acceptance checklist and promote existing rich regression cases into reusable fixtures. This has begun in [Android Phase 0 validation](android-phase-0-validation.md); the synthetic corpus and hydration regression tests do **not** satisfy the Android release-build or physical-device gate.
 - Build disposable editor/auth prototypes; test release assets, physical keyboards, TalkBack, touch drag, private image delivery and bridge recovery messages.
 - Benchmark notes/tree sizes and record exact Expo/editor/auth/gesture versions, results and selected transport.
 - Exit: offline bundled editing and real test-vault access work; initialization causes zero writes; critical typing/fidelity tests pass. Otherwise revise architecture first.
