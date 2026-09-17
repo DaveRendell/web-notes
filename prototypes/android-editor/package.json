@@ -28,6 +28,7 @@
     "@uiw/react-codemirror": "4.25.10",
     "emojilib": "4.0.3",
     "expo": "57.0.23",
+    "expo-file-system": "~57.0.7",
     "lexical": "0.48.0",
     "lucide-react": "0.468.0",
     "mdast-util-from-markdown": "2.0.3",
@@ -35,7 +36,11 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
-    "react-native-web": "0.21.0"
+    "react-native-web": "0.21.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
     "@types/react": "19.2.0",

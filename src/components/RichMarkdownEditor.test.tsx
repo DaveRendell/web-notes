@@ -88,6 +88,9 @@ describe('portable rich Markdown corpus', () => {
     );
 
     await waitFor(() => expect(container.querySelector('.mdxeditor-root-contenteditable')).not.toBeNull());
+    if ('requiresSourceFallback' in fixture && fixture.requiresSourceFallback) {
+      await waitFor(() => expect(onInitialNormalize).toHaveBeenCalled());
+    }
     for (const [normalized] of onInitialNormalize.mock.calls) {
       if ('requiresSourceFallback' in fixture && fixture.requiresSourceFallback) {
         expect(areMarkdownBodiesSemanticallyEquivalent(bodySource, normalized)).toBe(false);

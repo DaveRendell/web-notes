@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Web Notes Editor Gate",
-    "slug": "web-notes-editor-gate",
+    "name": "Web Notes",
+    "slug": "web-notes-android",
     "version": "0.0.1",
     "orientation": "default",
     "userInterfaceStyle": "automatic",

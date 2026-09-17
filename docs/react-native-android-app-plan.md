@@ -1,6 +1,10 @@
 # React Native Android Companion App
 
-Status: revised implementation proposal; Phase 0 has a disposable Android editor prototype and a debug-signed release APK. Initial rendering was checked on one device, but IME, touch dragging, offline launch and auth remain unvalidated.
+## Interim local-vault shortcut (September 2026)
+
+The Android prototype is being turned into a useful local-first app before Drive authentication is added. Android's Storage Access Framework folder picker grants persistent access to a user-selected synced vault folder. The first pass recursively lists Markdown notes, edits through the validated DOM editor, creates root notes, and explicitly writes files back through the provider. Saves compare on-disk content with the version opened and refuse to overwrite external changes. This does not replace the longer-term Drive-backed plan below; production code should keep storage behind an adapter so the editor and navigation do not depend on whether bytes come from Drive or a local document provider. Durable draft recovery, images, richer navigation, and sync-change refresh remain future work.
+
+Status: revised implementation proposal; Phase 0's editor prototype is being extended into a local-vault Android app and a debug-signed release APK. Initial rendering and touch dragging were checked on one device; local-vault reads/writes and full IME/offline regressions still need device validation.
 Reviewed against the current source on 2026-09-16. Track gate evidence in [Android Phase 0 validation](android-phase-0-validation.md).
 
 ## Recommendation and changes to the original plan

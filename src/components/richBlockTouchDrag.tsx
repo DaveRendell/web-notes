@@ -1,5 +1,5 @@
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { addComposerChild$, realmPlugin } from '@mdxeditor/editor';
+import { addComposerChild$, Cell, realmPlugin, useCellValue } from '@mdxeditor/editor';
 import { useEffect, useState } from 'react';
 import {
   canMove,
@@ -19,17 +19,22 @@ const SCROLL_EDGE_PX = 52;
 const SCROLL_STEP_PX = 10;
 
 type Drop = { candidate: Candidate; placement: Placement } | null;
+const disabled$ = Cell(false);
 
 // Android feasibility adapter. It leaves ordinary touches alone until a deliberate
 // long press succeeds, then uses the same Lexical movement operation as the web UI.
-export const richBlockTouchDragPlugin = realmPlugin({
-  init(realm) {
-    realm.pub(addComposerChild$, RichBlockTouchDrag);
+export const richBlockTouchDragPlugin = realmPlugin<{ disabled?: boolean }>({
+  init(realm, params) {
+    realm.pubIn({ [addComposerChild$]: RichBlockTouchDrag, [disabled$]: params?.disabled ?? false });
+  },
+  update(realm, params) {
+    realm.pub(disabled$, params?.disabled ?? false);
   },
 });
 
 function RichBlockTouchDrag() {
   const [editor] = useLexicalComposerContext();
+  const disabled = useCellValue(disabled$);
   const [root, setRoot] = useState<HTMLElement | null>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -101,6 +106,9 @@ function RichBlockTouchDrag() {
     }
 
     function onTouchStart(event: TouchEvent) {
+      // A focused contenteditable has a caret. Leave long press alone so
+      // Android's normal text-selection handles can appear.
+      if (disabled || (root!.getAttribute('contenteditable') === 'true' && root!.contains(document.activeElement))) return;
       if (event.touches.length !== 1) {
         reset();
         return;
@@ -108,7 +116,9 @@ function RichBlockTouchDrag() {
       const target = event.target;
       if (!(target instanceof Node)) return;
       const element = target instanceof Element ? target : target.parentElement;
-      if (element?.closest('a, button, input, textarea, select, [role="button"], [contenteditable="false"], .rich-image-placeholder')) return;
+      if (element?.closest('a, button, input, textarea, select, [role="button"], .rich-image-placeholder')) return;
+      const nonEditable = element?.closest('[contenteditable="false"]');
+      if (nonEditable && nonEditable !== root) return;
       const candidate = findCandidateForTarget(getCandidates(editor), target);
       if (!candidate) return;
       reset();
@@ -183,7 +193,7 @@ function RichBlockTouchDrag() {
       root.removeEventListener('selectstart', onSelectStart);
       reset();
     };
-  }, [editor, root]);
+  }, [disabled, editor, root]);
 
   return dragging ? <div aria-live="polite" className="rich-touch-drag-status">Drag to move · release to drop</div> : null;
 }
