@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { dismissEditorCaret } from '../../prototypes/android-editor/editorFocus';
+import { dismissEditorCaret } from '../editorFocus';
 
 afterEach(() => {
   document.body.replaceChildren();

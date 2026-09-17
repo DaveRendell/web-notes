@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareMarkdown, firstDifferentLine } from '../../prototypes/android-editor/diagnostics';
+import { compareMarkdown, firstDifferentLine } from '../diagnostics';
 
 describe('Android editor Markdown diagnostics', () => {
   it('distinguishes a byte-exact round trip from harmless formatting changes', () => {

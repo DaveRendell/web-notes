@@ -1,4 +1,4 @@
-import { areMarkdownBodiesSemanticallyEquivalent } from '../../src/lib/markdownEnvelope';
+import { areMarkdownBodiesSemanticallyEquivalent } from '../web/src/lib/markdownEnvelope';
 
 export type MarkdownComparison = {
   exactMatch: boolean;

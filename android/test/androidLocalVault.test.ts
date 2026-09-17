@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ExternalNoteChangeError, displayNameFromSafUri, listVaultCore, listVaultFolderCore, parseVaultListCache, replaceVaultFolderChildren, saveNoteCore, splitFrontmatter, type VaultEntry, type VaultFiles } from '../../prototypes/android-editor/localVaultCore';
-import { buildBrowserRows, expandPath } from '../../prototypes/android-editor/localVaultTree';
+import { ExternalNoteChangeError, displayNameFromSafUri, listVaultCore, listVaultFolderCore, parseVaultListCache, replaceVaultFolderChildren, saveNoteCore, splitFrontmatter, type VaultEntry, type VaultFiles } from '../localVaultCore';
+import { buildBrowserRows, expandPath } from '../localVaultTree';
 
 const directories = new Map<string, VaultEntry[]>();
 const contents = new Map<string, string>();

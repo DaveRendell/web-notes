@@ -1,0 +1,15 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'dev.webnotes'
+version = '0.0.1'
+
+android {
+  namespace 'dev.webnotes.fastsaf'
+  defaultConfig {
+    versionCode 1
+    versionName '0.0.1'
+  }
+}

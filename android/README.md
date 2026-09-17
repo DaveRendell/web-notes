@@ -1,4 +1,4 @@
-# Android local-vault prototype
+# Android app (local-vault first pass)
 
 This Expo app now opens a phone-local synced vault through Android's folder picker. It shows a collapsible folder browser (including empty folders), searches note paths, opens Markdown notes in the validated rich/source editor, creates notes and folders in the vault root or a chosen folder, and saves back to the selected folder. It does not connect to Google Drive. The earlier editor-feasibility diagnostics remain in the source but are not the app's current home screen.
 
@@ -10,11 +10,14 @@ The file browser displays a locally cached listing immediately, refreshes the va
 
 ## Run
 
-From this directory:
+The editor currently imports some shared Markdown plugins directly from `web/src` into its DOM bundle. Those imports do not enter the native/Hermes entry; extracting them into a dedicated package is future work.
+
+From the `android/` directory:
 
 ```sh
 npm ci
 npm run typecheck
+npm test
 npm run bundle
 npm run android
 ```

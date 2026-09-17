@@ -1,4 +1,4 @@
-import type { CalendarWidgetConfig } from '../../../src/lib/calendarWidget';
+import type { CalendarWidgetConfig } from '../../web/src/lib/calendarWidget';
 
 // Only the widget's Markdown import/export is under test here. Calendar OAuth
 // and native event delivery are separate Phase 0 gates.

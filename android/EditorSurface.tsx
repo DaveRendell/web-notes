@@ -5,10 +5,10 @@ import { MDXEditor, headingsPlugin, linkDialogPlugin, linkPlugin, listsPlugin, q
 import CodeMirror from '@uiw/react-codemirror';
 import { markdown as markdownLanguage } from '@codemirror/lang-markdown';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { richEditorEnhancementsPlugin } from '../../src/components/richEditorEnhancements';
-import { richBlockBackgroundPlugin } from '../../src/components/richBlockBackground';
-import { richBlockTouchDragPlugin } from '../../src/components/richBlockTouchDrag';
-import { richCalendarPlugin } from '../../src/components/richCalendar';
+import { richEditorEnhancementsPlugin } from '../web/src/components/richEditorEnhancements';
+import { richBlockBackgroundPlugin } from '../web/src/components/richBlockBackground';
+import { richBlockTouchDragPlugin } from '../web/src/components/richBlockTouchDrag';
+import { richCalendarPlugin } from '../web/src/components/richCalendar';
 import { compareMarkdown, type EditorEvent, type EditorFocusEvent, type WriteAttempt } from './diagnostics';
 import { dismissEditorCaret } from './editorFocus';
 

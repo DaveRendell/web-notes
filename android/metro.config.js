@@ -2,15 +2,14 @@ const path = require('path');
 const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
-// This disposable package is intentionally not an npm workspace yet. It
-// imports the website's actual rich Markdown plugins without putting them in
-// the native/Hermes entry graph.
-config.watchFolders = [path.resolve(__dirname, '../../src')];
+// The DOM editor currently reuses website plugins. These imports must stay
+// inside the DOM bundle; native/Hermes code must not load them directly.
+config.watchFolders = [path.resolve(__dirname, '../web/src')];
 
-const imageContext = path.resolve(__dirname, '../../src/contexts/ImageContext.tsx');
-const noteImage = path.resolve(__dirname, '../../src/components/NoteImage.tsx');
-const richCalendarNode = path.resolve(__dirname, '../../src/components/RichCalendarNode.tsx');
-const websiteSource = `${path.resolve(__dirname, '../../src')}${path.sep}`;
+const imageContext = path.resolve(__dirname, '../web/src/contexts/ImageContext.tsx');
+const noteImage = path.resolve(__dirname, '../web/src/components/NoteImage.tsx');
+const richCalendarNode = path.resolve(__dirname, '../web/src/components/RichCalendarNode.tsx');
+const websiteSource = `${path.resolve(__dirname, '../web/src')}${path.sep}`;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (context.originModulePath === noteImage && moduleName === '../contexts/ImageContext') {
     return { type: 'sourceFile', filePath: path.resolve(__dirname, 'shims/ImageContext.ts') };
@@ -19,7 +18,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     return { type: 'sourceFile', filePath: path.resolve(__dirname, 'shims/CalendarWidget.tsx') };
   }
   if (context.originModulePath === imageContext) {
-    throw new Error('The real image service must not enter the editor prototype bundle.');
+    throw new Error('The web image service must not enter the Android editor bundle.');
   }
   if (context.originModulePath.startsWith(websiteSource) && !moduleName.startsWith('.') && !path.isAbsolute(moduleName)) {
     // Keep a single React/Lexical/MDXEditor instance across the imported web

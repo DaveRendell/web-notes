@@ -2,13 +2,14 @@
 
 ## Verification
 
-- `npm run check`: lint, unit/component tests, TypeScript and production build.
+- `npm run check`: web lint/tests/build and Android typecheck/tests/export.
+- `npm run check:web` and `npm run check:android`: run one app's checks.
 - `npm run test:browser`: real Chromium smoke tests with a local Vite server,
   fake authentication and intercepted Drive requests. Install the browser first
-  with `npx playwright install chromium`.
+  with `npm exec --prefix web -- playwright install chromium`.
 - `npm run test:browser:ui`: interactive browser test runner for debugging.
 - `git diff --check`: whitespace errors.
-- `npm audit`: check the current dependency lock against published advisories.
+- `npm audit --prefix web` and `npm audit --prefix android`: check each lockfile against published advisories.
 
 Browser tests exercise rendering, source mode, search/navigation, cached access
 during a Drive outage and rich-text autosaving. Failure screenshots, HTML reports

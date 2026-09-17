@@ -1,5 +1,5 @@
 {
-  "name": "web-notes-android-editor-prototype",
+  "name": "web-notes-android",
   "private": true,
   "version": "0.0.1",
   "main": "index.ts",
@@ -7,7 +7,9 @@
     "start": "expo start",
     "android": "expo run:android",
     "bundle": "EXPO_NO_BUNDLE_SPLITTING=1 expo export --platform android --output-dir dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm test && npm run bundle"
   },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^3.0.0",
@@ -44,6 +46,8 @@
   },
   "devDependencies": {
     "@types/react": "19.2.0",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "vitest": "^4.1.11",
+    "jsdom": "^29.1.1"
   }
 }

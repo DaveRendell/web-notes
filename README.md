@@ -1,5 +1,7 @@
 # Web Notes
 
+This repository contains the [web app](web/) and an [Android app](android/). Android currently opens a locally synced vault through Android's folder picker; it is not yet feature-parity with the Drive-backed web app. See the [Android README](android/README.md) for its current capabilities and limitations.
+
 A static React SPA for browsing and editing Markdown notes stored in Google Drive.
 
 Web Notes is installable as a Progressive Web App in supporting browsers. Its app shell is cached for offline launch; previously cached vault listings, notes, and images remain available under the existing read-only offline rules below. Drive authentication and writes still require a network connection.
@@ -14,7 +16,7 @@ Emoji are stored as standard Unicode in Markdown but displayed consistently usin
 
 See [docs/google-drive-setup.md](docs/google-drive-setup.md) for the full Google Cloud and OAuth setup.
 
-Copy `.env.example` to `.env.local` and set:
+Copy `.env.example` to `.env.local` at the repository root and set:
 
 ```txt
 VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
@@ -23,9 +25,11 @@ VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 ## Development
 
 ```sh
-npm install
+npm run install:all
 npm run dev
 ```
+
+The root commands run both projects: `npm run dev` starts the website, `npm run android` starts Android, and `npm run check` checks both. Each app has its own lockfile because their React and TypeScript versions differ. To install only one, use `npm ci --prefix web` or `npm ci --prefix android`. Web configuration stays in root `.env.local` and is not copied into the Android bundle. For now, Android's DOM editor imports web plugins from `web/src`; extracting those into a shared package remains future work.
 
 The app requests `https://www.googleapis.com/auth/drive` so it can read and edit Markdown files in the selected vault. Drive access stays client-side using Google's short-lived OAuth access tokens; the app has no client secret or backend token store.
 
@@ -88,22 +92,22 @@ npm run lint
 npm run build
 ```
 
-Run all three with `npm run check`. GitHub Actions runs these checks and the browser smoke suite on pull requests and pushes to `main`.
+`npm run check:web` runs the three web checks. `npm run check` also runs Android typechecking, tests, and a bundled export. GitHub Actions runs both checks and the browser smoke suite on pull requests and pushes to `main`.
 
 See [technical maintenance](docs/technical-maintenance.md) for reliability boundaries, dependency overrides, and remaining follow-ups.
 
 ### Browser checks
 
 ```sh
-npx playwright install chromium
+npm exec --prefix web -- playwright install chromium
 npm run test:browser
 # Interactive runner for inspecting the site and stepping through tests:
 npm run test:browser:ui
 ```
 
-The Playwright suite starts its own Vite server on port 4173 and uses an isolated browser with a fake Drive session and intercepted Google requests. No real credentials, OAuth popup, or Drive writes are involved. Fixtures live in `e2e/vault.spec.ts`; extend them when adding browser regressions. The suite covers rich-text rendering, source-mode switching, search/navigation/history, autosaving, and cached rendering during a Drive outage. It is separate from Vitest so browser tests never accidentally run in jsdom. Worker counts are bounded (four for unit tests, two for browser tests) to avoid overloading local machines and CI.
+The Playwright suite starts its own Vite server on port 4173 and uses an isolated browser with a fake Drive session and intercepted Google requests. No real credentials, OAuth popup, or Drive writes are involved. Fixtures live in `web/e2e/vault.spec.ts`; extend them when adding browser regressions. The suite covers rich-text rendering, source-mode switching, search/navigation/history, autosaving, and cached rendering during a Drive outage. It is separate from Vitest so browser tests never accidentally run in jsdom. Worker counts are bounded (four for unit tests, two for browser tests) to avoid overloading local machines and CI.
 
-Failures retain screenshots and traces in `test-results/`; inspect them with `npx playwright show-report` or `npx playwright show-trace <trace.zip>`. CI uploads failure reports for seven days. On Linux, browser installation may also require `npx playwright install --with-deps chromium`.
+Failures retain screenshots and traces in `web/test-results/`; inspect them with `npm exec --prefix web -- playwright show-report` or `npm exec --prefix web -- playwright show-trace <trace.zip>`. CI uploads failure reports for seven days. On Linux, browser installation may also require `npm exec --prefix web -- playwright install --with-deps chromium`.
 
 ## Block background colours
 
