@@ -50,7 +50,6 @@ export function FavoriteNotes() {
   return (
     <CollapsibleSidebarSection
       className="favorite-notes"
-      count={favoriteNotes.length}
       headingId="favorite-notes-heading"
       resetKey={selectedVault?.id}
       title="Favourites"

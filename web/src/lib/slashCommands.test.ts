@@ -54,6 +54,13 @@ describe('slash commands', () => {
     expect(listResult?.options.map(({ label }) => label)).toContain('To-do list');
   });
 
+  it('can restrict completions for hosts without image or calendar integrations', async () => {
+    const source = createSlashCommandCompletionSource(vi.fn(), vi.fn(), new Set(['heading', 'todo']));
+    const state = EditorState.create({ doc: '/' });
+    const result = await source(new CompletionContext(state, 1, true));
+    expect(result?.options.map(({ label }) => label)).toEqual(['Heading 1', 'To-do list']);
+  });
+
   it('applies block, background, and image commands in Markdown mode', () => {
     const parent = document.createElement('div');
     document.body.append(parent);

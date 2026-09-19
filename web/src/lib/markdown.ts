@@ -4,6 +4,7 @@ import remarkParse from 'remark-parse';
 import { unified } from 'unified';
 import { visit } from 'unist-util-visit';
 import { parse } from 'yaml';
+import { parse as parseEmoji } from '@twemoji/parser';
 
 export type FrontmatterProperty = {
   key: string;
@@ -76,8 +77,11 @@ export function findLeadingEmoji(content: string): string | null {
   const visibleText = findFirstVisibleText(tree as MarkdownNode);
   if (!visibleText) return null;
 
-  const segments = new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(visibleText.trimStart());
-  const firstSegment = segments[Symbol.iterator]().next().value?.segment;
+  const leadingText = visibleText.trimStart();
+  // Hermes does not provide Intl.Segmenter on every Android version.
+  const firstSegment = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(leadingText)[Symbol.iterator]().next().value?.segment
+    : parseEmoji(leadingText, { assetType: 'svg' }).find((entry) => entry.indices[0] === 0)?.text;
 
   return firstSegment && /[\p{Extended_Pictographic}\p{Regional_Indicator}\u20e3]/u.test(firstSegment)
     ? firstSegment

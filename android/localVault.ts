@@ -1,13 +1,15 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { Directory } from 'expo-file-system';
-import { displayNameFromSafUri, listVaultCore, listVaultFolderCore, parseVaultListCache, saveNoteCore, type LocalFolder, type LocalNote, type LocalVaultItem, type VaultFiles, type VaultListCache } from './localVaultCore';
+import { displayNameFromSafUri, listVaultCore, listVaultFolderCore, openLocalWeeklyNoteCore, parseVaultListCache, saveNoteCore, type LocalFolder, type LocalNote, type LocalVaultItem, type VaultFiles, type VaultListCache } from './localVaultCore';
 import fastSaf from './modules/fast-saf';
+import { parseFavouritePaths, parseNoteIconCache } from './vaultFeatures';
 
 export { displayNameFromSafUri, splitFrontmatter, ExternalNoteChangeError, type LocalNote, type LocalFolder, type LocalVaultItem } from './localVaultCore';
 
 const SAF = FileSystem.StorageAccessFramework;
 const SAVED_VAULT_URI = `${FileSystem.documentDirectory}selected-vault-uri.txt`;
 const VAULT_CACHE_URI = `${FileSystem.documentDirectory}vault-list-cache.json`;
+const NOTE_ICON_CACHE_URI = `${FileSystem.documentDirectory}note-icon-cache.json`;
 const files: Omit<VaultFiles, 'readDirectory'> = {
   readText: (uri) => SAF.readAsStringAsync(uri),
   writeText: (uri, text) => SAF.writeAsStringAsync(uri, text),
@@ -67,6 +69,31 @@ export async function writeVaultListCache(rootUri: string, items: LocalVaultItem
   }
 }
 
+export async function readVaultFavourites(rootUri: string): Promise<string[]> {
+  const children = await vaultFiles(rootUri).readDirectory(rootUri);
+  const settings = children.find((child) => !child.isDirectory && (child.name ?? displayNameFromSafUri(child.uri)) === '.web-notes.json');
+  if (!settings) return [];
+  return parseFavouritePaths(await files.readText(settings.uri));
+}
+
+export async function readNoteIconCache(rootUri: string): Promise<Record<string, string | null>> {
+  try {
+    if (!(await FileSystem.getInfoAsync(NOTE_ICON_CACHE_URI)).exists) return {};
+    return parseNoteIconCache(JSON.parse(await FileSystem.readAsStringAsync(NOTE_ICON_CACHE_URI)) as unknown, rootUri) ?? {};
+  } catch (cause) {
+    console.warn('Could not read the note icon cache:', cause);
+    return {};
+  }
+}
+
+export async function writeNoteIconCache(rootUri: string, icons: Record<string, string | null>): Promise<void> {
+  try {
+    await FileSystem.writeAsStringAsync(NOTE_ICON_CACHE_URI, JSON.stringify({ version: 1, rootUri, icons }));
+  } catch (cause) {
+    console.warn('Could not write the note icon cache:', cause);
+  }
+}
+
 export async function readNote(uri: string): Promise<string> {
   return files.readText(uri);
 }
@@ -106,4 +133,14 @@ export async function createFolder(parentUri: string, parentPath: string, reques
   const uri = await SAF.makeDirectoryAsync(parentUri, name);
   const createdName = displayNameFromSafUri(uri);
   return { kind: 'folder', uri, path: parentPath ? `${parentPath}/${createdName}` : createdName, parentPath, name: createdName };
+}
+
+export async function openLocalWeeklyNote(rootUri: string, date = new Date()): Promise<LocalNote> {
+  return openLocalWeeklyNoteCore(rootUri, {
+    listFolder: (parentUri, parentPath) => listVaultFolder(rootUri, parentUri, parentPath),
+    createFolder,
+    createNote,
+    readText: readNote,
+    writeText: files.writeText,
+  }, date);
 }

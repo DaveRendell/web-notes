@@ -98,6 +98,15 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const imageUploadScope = `${accountId}:${selectedVault?.id}`;
   const imageUploadScopeRef = useRef(imageUploadScope);
   imageUploadScopeRef.current = imageUploadScope;
+  const { error, isLoading, isRefreshing, refreshError, setTree, tree } = useVaultTree(
+    accessToken,
+    accountId,
+    isAccountResolved,
+    selectedVault?.id ?? null,
+    selectedVault?.name ?? null,
+  );
+  const notes = useMemo(() => flattenVaultTree(tree).filter((node) => node.type === 'markdown'), [tree]);
+  const notePathsById = useMemo(() => new Map(notes.map((note) => [note.id, note.path])), [notes]);
   const {
     favoriteNoteIds,
     favoriteSyncError,
@@ -109,16 +118,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     ensureAccessToken,
     invalidateAccessToken,
     isOnline,
+    notePathsById,
     vaultId: selectedVault?.id ?? null,
   });
-  const { error, isLoading, isRefreshing, refreshError, setTree, tree } = useVaultTree(
-    accessToken,
-    accountId,
-    isAccountResolved,
-    selectedVault?.id ?? null,
-    selectedVault?.name ?? null,
-  );
-  const notes = useMemo(() => flattenVaultTree(tree).filter((node) => node.type === 'markdown'), [tree]);
   const recentNotes = useMemo(() => {
     const notesById = new Map(notes.map((note) => [note.id, note]));
     return recentNoteIds.flatMap((id) => {

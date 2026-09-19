@@ -3,10 +3,15 @@
     "name": "Web Notes",
     "slug": "web-notes-android",
     "version": "0.0.1",
+    "icon": "./assets/icon.png",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
     "android": {
-      "package": "dev.webnotes.editorgate"
+      "package": "dev.webnotes.editorgate",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#49627f"
+      }
     }
   }
 }

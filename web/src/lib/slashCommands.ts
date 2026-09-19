@@ -86,7 +86,11 @@ export function requestCalendarDialog(element: HTMLElement | null) {
 
 type SlashCompletion = Completion & { command: SlashCommand };
 
-export function createSlashCommandCompletionSource(openImage: () => void, openCalendar: () => void = () => undefined) {
+export function createSlashCommandCompletionSource(
+  openImage: () => void,
+  openCalendar: () => void = () => undefined,
+  allowedIds?: ReadonlySet<SlashCommandId>,
+) {
   return (context: CompletionContext): CompletionResult | null => {
     if (!isProseCompletionContext(context)) return null;
     const line = context.state.doc.lineAt(context.pos);
@@ -94,15 +98,17 @@ export function createSlashCommandCompletionSource(openImage: () => void, openCa
     const match = /(?:^|\s)\/([A-Za-z0-9]*)$/.exec(beforeCursor);
     if (!match) return null;
     const from = line.from + beforeCursor.lastIndexOf('/');
-    const options: SlashCompletion[] = getSlashCommandSuggestions(match[1]).map((command) => ({
-      label: command.label,
-      detail: command.detail,
-      type: command.kind,
-      command,
-      apply(view, _completion, completionFrom, to) {
-        applyMarkdownSlashCommand(view, command, completionFrom, to, openImage, openCalendar);
-      },
-    }));
+    const options: SlashCompletion[] = getSlashCommandSuggestions(match[1])
+      .filter(({ id }) => !allowedIds || allowedIds.has(id))
+      .map((command) => ({
+        label: command.label,
+        detail: command.detail,
+        type: command.kind,
+        command,
+        apply(view, _completion, completionFrom, to) {
+          applyMarkdownSlashCommand(view, command, completionFrom, to, openImage, openCalendar);
+        },
+      }));
     return { from, options, validFor: /^\/[A-Za-z0-9]*$/ };
   };
 }

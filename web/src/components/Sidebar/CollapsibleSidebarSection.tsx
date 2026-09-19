@@ -5,7 +5,6 @@ type CollapsibleSidebarSectionProps = {
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
-  count?: number;
   headingId: string;
   indicator?: ReactNode;
   resetKey?: string | null;
@@ -16,7 +15,6 @@ export function CollapsibleSidebarSection({
   actions,
   children,
   className,
-  count,
   headingId,
   indicator,
   resetKey,
@@ -46,7 +44,6 @@ export function CollapsibleSidebarSection({
             <span id={headingId}>{title}</span>
             {indicator}
           </span>
-          {count !== undefined && count > 0 && <span className="sidebar-section-count">{count}</span>}
         </button>
         {actions && <div className="sidebar-section-actions">{actions}</div>}
       </div>

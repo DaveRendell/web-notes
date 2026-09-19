@@ -12,6 +12,7 @@ type UseVaultFavoritesOptions = {
   ensureAccessToken: EnsureAccessToken;
   invalidateAccessToken: () => void;
   isOnline: boolean;
+  notePathsById: Map<string, string>;
   vaultId: string | null;
 };
 
@@ -25,6 +26,7 @@ export function useVaultFavorites({
   ensureAccessToken,
   invalidateAccessToken,
   isOnline,
+  notePathsById,
   vaultId,
 }: UseVaultFavoritesOptions) {
   const initialEntry = readFavoriteCache(vaultId);
@@ -34,12 +36,16 @@ export function useVaultFavorites({
   const ensureAccessTokenRef = useRef(ensureAccessToken);
   const invalidateAccessTokenRef = useRef(invalidateAccessToken);
   const favoriteNoteIdsRef = useRef(initialEntry.favourites);
+  const notePathsByIdRef = useRef(notePathsById);
+  const pathHintsRef = useRef(new Map<string, Record<string, string>>());
+  const loadedVaultsRef = useRef(new Set<string>());
   const fileIdsRef = useRef(new Map<string, string | null>());
   const dirtyVaultsRef = useRef(new Set(initialEntry.dirty && vaultId ? [vaultId] : []));
   const revisionsRef = useRef(new Map<string, number>());
   const writeQueuesRef = useRef(new Map<string, Promise<void>>());
   ensureAccessTokenRef.current = ensureAccessToken;
   invalidateAccessTokenRef.current = invalidateAccessToken;
+  notePathsByIdRef.current = notePathsById;
 
   const withAccessToken = useCallback(async <T,>(operation: (accessToken: string) => Promise<T>) => {
     let token = await ensureAccessTokenRef.current();
@@ -66,6 +72,8 @@ export function useVaultFavorites({
     try {
       const loaded = await withAccessToken((token) => loadDriveVaultSettings(token, targetVaultId));
       fileIdsRef.current.set(targetVaultId, loaded.file?.id ?? null);
+      pathHintsRef.current.set(targetVaultId, loaded.settings.favouritePaths ?? {});
+      loadedVaultsRef.current.add(targetVaultId);
 
       if (
         activeVaultIdRef.current === targetVaultId
@@ -85,6 +93,13 @@ export function useVaultFavorites({
 
   const persistFavorites = useCallback((targetVaultId: string, favourites: string[]) => {
     const nextFavourites = [...new Set(favourites)];
+    const paths = { ...pathHintsRef.current.get(targetVaultId) };
+    for (const id of nextFavourites) {
+      const path = notePathsByIdRef.current.get(id);
+      if (path) paths[id] = path;
+    }
+    pathHintsRef.current.set(targetVaultId, paths);
+    const settings = createVaultSettings(nextFavourites, paths);
     dirtyVaultsRef.current.add(targetVaultId);
     writeFavoriteCache(targetVaultId, nextFavourites, true);
 
@@ -111,7 +126,7 @@ export function useVaultFavorites({
             token,
             targetVaultId,
             fileId,
-            createVaultSettings(nextFavourites),
+            settings,
           );
         });
         fileIdsRef.current.set(targetVaultId, savedFile.id);
@@ -139,6 +154,16 @@ export function useVaultFavorites({
     writeQueuesRef.current.set(targetVaultId, write);
     void write.catch(() => undefined);
   }, [canSync, isOnline, withAccessToken]);
+
+  // Upgrade ID-only settings once the tree is available, and keep paths current
+  // after a favourite is renamed or moved. Android resolves these paths locally.
+  useEffect(() => {
+    if (!vaultId || !loadedVaultsRef.current.has(vaultId) || favoriteNoteIds.length === 0) return;
+    const known = pathHintsRef.current.get(vaultId) ?? {};
+    if (favoriteNoteIds.some((id) => notePathsById.get(id) && notePathsById.get(id) !== known[id])) {
+      persistFavorites(vaultId, favoriteNoteIds);
+    }
+  }, [favoriteNoteIds, notePathsById, persistFavorites, vaultId]);
 
   const replaceFavorites = useCallback((nextIds: string[]) => {
     const targetVaultId = activeVaultIdRef.current;

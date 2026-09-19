@@ -69,6 +69,7 @@ import {
   requestCalendarDialog,
   requestImageDialog,
   type SlashCommand,
+  type SlashCommandId,
 } from '../lib/slashCommands';
 import { blockBackgroundState } from './richBlockBackground';
 import { $setState } from 'lexical';
@@ -105,10 +106,12 @@ declare module 'mdast' {
 type RichEditorEnhancementsParams = {
   notes: VaultNode[];
   recentNotes: VaultNode[];
+  slashCommandIds?: ReadonlySet<SlashCommandId>;
 };
 
 const notes$ = Cell<VaultNode[]>([]);
 const recentNotes$ = Cell<VaultNode[]>([]);
+const slashCommandIds$ = Cell<ReadonlySet<SlashCommandId> | null>(null);
 const WIKILINK_URL_PREFIX = 'web-notes-wikilink:';
 const MAX_RESULTS = 8;
 
@@ -117,6 +120,7 @@ export const richEditorEnhancementsPlugin = realmPlugin<RichEditorEnhancementsPa
     realm.pubIn({
       [notes$]: params?.notes ?? [],
       [recentNotes$]: params?.recentNotes ?? [],
+      [slashCommandIds$]: params?.slashCommandIds ?? null,
       [addMdastExtension$]: wikiLinkFromMarkdownExtension,
       [addLexicalNode$]: [RichEmojiNode, RichImageNode],
       [addImportVisitor$]: [MdastWikiLinkVisitor, MdastEmojiVisitor, MdastImageVisitor, MdastNumberedListVisitor],
@@ -136,6 +140,7 @@ export const richEditorEnhancementsPlugin = realmPlugin<RichEditorEnhancementsPa
     realm.pubIn({
       [notes$]: params?.notes ?? [],
       [recentNotes$]: params?.recentNotes ?? [],
+      [slashCommandIds$]: params?.slashCommandIds ?? null,
     });
   },
 });
@@ -380,16 +385,19 @@ function RichEditorCompletions() {
 
 function SlashCommandTypeahead() {
   const [editor] = useLexicalComposerContext();
+  const allowedIds = useCellValue(slashCommandIds$);
   const [query, setQuery] = useState<string | null>(null);
   const [recentRevision, setRecentRevision] = useState(0);
   const options = useMemo(
     () => {
       void recentRevision;
-      return query === null ? [] : getSlashCommandSuggestions(query).map((command) => (
-        new CompletionOption(command.id, command, command.label, command.detail)
-      ));
+      return query === null ? [] : getSlashCommandSuggestions(query)
+        .filter(({ id }) => !allowedIds || allowedIds.has(id))
+        .map((command) => (
+          new CompletionOption(command.id, command, command.label, command.detail)
+        ));
     },
-    [query, recentRevision],
+    [allowedIds, query, recentRevision],
   );
 
   return (

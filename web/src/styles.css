@@ -537,7 +537,6 @@ button {
 .sidebar-section {
   min-height: 0;
   flex: 0 0 auto;
-  border-bottom: 1px solid #edf0f4;
 }
 
 .files-section {
@@ -620,17 +619,6 @@ button {
   display: inline-flex;
   flex: 0 0 auto;
   color: #49627f;
-}
-
-.sidebar-section-count {
-  min-width: 20px;
-  padding: 1px 5px;
-  border-radius: 999px;
-  background: #edf1f5;
-  color: #697180;
-  font-size: 0.68rem;
-  letter-spacing: 0;
-  text-align: center;
 }
 
 .sidebar-section-content {
@@ -2582,11 +2570,6 @@ li.markdown-block > .markdown-block-controls {
 
 [data-theme="dark"] .tree-drag-handle {
   color: #9ba8b7;
-}
-
-[data-theme="dark"] .sidebar-section-count {
-  background: #2b3643;
-  color: #aab4c0;
 }
 
 [data-theme="dark"] .favorite-drag-handle,

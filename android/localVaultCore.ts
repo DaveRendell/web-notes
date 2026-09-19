@@ -1,3 +1,5 @@
+import { applyWeeklyNoteTemplate, getWeeklyNoteDetails } from '../web/src/lib/weeklyNote';
+
 export type LocalNote = { kind: 'note'; uri: string; path: string; parentPath: string; name: string; size: number };
 export type LocalFolder = { kind: 'folder'; uri: string; path: string; parentPath: string; name: string };
 export type LocalVaultItem = LocalNote | LocalFolder;
@@ -6,6 +8,14 @@ export type VaultEntry = { uri: string; isDirectory: boolean; name?: string };
 
 export type VaultFiles = {
   readDirectory(uri: string): Promise<VaultEntry[]>;
+  readText(uri: string): Promise<string>;
+  writeText(uri: string, text: string): Promise<void>;
+};
+
+export type WeeklyVaultOperations = {
+  listFolder(parentUri: string, parentPath: string): Promise<LocalVaultItem[]>;
+  createFolder(parentUri: string, parentPath: string, name: string): Promise<LocalFolder>;
+  createNote(parentUri: string, parentPath: string, name: string): Promise<LocalNote>;
   readText(uri: string): Promise<string>;
   writeText(uri: string, text: string): Promise<void>;
 };
@@ -104,4 +114,33 @@ export async function saveNoteCore(uri: string, expectedOriginal: string, markdo
   if (await files.readText(uri) !== markdown) {
     throw new Error('The storage provider did not retain the saved note exactly. Check the synced file before editing further.');
   }
+}
+
+export async function openLocalWeeklyNoteCore(rootUri: string, operations: WeeklyVaultOperations, date = new Date()): Promise<LocalNote> {
+  const details = getWeeklyNoteDetails(date);
+  const findChild = async (parentUri: string, parentPath: string, name: string) => {
+    const children = await operations.listFolder(parentUri, parentPath);
+    return children.find((child) => child.name.localeCompare(name, undefined, { sensitivity: 'base' }) === 0) ?? null;
+  };
+  const findOrCreateFolder = async (parentUri: string, parentPath: string, name: string) => {
+    const existing = await findChild(parentUri, parentPath, name);
+    if (existing?.kind === 'folder') return existing;
+    if (existing) throw new Error(`${existing.path} exists but is not a folder.`);
+    return operations.createFolder(parentUri, parentPath, name);
+  };
+
+  const weeks = await findOrCreateFolder(rootUri, '', details.weeksFolderPath);
+  const year = await findOrCreateFolder(weeks.uri, weeks.path, String(details.year));
+  const existing = await findChild(year.uri, year.path, details.filename);
+  if (existing?.kind === 'note') return existing;
+  if (existing) throw new Error(`${details.path} exists but is not a note.`);
+
+  const templateFolder = await findChild(rootUri, '', 'Templates');
+  const template = templateFolder?.kind === 'folder'
+    ? await findChild(templateFolder.uri, templateFolder.path, 'Week.md')
+    : null;
+  const templateText = template?.kind === 'note' ? await operations.readText(template.uri) : '';
+  const note = await operations.createNote(year.uri, year.path, details.filename);
+  await operations.writeText(note.uri, applyWeeklyNoteTemplate(templateText, details));
+  return note;
 }

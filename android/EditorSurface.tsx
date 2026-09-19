@@ -3,6 +3,7 @@
 import '@mdxeditor/editor/style.css';
 import { MDXEditor, headingsPlugin, linkDialogPlugin, linkPlugin, listsPlugin, quotePlugin, tablePlugin, codeBlockPlugin, codeMirrorPlugin, thematicBreakPlugin, markdownShortcutPlugin, type MDXEditorMethods } from '@mdxeditor/editor';
 import CodeMirror from '@uiw/react-codemirror';
+import { autocompletion } from '@codemirror/autocomplete';
 import { markdown as markdownLanguage } from '@codemirror/lang-markdown';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { richEditorEnhancementsPlugin } from '../web/src/components/richEditorEnhancements';
@@ -11,6 +12,9 @@ import { richBlockTouchDragPlugin } from '../web/src/components/richBlockTouchDr
 import { richCalendarPlugin } from '../web/src/components/richCalendar';
 import { compareMarkdown, type EditorEvent, type EditorFocusEvent, type WriteAttempt } from './diagnostics';
 import { dismissEditorCaret } from './editorFocus';
+import { createSlashCommandCompletionSource } from '../web/src/lib/slashCommands';
+import { MOBILE_BLOCK_BACKGROUND_CSS, MOBILE_SLASH_COMMAND_IDS } from './mobileSlashCommands';
+import type { MobileEditorMode } from './autosave';
 
 type Props = {
   dom?: import('expo/dom').DOMProps;
@@ -22,7 +26,7 @@ type Props = {
   onEvent: (event: EditorEvent) => Promise<void>;
   onEditorFocusChange: (event: EditorFocusEvent) => Promise<void>;
   onWriteAttempt: (attempt: WriteAttempt) => Promise<void>;
-  onDraftChange?: (draft: { markdown: string; session: number }) => Promise<void>;
+  onDraftChange?: (draft: { markdown: string; mode: MobileEditorMode; session: number }) => Promise<void>;
   snapshotRequest: number;
 };
 
@@ -46,9 +50,12 @@ export default function EditorSurface({ fixtureName, markdown, onEvent, onEditor
     headingsPlugin(), quotePlugin(), listsPlugin(), linkPlugin(), linkDialogPlugin(),
     tablePlugin(), thematicBreakPlugin(), codeBlockPlugin({ defaultCodeBlockLanguage: '' }),
     codeMirrorPlugin({ codeBlockLanguages: { '': 'Plain text', ts: 'TypeScript' }, autoLoadLanguageSupport: false }),
-    richEditorEnhancementsPlugin({ notes: [], recentNotes: [] }),
+    richEditorEnhancementsPlugin({ notes: [], recentNotes: [], slashCommandIds: MOBILE_SLASH_COMMAND_IDS }),
     richBlockBackgroundPlugin(), richCalendarPlugin(), richBlockTouchDragPlugin({ disabled: keyboardVisible || richEditing }), markdownShortcutPlugin(),
   ], [keyboardVisible, richEditing]);
+  const sourceSlashCompletion = useMemo(() => autocompletion({
+    override: [createSlashCommandCompletionSource(() => undefined, () => undefined, MOBILE_SLASH_COMMAND_IDS)],
+  }), []);
 
   useEffect(() => {
     if (loadedSession.current === session) return;
@@ -196,7 +203,7 @@ export default function EditorSurface({ fixtureName, markdown, onEvent, onEditor
             revision.current += 1;
             emit('user-change', value);
             attemptWrite(value);
-            void onDraftChange?.({ markdown: value, session });
+            void onDraftChange?.({ markdown: value, mode: 'rich', session });
           }}
         />
         </div>
@@ -204,30 +211,54 @@ export default function EditorSurface({ fixtureName, markdown, onEvent, onEditor
         <CodeMirror
           className="prototype-source-editor"
           value={source}
-          extensions={[markdownLanguage()]}
+          extensions={[markdownLanguage(), sourceSlashCompletion]}
           onChange={(value) => {
             setSource(value);
             revision.current += 1;
             emit('user-change', value);
             attemptWrite(value);
-            void onDraftChange?.({ markdown: value, session });
+            void onDraftChange?.({ markdown: value, mode: 'source', session });
           }}
         />
       )}
       <style>{`
         html, body, #root { margin: 0; height: 100%; }
-        body { color: #19291d; font-family: system-ui, sans-serif; }
+        body { color: #202124; background: #ffffff; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
         .prototype-shell { height: 100dvh; overflow: auto; }
         .prototype-switcher { position: sticky; top: 0; display: flex; gap: 8px; padding: 8px;
-          background: #f6f7f5; z-index: 2; border-bottom: 1px solid #d8ddd6; }
-        .prototype-switcher button { border: 0; border-radius: 6px; padding: 8px 12px; background: #e8ece6; }
-        .prototype-switcher button[aria-pressed="true"] { background: #c9ddcb; }
+          background: #ffffff; z-index: 2; border-bottom: 1px solid #dfe3ea; }
+        .prototype-switcher button { border: 0; border-radius: 6px; padding: 8px 12px;
+          background: transparent; color: #293241; font: inherit; }
+        .prototype-switcher button[aria-pressed="true"] { background: #dfeaf2; color: #183f59; font-weight: 700; }
         .mdxeditor { padding: 12px; }
         .prototype-rich-dormant .rich-markdown-content,
         .prototype-rich-dormant .rich-markdown-content * {
           user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
         }
         .prototype-source-editor .cm-editor { min-height: calc(100dvh - 56px); }
+        .rich-completion-anchor { z-index: 20; }
+        .rich-completion-menu { display: grid; gap: 2px; min-width: min(270px, calc(100vw - 24px));
+          max-width: calc(100vw - 24px); max-height: min(300px, 45dvh); overflow-y: auto;
+          padding: 4px; border: 1px solid #dfe3ea; border-radius: 8px;
+          background: #ffffff; box-shadow: 0 10px 28px #1e263029; font-family: system-ui, sans-serif; }
+        .rich-completion-menu button { display: flex; flex-direction: column; justify-content: center;
+          min-height: 44px; gap: 2px; padding: 6px 10px; border: 0; border-radius: 6px;
+          background: transparent; color: #202124; font: inherit; text-align: left; }
+        .rich-completion-menu button.active, .rich-completion-menu button:focus-visible {
+          background: #eef3f7; color: #183f59; outline: none; }
+        .rich-completion-menu button span, .rich-completion-menu button small {
+          overflow: hidden; max-width: 100%; text-overflow: ellipsis; white-space: nowrap; }
+        .rich-completion-menu button small { color: #697180; font-size: 12px; }
+        .prototype-source-editor .cm-tooltip-autocomplete { z-index: 20; overflow: hidden;
+          max-width: calc(100vw - 24px); border: 1px solid #dfe3ea; border-radius: 8px;
+          background: #ffffff; box-shadow: 0 10px 28px #1e263029; }
+        .prototype-source-editor .cm-tooltip-autocomplete > ul { max-height: min(300px, 45dvh);
+          font-family: system-ui, sans-serif; }
+        .prototype-source-editor .cm-tooltip-autocomplete > ul > li { display: flex;
+          align-items: center; min-height: 44px; padding: 4px 10px; color: #202124; }
+        .prototype-source-editor .cm-tooltip-autocomplete > ul > li[aria-selected="true"] {
+          background: #eef3f7; color: #183f59; }
+        .prototype-source-editor .cm-completionDetail { color: #697180; }
         .twemoji { display: inline-block; width: 1em; height: 1em; margin: 0 0.04em;
           vertical-align: -0.1em; object-fit: contain; }
         .rich-touch-drag-pending, .rich-touch-drag-pending *,
@@ -250,8 +281,7 @@ export default function EditorSurface({ fixtureName, markdown, onEvent, onEditor
           padding: 12px; border: 1px dashed #9aa3b2; border-radius: 8px; background: #f7f8fa; }
         .rich-image-placeholder > span { display: flex; flex-direction: column; }
         .prototype-calendar-widget { padding: 12px; border: 1px solid #9aa3b2; border-radius: 8px; }
-        [data-block-background="green"] { --block-bg: #dfedde; }
-        [data-block-background="blue"] { --block-bg: #dcebf6; }
+        ${MOBILE_BLOCK_BACKGROUND_CSS}
         .rich-markdown-content [data-block-background] { border-radius: 4px; background: var(--block-bg);
           box-shadow: 0 0 0 4px var(--block-bg); }
       `}</style>

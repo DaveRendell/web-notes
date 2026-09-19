@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ExternalNoteChangeError, displayNameFromSafUri, listVaultCore, listVaultFolderCore, parseVaultListCache, replaceVaultFolderChildren, saveNoteCore, splitFrontmatter, type VaultEntry, type VaultFiles } from '../localVaultCore';
+import { ExternalNoteChangeError, displayNameFromSafUri, listVaultCore, listVaultFolderCore, openLocalWeeklyNoteCore, parseVaultListCache, replaceVaultFolderChildren, saveNoteCore, splitFrontmatter, type LocalFolder, type LocalNote, type LocalVaultItem, type VaultEntry, type VaultFiles } from '../localVaultCore';
 import { buildBrowserRows, expandPath } from '../localVaultTree';
 
 const directories = new Map<string, VaultEntry[]>();
@@ -105,5 +105,35 @@ describe('Android local vault adapter', () => {
     contents.set('note.md', 'old text');
     await saveNoteCore('note.md', 'old text', 'new text', files);
     expect(contents.get('note.md')).toBe('new text');
+  });
+
+  it('creates a weekly note from the local template with date variables', async () => {
+    const children = new Map<string, LocalVaultItem[]>([
+      ['root', [{ kind: 'folder', uri: 'templates', path: 'Templates', parentPath: '', name: 'Templates' }]],
+      ['templates', [{ kind: 'note', uri: 'template', path: 'Templates/Week.md', parentPath: 'Templates', name: 'Week.md', size: 0 }]],
+    ]);
+    const createFolder = vi.fn(async (parentUri: string, parentPath: string, name: string): Promise<LocalFolder> => {
+      const folder = { kind: 'folder' as const, uri: `${parentUri}/${name}`, path: parentPath ? `${parentPath}/${name}` : name, parentPath, name };
+      children.set(parentUri, [...(children.get(parentUri) ?? []), folder]);
+      children.set(folder.uri, []);
+      return folder;
+    });
+    const createNote = vi.fn(async (parentUri: string, parentPath: string, name: string): Promise<LocalNote> => {
+      const note = { kind: 'note' as const, uri: `${parentUri}/${name}`, path: `${parentPath}/${name}`, parentPath, name, size: 0 };
+      children.set(parentUri, [...(children.get(parentUri) ?? []), note]);
+      return note;
+    });
+    const writeText = vi.fn();
+
+    const note = await openLocalWeeklyNoteCore('root', {
+      listFolder: async (uri) => children.get(uri) ?? [],
+      createFolder,
+      createNote,
+      readText: async () => '# Week $week $year\n$monday to $sunday',
+      writeText,
+    }, new Date('2026-09-17T12:00:00'));
+
+    expect(note.path).toBe('Weeks/2026/Week 38 2026.md');
+    expect(writeText).toHaveBeenCalledWith(note.uri, '# Week 38 2026\n2026-09-14 to 2026-09-20');
   });
 });

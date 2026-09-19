@@ -103,6 +103,33 @@ describe('rich editor enhancements', () => {
     await waitFor(() => expect(editorRef.current?.getMarkdown()).toMatch(/^# Existing(?: |&#x20;)$/));
   });
 
+  it('limits the rich slash menu to commands supported by the host', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+    Object.defineProperty(Range.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => new DOMRect(20, 20, 1, 18),
+    });
+    render(
+      <MDXEditor
+        markdown="/"
+        plugins={[
+          headingsPlugin(),
+          richEditorEnhancementsPlugin({ notes: [], recentNotes: [], slashCommandIds: new Set(['heading', 'green']) }),
+          selectEditorEndPlugin(),
+        ]}
+      />,
+    );
+
+    expect(await screen.findByRole('option', { name: /Heading 1/i })).toBeTruthy();
+    expect(screen.getByRole('option', { name: /Green background/i })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: /Image/i })).toBeNull();
+    expect(screen.queryByRole('option', { name: /Calendar/i })).toBeNull();
+  });
+
   it('round-trips wikilink targets and aliases without escaping them', async () => {
     const editorRef = createRef<MDXEditorMethods>();
     render(
