@@ -10,14 +10,17 @@ export function expandPath(previous: ReadonlySet<string>, path: string): Set<str
 }
 
 const compareNames = (left: LocalVaultItem, right: LocalVaultItem) => {
-  if (left.kind !== right.kind) return left.kind === 'folder' ? -1 : 1;
+  if (left.kind !== right.kind) {
+    const rank = { folder: 0, note: 1, image: 2 } as const;
+    return rank[left.kind] - rank[right.kind];
+  }
   return left.name.localeCompare(right.name, undefined, { sensitivity: 'base', numeric: true });
 };
 
 export function buildBrowserRows(items: LocalVaultItem[], expanded: ReadonlySet<string>, query: string): BrowserRow[] {
   const search = query.trim().toLocaleLowerCase();
   if (search) {
-    return items.filter((item) => item.kind === 'note' && item.path.toLocaleLowerCase().includes(search))
+    return items.filter((item) => (item.kind === 'note' || item.kind === 'image') && item.path.toLocaleLowerCase().includes(search))
       .sort((left, right) => left.path.localeCompare(right.path, undefined, { sensitivity: 'base', numeric: true }))
       .map((item) => ({ item, depth: 0, searchResult: true }));
   }

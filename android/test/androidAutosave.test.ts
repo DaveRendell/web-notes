@@ -1,7 +1,29 @@
-import { describe, expect, it } from 'vitest';
-import { MOBILE_AUTOSAVE_DELAY_MS, shouldAutosave } from '../autosave';
+import { describe, expect, it, vi } from 'vitest';
+import { MOBILE_AUTOSAVE_DELAY_MS, flushLatestDraft, shouldAutosave } from '../autosave';
 
 describe('Android rich-text autosave', () => {
+  it('flushes an undo after the pending save changes the baseline', async () => {
+    let baseline = 'original';
+    const draft = 'original'; // User undid the edit while its save was pending.
+    let finishWrite!: () => void;
+    const pending = new Promise<boolean>((resolve) => {
+      finishWrite = () => { baseline = 'edited'; resolve(true); };
+    });
+    const save = vi.fn(async () => { baseline = draft; return true; });
+    const result = flushLatestDraft({ getPendingSave: () => pending, isClean: () => draft === baseline, save });
+    expect(save).not.toHaveBeenCalled();
+    finishWrite();
+    await expect(result).resolves.toBe('saved');
+    expect(save).toHaveBeenCalledOnce();
+    expect(baseline).toBe('original');
+  });
+
+  it('leaves the draft open when a pending save fails', async () => {
+    const save = vi.fn();
+    await expect(flushLatestDraft({ getPendingSave: () => Promise.resolve(false), isClean: () => true, save })).resolves.toBe('failed');
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it('uses a short local-filesystem debounce', () => {
     expect(MOBILE_AUTOSAVE_DELAY_MS).toBe(350);
   });

@@ -29,7 +29,7 @@ describe('Android local vault adapter', () => {
     expect(items.map((item) => [item.path, item.kind])).toEqual([['Projects', 'folder'], ['Today.md', 'note']]);
   });
 
-  it('lists nested Markdown while excluding hidden folders and files', async () => {
+  it('lists nested Markdown and images while excluding hidden folders and files', async () => {
     directories.set('root', [
       { uri: 'root/folder', isDirectory: true },
       { uri: 'root/.hidden', isDirectory: true },
@@ -43,12 +43,13 @@ describe('Android local vault adapter', () => {
     contents.set('root/folder/nested.md', 'nested');
     const progress = vi.fn();
     const items = await listVaultCore('root', files, progress);
-    expect(items.map((item) => item.path)).toEqual(['folder', 'folder/nested.md', 'top.md']);
+    expect(items.map((item) => item.path)).toEqual(['folder', 'folder/nested.md', 'picture.png', 'top.md']);
+    expect(items.find((item) => item.path === 'picture.png')).toMatchObject({ kind: 'image', mimeType: 'image/png' });
     expect(progress).toHaveBeenCalledTimes(2);
     expect(progress).toHaveBeenLastCalledWith(expect.arrayContaining([expect.objectContaining({ path: 'folder/nested.md' })]), 2);
-    expect(buildBrowserRows(items, new Set(), '').map((row) => row.item.path)).toEqual(['folder', 'top.md']);
+    expect(buildBrowserRows(items, new Set(), '').map((row) => row.item.path)).toEqual(['folder', 'top.md', 'picture.png']);
     expect(buildBrowserRows(items, new Set(['folder']), '').map((row) => [row.item.path, row.depth])).toEqual([
-      ['folder', 0], ['folder/nested.md', 1], ['top.md', 0],
+      ['folder', 0], ['folder/nested.md', 1], ['top.md', 0], ['picture.png', 0],
     ]);
     expect(buildBrowserRows(items, new Set(), 'nested').map((row) => row.item.path)).toEqual(['folder/nested.md']);
   });
@@ -105,6 +106,28 @@ describe('Android local vault adapter', () => {
     contents.set('note.md', 'old text');
     await saveNoteCore('note.md', 'old text', 'new text', files);
     expect(contents.get('note.md')).toBe('new text');
+  });
+
+  it('allows retrying a committed write whose verification read failed', async () => {
+    contents.set('note.md', 'original');
+    const readText = vi.fn(files.readText)
+      .mockResolvedValueOnce('original')
+      .mockRejectedValueOnce(new Error('Temporary read failure'));
+    await expect(saveNoteCore('note.md', 'original', 'saved draft', { ...files, readText })).rejects.toThrow('Temporary read failure');
+    await saveNoteCore('note.md', 'original', 'saved draft', files);
+    expect(contents.get('note.md')).toBe('saved draft');
+    expect(writeText).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not accept leftover bytes or silently advance the saved baseline', async () => {
+    contents.set('note.md', 'original long note');
+    const nonTruncatingFiles = {
+      ...files,
+      writeText: async (uri: string, text: string) => {
+        contents.set(uri, text + contents.get(uri)!.slice(text.length));
+      },
+    };
+    await expect(saveNoteCore('note.md', 'original long note', 'short', nonTruncatingFiles)).rejects.toThrow('did not retain');
   });
 
   it('creates a weekly note from the local template with date variables', async () => {

@@ -7,6 +7,7 @@ const config = getDefaultConfig(__dirname);
 config.watchFolders = [path.resolve(__dirname, '../web/src')];
 
 const imageContext = path.resolve(__dirname, '../web/src/contexts/ImageContext.tsx');
+const calendarContext = path.resolve(__dirname, '../web/src/contexts/CalendarContext.tsx');
 const noteImage = path.resolve(__dirname, '../web/src/components/NoteImage.tsx');
 const richCalendarNode = path.resolve(__dirname, '../web/src/components/RichCalendarNode.tsx');
 const websiteSource = `${path.resolve(__dirname, '../web/src')}${path.sep}`;
@@ -14,11 +15,20 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (context.originModulePath === noteImage && moduleName === '../contexts/ImageContext') {
     return { type: 'sourceFile', filePath: path.resolve(__dirname, 'shims/ImageContext.ts') };
   }
+  if (context.originModulePath.startsWith(websiteSource) && moduleName === '../contexts/ImageContext') {
+    return { type: 'sourceFile', filePath: path.resolve(__dirname, 'shims/ImageContext.ts') };
+  }
+  if (context.originModulePath.startsWith(websiteSource) && moduleName === '../contexts/CalendarContext') {
+    return { type: 'sourceFile', filePath: path.resolve(__dirname, 'shims/CalendarContext.ts') };
+  }
   if (context.originModulePath === richCalendarNode && moduleName === './CalendarWidget') {
     return { type: 'sourceFile', filePath: path.resolve(__dirname, 'shims/CalendarWidget.tsx') };
   }
   if (context.originModulePath === imageContext) {
     throw new Error('The web image service must not enter the Android editor bundle.');
+  }
+  if (context.originModulePath === calendarContext) {
+    throw new Error('The web Calendar service must not enter the Android editor bundle.');
   }
   if (context.originModulePath.startsWith(websiteSource) && !moduleName.startsWith('.') && !path.isAbsolute(moduleName)) {
     // Keep a single React/Lexical/MDXEditor instance across the imported web

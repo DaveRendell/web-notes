@@ -1,18 +1,24 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { Directory } from 'expo-file-system';
-import { displayNameFromSafUri, listVaultCore, listVaultFolderCore, openLocalWeeklyNoteCore, parseVaultListCache, saveNoteCore, type LocalFolder, type LocalNote, type LocalVaultItem, type VaultFiles, type VaultListCache } from './localVaultCore';
+import { displayNameFromSafUri, listVaultCore, listVaultFolderCore, openLocalWeeklyNoteCore, parseVaultListCache, saveNoteCore, type LocalFolder, type LocalImage, type LocalNote, type LocalVaultItem, type VaultFiles, type VaultListCache } from './localVaultCore';
 import fastSaf from './modules/fast-saf';
 import { parseFavouritePaths, parseNoteIconCache } from './vaultFeatures';
 
-export { displayNameFromSafUri, splitFrontmatter, ExternalNoteChangeError, type LocalNote, type LocalFolder, type LocalVaultItem } from './localVaultCore';
+export { displayNameFromSafUri, splitFrontmatter, ExternalNoteChangeError, type LocalNote, type LocalImage, type LocalFolder, type LocalVaultItem } from './localVaultCore';
 
 const SAF = FileSystem.StorageAccessFramework;
 const SAVED_VAULT_URI = `${FileSystem.documentDirectory}selected-vault-uri.txt`;
 const VAULT_CACHE_URI = `${FileSystem.documentDirectory}vault-list-cache.json`;
 const NOTE_ICON_CACHE_URI = `${FileSystem.documentDirectory}note-icon-cache.json`;
+const THEME_PREFERENCE_URI = `${FileSystem.documentDirectory}theme-preference.txt`;
+
+export type ThemePreference = 'system' | 'light' | 'dark';
 const files: Omit<VaultFiles, 'readDirectory'> = {
   readText: (uri) => SAF.readAsStringAsync(uri),
-  writeText: (uri, text) => SAF.writeAsStringAsync(uri, text),
+  writeText: async (uri, text) => {
+    if (!fastSaf?.writeText) throw new Error('This installation needs an updated Android build to save notes. Your draft is still here.');
+    await fastSaf.writeText(uri, text);
+  },
 };
 
 function vaultFiles(rootUri: string): VaultFiles {
@@ -41,6 +47,25 @@ export async function restoreVault(): Promise<string | null> {
   const uri = (await FileSystem.readAsStringAsync(SAVED_VAULT_URI)).trim();
   if (!uri) return null;
   return uri;
+}
+
+export async function readThemePreference(): Promise<ThemePreference> {
+  try {
+    if (!(await FileSystem.getInfoAsync(THEME_PREFERENCE_URI)).exists) return 'system';
+    const preference = (await FileSystem.readAsStringAsync(THEME_PREFERENCE_URI)).trim();
+    return preference === 'light' || preference === 'dark' ? preference : 'system';
+  } catch (cause) {
+    console.warn('Could not read the appearance preference:', cause);
+    return 'system';
+  }
+}
+
+export async function writeThemePreference(preference: ThemePreference): Promise<void> {
+  try {
+    await FileSystem.writeAsStringAsync(THEME_PREFERENCE_URI, preference);
+  } catch (cause) {
+    console.warn('Could not save the appearance preference:', cause);
+  }
 }
 
 export async function listVault(rootUri: string, onProgress?: (items: LocalVaultItem[], foldersScanned: number) => void): Promise<LocalVaultItem[]> {
@@ -98,6 +123,23 @@ export async function readNote(uri: string): Promise<string> {
   return files.readText(uri);
 }
 
+export async function readImageData(uri: string, mimeType: string): Promise<string> {
+  const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+  return `data:${mimeType};base64,${base64}`;
+}
+
+export async function createImage(parentUri: string, parentPath: string, requestedName: string, mimeType: string, base64: string): Promise<LocalImage> {
+  if (!fastSaf?.writeBase64) throw new Error('This installation needs an updated Android build to add images.');
+  const name = validateName(requestedName || `image-${Date.now()}.png`, false);
+  if (!mimeType.startsWith('image/')) throw new Error('Choose an image file.');
+  if (base64.length > 28_000_000) throw new Error('Images must be no larger than 20 MB.');
+  await assertNameAvailable(parentUri, name);
+  const uri = await SAF.createFileAsync(parentUri, name, mimeType);
+  await fastSaf.writeBase64(uri, base64);
+  const createdName = displayNameFromSafUri(uri);
+  return { kind: 'image', uri, path: parentPath ? `${parentPath}/${createdName}` : createdName, parentPath, name: createdName, size: Math.floor(base64.length * 0.75), mimeType };
+}
+
 export async function saveNote(uri: string, expectedOriginal: string, markdown: string): Promise<void> {
   await saveNoteCore(uri, expectedOriginal, markdown, files);
 }
@@ -122,7 +164,7 @@ export async function createNote(parentUri: string, parentPath: string, requeste
   const name = `${base}.md`;
   await assertNameAvailable(parentUri, name);
   const uri = await SAF.createFileAsync(parentUri, base, 'text/markdown');
-  await SAF.writeAsStringAsync(uri, '');
+  await files.writeText(uri, '');
   const createdName = displayNameFromSafUri(uri);
   return { kind: 'note', uri, path: parentPath ? `${parentPath}/${createdName}` : createdName, parentPath, name: createdName, size: 0 };
 }

@@ -1,16 +1,44 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, BackHandler, FlatList, Keyboard, Modal, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
-import { CalendarDays, ChevronDown, ChevronRight, FilePlus2, FileText, Folder, FolderOpen, FolderPlus, MoreHorizontal, RefreshCw, Search, Settings, X } from 'lucide-react-native';
+import { ActivityIndicator, Alert, Appearance, AppState, BackHandler, FlatList, Image as NativeImage, Keyboard, Linking, Modal, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, useColorScheme, View } from 'react-native';
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, EllipsisVertical, FileCode2, FilePlus2, FileText, Folder, FolderOpen, FolderPlus, Image as ImageIcon, MoreHorizontal, RefreshCw, Save, Search, Settings, X } from 'lucide-react-native';
+import { SvgUri } from 'react-native-svg';
 import EditorSurface from './EditorSurface';
-import { chooseVault, createFolder, createNote, listVault, listVaultFolder, openLocalWeeklyNote, readNote, readNoteIconCache, readVaultFavourites, readVaultListCache, restoreVault, saveNote, splitFrontmatter, writeNoteIconCache, writeVaultListCache, type LocalFolder, type LocalNote, type LocalVaultItem } from './localVault';
+import { chooseVault, createFolder, createImage, createNote, listVault, listVaultFolder, openLocalWeeklyNote, readImageData, readNote, readNoteIconCache, readThemePreference, readVaultFavourites, readVaultListCache, restoreVault, saveNote, splitFrontmatter, writeNoteIconCache, writeThemePreference, writeVaultListCache, type LocalFolder, type LocalImage, type LocalNote, type LocalVaultItem, type ThemePreference } from './localVault';
 import { buildBrowserRows, expandPath } from './localVaultTree';
 import { replaceVaultFolderChildren } from './localVaultCore';
 import { noteIconFromMarkdown, resolveFavouriteNotes } from './vaultFeatures';
-import { MOBILE_AUTOSAVE_DELAY_MS, shouldAutosave, type MobileEditorMode } from './autosave';
+import { MOBILE_AUTOSAVE_DELAY_MS, flushLatestDraft, shouldAutosave, type MobileEditorMode } from './autosave';
+import { getTwemojiUrl } from '../web/src/lib/twemoji';
+import { getLocalNoteSequenceNavigation } from './noteSequence';
+import { resolveLocalVaultImage } from './vaultImages';
+import { connectGoogleCalendar, loadGoogleCalendarEvents, loadGoogleCalendars, restoreCalendarConnection } from './calendarService';
 
 type OpenNote = { entry: LocalNote; frontmatter: string; body: string };
 
+const lightPalette = {
+  background: '#ffffff', surface: '#ffffff', surfaceMuted: '#f5f7f9', control: '#f0f3f6',
+  controlHover: '#eef3f7', selected: '#dfeaf2', border: '#dfe3ea', subtleBorder: '#edf0f4',
+  text: '#202124', textStrong: '#293241', rowText: '#303640', muted: '#697180', section: '#5f6673',
+  accent: '#49627f', accentStrong: '#24577a', accentText: '#183f59', disabled: '#9aa3af',
+  error: '#a14444', errorBackground: '#fff1f0', errorBorder: '#f2ceca', placeholder: '#8a929e',
+  shadow: '#0f1721', statusBar: '#ffffff',
+} as const;
+
+type Palette = { [Key in keyof typeof lightPalette]: string };
+
+const darkPalette: Palette = {
+  background: '#12161b', surface: '#181e25', surfaceMuted: '#151b22', control: '#10151b',
+  controlHover: '#26313d', selected: '#263d50', border: '#2b3643', subtleBorder: '#27313c',
+  text: '#e7ebf0', textStrong: '#e2e7ed', rowText: '#dce3ea', muted: '#aab4c0', section: '#aeb8c3',
+  accent: '#8ab7dc', accentStrong: '#3478a7', accentText: '#f3f6f9', disabled: '#66717e',
+  error: '#f0aaa4', errorBackground: '#3a2224', errorBorder: '#60383a', placeholder: '#7f8a97',
+  shadow: '#000000', statusBar: '#181e25',
+};
+
 export default function App() {
+  const darkMode = useColorScheme() === 'dark';
+  const palette = darkMode ? darkPalette : lightPalette;
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const [vaultUri, setVaultUri] = useState<string | null>(null);
   const [items, setItems] = useState<LocalVaultItem[]>([]);
   const [favouritePaths, setFavouritePaths] = useState<string[]>([]);
@@ -23,8 +51,10 @@ export default function App() {
   const [createVisible, setCreateVisible] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [themePreference, setThemePreference] = useState<ThemePreference>('system');
   const [openingWeeklyNote, setOpeningWeeklyNote] = useState(false);
   const [active, setActive] = useState<OpenNote | null>(null);
+  const [activeImage, setActiveImage] = useState<LocalImage | null>(null);
   const [editorNote, setEditorNote] = useState<OpenNote | null>(null);
   const [lastOpenedUri, setLastOpenedUri] = useState<string | null>(null);
   const [openingNoteUri, setOpeningNoteUri] = useState<string | null>(null);
@@ -44,10 +74,14 @@ export default function App() {
   const [session, setSession] = useState(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [editorFocused, setEditorFocused] = useState(false);
+  const [editorMode, setEditorMode] = useState<MobileEditorMode>('rich');
+  const [noteMenuVisible, setNoteMenuVisible] = useState(false);
+  const [calendarConnected, setCalendarConnected] = useState(false);
   const [dismissRevision, setDismissRevision] = useState(0);
   const draftRef = useRef('');
   const originalRef = useRef('');
   const activeRef = useRef<OpenNote | null>(null);
+  const itemsRef = useRef<LocalVaultItem[]>([]);
   const savingRef = useRef(false);
   const savePromiseRef = useRef<Promise<boolean> | null>(null);
   const draftModeRef = useRef<MobileEditorMode>('rich');
@@ -65,6 +99,24 @@ export default function App() {
   const treeRevisionRef = useRef(0);
   const activeSessionRef = useRef(0);
   const openRequestRef = useRef(0);
+  itemsRef.current = items;
+
+  useEffect(() => {
+    void restoreCalendarConnection().then(setCalendarConnected).catch((cause) => console.warn('Could not restore Google Calendar connection:', cause));
+  }, []);
+
+  useEffect(() => {
+    void readThemePreference().then((preference) => {
+      Appearance.setColorScheme(preference === 'system' ? 'unspecified' : preference);
+      setThemePreference(preference);
+    });
+  }, []);
+
+  const updateThemePreference = useCallback((preference: ThemePreference) => {
+    Appearance.setColorScheme(preference === 'system' ? 'unspecified' : preference);
+    setThemePreference(preference);
+    void writeThemePreference(preference);
+  }, []);
 
   const loadFavourites = useCallback(async (uri: string) => {
     try {
@@ -194,6 +246,7 @@ export default function App() {
     const note = activeRef.current;
     if (!note) return Promise.resolve(false);
     if (draftRef.current === originalRef.current) return Promise.resolve(true);
+    const saveSession = activeSessionRef.current;
     savingRef.current = true;
     setSaving(true);
     setError(null);
@@ -201,12 +254,14 @@ export default function App() {
       try {
         const snapshot = draftRef.current;
         await saveNote(note.entry.uri, originalRef.current, snapshot);
+        if (activeSessionRef.current !== saveSession || activeRef.current !== note) return true;
         originalRef.current = snapshot;
         setAutosaveBlockedRevision(null);
         setNoteIcons((previous) => ({ ...previous, [note.entry.path]: noteIconFromMarkdown(snapshot) }));
         setDirty(draftRef.current !== snapshot);
         return true;
       } catch (cause) {
+        if (activeSessionRef.current !== saveSession || activeRef.current !== note) return false;
         setAutosaveBlockedRevision(draftRevisionRef.current);
         setError(String(cause));
         return false;
@@ -221,13 +276,13 @@ export default function App() {
   }, []);
 
   const saveLatestDraft = useCallback(async (): Promise<boolean> => {
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      if (draftRef.current === originalRef.current) return true;
-      if (!await save()) return false;
-    }
-    if (draftRef.current === originalRef.current) return true;
-    setError('The note kept changing while it was being saved. Please try again.');
-    return false;
+    const result = await flushLatestDraft({
+      getPendingSave: () => savePromiseRef.current,
+      isClean: () => draftRef.current === originalRef.current,
+      save,
+    });
+    if (result === 'changing') setError('The note kept changing while it was being saved. Please try again.');
+    return result === 'saved';
   }, [save]);
 
   useEffect(() => {
@@ -258,13 +313,14 @@ export default function App() {
     const finish = () => {
       activeRef.current = null;
       setActive(null);
+      setActiveImage(null);
       setDirty(false);
       setError(null);
       setEditorFocused(false);
       setDismissRevision((value) => value + 1);
       Keyboard.dismiss();
     };
-    if (draftRef.current === originalRef.current) { finish(); return; }
+    if (draftRef.current === originalRef.current && !savePromiseRef.current) { finish(); return; }
     if (draftModeRef.current === 'rich') {
       setDismissRevision((value) => value + 1);
       setEditorFocused(false);
@@ -279,12 +335,32 @@ export default function App() {
     ]);
   }, [saveLatestDraft]);
 
+  const discardDraft = useCallback(() => {
+    const note = activeRef.current;
+    if (!note) return;
+    const restored = { ...note, ...splitFrontmatter(originalRef.current) };
+    draftRef.current = originalRef.current;
+    draftModeRef.current = 'rich';
+    draftRevisionRef.current += 1;
+    activeRef.current = restored;
+    setActive(restored);
+    setEditorNote(restored);
+    setEditorMode('rich');
+    setDraftRevision(draftRevisionRef.current);
+    setDirty(false);
+    setAutosaveBlockedRevision(null);
+    setError(null);
+    activeSessionRef.current += 1;
+    setSession(activeSessionRef.current);
+  }, []);
+
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (createVisible || searchVisible || settingsVisible) {
+      if (createVisible || searchVisible || settingsVisible || noteMenuVisible) {
         setCreateVisible(false);
         setSearchVisible(false);
         setSettingsVisible(false);
+        setNoteMenuVisible(false);
         setSearch('');
         Keyboard.dismiss();
         return true;
@@ -296,16 +372,18 @@ export default function App() {
         return true;
       }
       if (activeRef.current) { closeNote(); return true; }
+      if (activeImage) { setActiveImage(null); return true; }
       return false;
     });
     return () => subscription.remove();
-  }, [closeNote, createVisible, editorFocused, keyboardVisible, searchVisible, settingsVisible]);
+  }, [activeImage, closeNote, createVisible, editorFocused, keyboardVisible, noteMenuVisible, searchVisible, settingsVisible]);
 
   const openNote = useCallback(async (entry: LocalNote) => {
     const request = ++openRequestRef.current;
     setOpeningNoteUri(entry.uri);
     setBusy(true);
     setError(null);
+    setNoteMenuVisible(false);
     try {
       const original = await readNote(entry.uri);
       if (request !== openRequestRef.current) return;
@@ -315,9 +393,11 @@ export default function App() {
       originalRef.current = original;
       draftRef.current = original;
       draftModeRef.current = 'rich';
+      setEditorMode('rich');
       draftRevisionRef.current = 0;
       activeRef.current = next;
       setActive(next);
+      setActiveImage(null);
       setEditorNote(next);
       setLastOpenedUri(entry.uri);
       setDirty(false);
@@ -327,6 +407,15 @@ export default function App() {
       setSession(activeSessionRef.current);
     } catch (cause) { if (request === openRequestRef.current) setError(`Could not open ${entry.path}: ${String(cause)}`); }
     finally { if (request === openRequestRef.current) { setOpeningNoteUri(null); setBusy(false); } }
+  }, []);
+
+  const openImage = useCallback((entry: LocalImage) => {
+    activeRef.current = null;
+    setActive(null);
+    setActiveImage(entry);
+    setLastOpenedUri(entry.uri);
+    setError(null);
+    Keyboard.dismiss();
   }, []);
 
   const pickVault = async () => {
@@ -426,6 +515,9 @@ export default function App() {
     ? buildBrowserRows(items, expanded, search).filter(({ item }) => item.kind === 'note')
     : [], [items, expanded, search]);
   const favouriteNotes = useMemo(() => resolveFavouriteNotes(items, favouritePaths), [items, favouritePaths]);
+  const sequenceNavigation = useMemo(() => active
+    ? getLocalNoteSequenceNavigation(active.entry, items.filter((item): item is LocalNote => item.kind === 'note'))
+    : null, [active, items]);
   const toggleFolder = (folder: LocalFolder) => {
     setExpanded((previous) => {
       const next = new Set(previous);
@@ -436,18 +528,64 @@ export default function App() {
     if (!expanded.has(folder.path)) void loadFolder(folder.uri, folder.path);
   };
   const noop = useCallback(async () => {}, []);
+  const editorImages = useMemo(() => items.filter((item): item is LocalImage => item.kind === 'image').map((image) => ({ id: image.uri, name: image.name, path: image.path })), [items]);
+  const loadEditorImage = useCallback(async (source: string) => {
+    const note = activeRef.current;
+    if (!note) throw new Error('Open a note before loading a vault image.');
+    const image = resolveLocalVaultImage(source, note.entry.path, itemsRef.current);
+    if (!image) throw new Error('Image not found in this vault.');
+    return { dataUrl: await readImageData(image.uri, image.mimeType) };
+  }, []);
+  const uploadEditorImage = useCallback(async ({ name, mimeType, base64 }: { name: string; mimeType: string; base64: string }) => {
+    const root = vaultUriRef.current;
+    const note = activeRef.current;
+    if (!root || !note) throw new Error('Open a note before adding an image.');
+    const parent = note.entry.parentPath
+      ? itemsRef.current.find((item): item is LocalFolder => item.kind === 'folder' && item.path === note.entry.parentPath)
+      : null;
+    if (note.entry.parentPath && !parent) throw new Error('The note folder is not loaded. Refresh the vault and try again.');
+    const image = await createImage(parent?.uri ?? root, note.entry.parentPath, name, mimeType, base64);
+    setItems((previous) => [...previous.filter((item) => item.uri !== image.uri), image]);
+    return { id: image.uri, name: image.name, path: image.path };
+  }, []);
+  const connectCalendar = useCallback(async () => {
+    const calendars = await connectGoogleCalendar();
+    setCalendarConnected(true);
+    return calendars;
+  }, []);
+  const openExternal = useCallback(async (url: string) => {
+    if (!/^https:\/\//i.test(url)) throw new Error('Only secure web links can be opened.');
+    await Linking.openURL(url);
+  }, []);
+  const openSequenceNote = useCallback(async (note: LocalNote | null) => {
+    if (!note) return;
+    setNoteMenuVisible(false);
+    if (!await saveLatestDraft()) return;
+    await openNote(note);
+  }, [openNote, saveLatestDraft]);
 
   return (
     <SafeAreaView style={styles.page}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
-      {active ? (
+      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} backgroundColor={palette.statusBar} />
+      {active || activeImage ? (
         <>
           <View style={styles.header}>
-            <Pressable onPress={closeNote} style={styles.headerButton}><Text style={styles.headerAction}>‹ Notes</Text></Pressable>
-            <Text style={styles.noteTitle} numberOfLines={1}>{active.entry.name.replace(/\.md$/i, '')}</Text>
-            <Pressable onPress={() => { void save(); }} disabled={!dirty || saving} style={styles.headerButton}>
-              <Text style={[styles.headerAction, (!dirty || saving) && styles.disabled]}>{saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}</Text>
-            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={active ? 'Close note' : 'Close image'} onPress={active ? closeNote : () => setActiveImage(null)} style={styles.iconButton}><ChevronLeft size={23} color={palette.textStrong} /></Pressable>
+            <View style={styles.noteToolbarActions}>
+              {activeImage && <View style={styles.imageHeaderDetails}><Text style={styles.imageHeaderName} numberOfLines={1}>{activeImage.name}</Text><Text style={styles.imageHeaderMeta}>{activeImage.mimeType.replace(/^image\//, '').toUpperCase()} · {formatFileSize(activeImage.size)}</Text></View>}
+              {active && saving && <ActivityIndicator accessibilityLabel="Saving note" size="small" color={palette.accent} />}
+              {active && <>
+              <View accessibilityRole="radiogroup" accessibilityLabel="Editor mode" style={styles.editorModeSwitch}>
+                <Pressable accessibilityRole="radio" accessibilityLabel="Rich text" accessibilityState={{ selected: editorMode === 'rich' }} onPress={() => setEditorMode('rich')} style={[styles.editorModeButton, editorMode === 'rich' && styles.editorModeButtonActive]}>
+                  <FileText size={18} color={editorMode === 'rich' ? palette.accentText : palette.muted} />
+                </Pressable>
+                <Pressable accessibilityRole="radio" accessibilityLabel="Markdown source" accessibilityState={{ selected: editorMode === 'source' }} onPress={() => setEditorMode('source')} style={[styles.editorModeButton, editorMode === 'source' && styles.editorModeButtonActive]}>
+                  <FileCode2 size={18} color={editorMode === 'source' ? palette.accentText : palette.muted} />
+                </Pressable>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Note actions" onPress={() => setNoteMenuVisible(true)} style={styles.iconButton}><EllipsisVertical size={20} color={palette.textStrong} /></Pressable>
+              </>}
+            </View>
           </View>
           {error && <Text style={styles.error}>{error}</Text>}
         </>
@@ -458,13 +596,13 @@ export default function App() {
             {vaultUri && (
               <View style={styles.toolbarActions}>
                 <Pressable accessibilityRole="button" accessibilityLabel="Find notes" onPress={() => { setSearchVisible(true); requestAnimationFrame(() => searchRef.current?.focus()); }} style={styles.iconButton}>
-                  <Search size={20} color="#293241" />
+                  <Search size={20} color={palette.textStrong} />
                 </Pressable>
                 <Pressable accessibilityRole="button" accessibilityLabel="Open this week's note" onPress={() => { void openThisWeek(); }} disabled={busy || openingWeeklyNote} style={styles.iconButton}>
-                  {openingWeeklyNote ? <ActivityIndicator size="small" color="#24577a" /> : <CalendarDays size={20} color={busy ? '#9aa3af' : '#293241'} />}
+                  {openingWeeklyNote ? <ActivityIndicator size="small" color={palette.accentStrong} /> : <CalendarDays size={20} color={busy ? palette.disabled : palette.textStrong} />}
                 </Pressable>
                 <Pressable accessibilityRole="button" accessibilityLabel="Settings" onPress={() => setSettingsVisible(true)} style={styles.iconButton}>
-                  <Settings size={20} color="#293241" />
+                  <Settings size={20} color={palette.textStrong} />
                 </Pressable>
               </View>
             )}
@@ -479,18 +617,18 @@ export default function App() {
             <>
               <View style={styles.favouritesSection}>
                 <Pressable accessibilityRole="button" accessibilityLabel={`${favouritesExpanded ? 'Collapse' : 'Expand'} favourites`} onPress={() => setFavouritesExpanded((open) => !open)} style={styles.favouritesHeading}>
-                  {favouritesExpanded ? <ChevronDown size={15} color="#697180" /> : <ChevronRight size={15} color="#697180" />}
+                  {favouritesExpanded ? <ChevronDown size={15} color={palette.muted} /> : <ChevronRight size={15} color={palette.muted} />}
                   <Text style={styles.sectionTitle}>Favourites</Text>
                 </Pressable>
                 {favouritesExpanded && (
                   <ScrollView style={styles.favouritesList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                     {favouriteNotes.length === 0 ? <Text style={styles.favouritesEmpty}>Favourite notes will appear here.</Text> : favouriteNotes.map((note) => (
                       <Pressable key={note.uri} accessibilityRole="button" accessibilityLabel={`Open favourite ${note.path}`} onPress={() => { void openNote(note); }} style={[styles.favouriteRow, note.uri === lastOpenedUri && styles.selectedRow]}>
-                        <NoteIcon emoji={noteIcons[note.path]} />
+                        <NoteIcon emoji={noteIcons[note.path]} fallbackColor={palette.muted} />
                         <View style={styles.noteText}>
                           <Text style={styles.noteName} numberOfLines={1}>{note.name.replace(/\.md$/i, '')}</Text>
                         </View>
-                        {note.uri === openingNoteUri && <ActivityIndicator size="small" color="#49627f" />}
+                        {note.uri === openingNoteUri && <ActivityIndicator size="small" color={palette.accent} />}
                       </Pressable>
                     ))}
                   </ScrollView>
@@ -498,15 +636,15 @@ export default function App() {
               </View>
               <View style={styles.filesHeading}>
                 <Pressable accessibilityRole="button" accessibilityLabel={`${filesExpanded ? 'Collapse' : 'Expand'} files`} onPress={() => setFilesExpanded((open) => !open)} style={styles.filesToggle}>
-                  {filesExpanded ? <ChevronDown size={15} color="#697180" /> : <ChevronRight size={15} color="#697180" />}
+                  {filesExpanded ? <ChevronDown size={15} color={palette.muted} /> : <ChevronRight size={15} color={palette.muted} />}
                   <Text style={styles.filesTitle}>Files</Text>
                 </Pressable>
-                {(scanning || loadingFolders.size > 0) && <ActivityIndicator size="small" color="#49627f" />}
+                {(scanning || loadingFolders.size > 0) && <ActivityIndicator size="small" color={palette.accent} />}
                 <Pressable accessibilityRole="button" accessibilityLabel="New note in vault root" onPress={() => showCreate('note', null)} style={styles.sectionAction}>
-                  <FilePlus2 size={18} color="#293241" />
+                  <FilePlus2 size={18} color={palette.textStrong} />
                 </Pressable>
                 <Pressable accessibilityRole="button" accessibilityLabel="New folder in vault root" onPress={() => showCreate('folder', null)} style={styles.sectionAction}>
-                  <FolderPlus size={18} color="#293241" />
+                  <FolderPlus size={18} color={palette.textStrong} />
                 </Pressable>
               </View>
               {filesExpanded && <FlatList
@@ -516,26 +654,29 @@ export default function App() {
                 renderItem={({ item: row }) => row.item.kind === 'folder' ? (
                   <View style={[styles.treeRow, { paddingLeft: 14 + Math.min(row.depth, 10) * 16 }]}>
                     <Pressable accessibilityRole="button" accessibilityLabel={`${expanded.has(row.item.path) ? 'Collapse' : 'Expand'} ${row.item.name}`} onPress={() => toggleFolder(row.item as LocalFolder)} style={styles.folderToggle}>
-                      {expanded.has(row.item.path) ? <ChevronDown size={17} color="#697180" /> : <ChevronRight size={17} color="#697180" />}
-                      {expanded.has(row.item.path) ? <FolderOpen size={17} color="#49627f" /> : <Folder size={17} color="#49627f" />}
+                      {expanded.has(row.item.path) ? <ChevronDown size={17} color={palette.muted} /> : <ChevronRight size={17} color={palette.muted} />}
+                      {expanded.has(row.item.path) ? <FolderOpen size={17} color={palette.accent} /> : <Folder size={17} color={palette.accent} />}
                       <Text style={styles.folderLabel} numberOfLines={1}>{row.item.name}</Text>
-                      {loadingFolders.has(row.item.uri) && <ActivityIndicator size="small" color="#49627f" />}
+                      {loadingFolders.has(row.item.uri) && <ActivityIndicator size="small" color={palette.accent} />}
                     </Pressable>
                     <Pressable accessibilityRole="button" accessibilityLabel={`Folder actions for ${row.item.path}`} onPress={() => showFolderActions(row.item as LocalFolder)} style={styles.folderAdd}>
-                      <MoreHorizontal size={19} color="#697180" />
+                      <MoreHorizontal size={19} color={palette.muted} />
                     </Pressable>
                   </View>
                 ) : (
-                  <Pressable accessibilityRole="button" accessibilityLabel={`Open ${row.item.path}`} onPress={() => { void openNote(row.item as LocalNote); }} style={[styles.treeRow, row.item.uri === lastOpenedUri && styles.selectedRow, { paddingLeft: 14 + Math.min(row.depth, 10) * 16 }]}>
-                    <NoteIcon emoji={noteIcons[row.item.path]} />
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Open ${row.item.path}`} onPress={() => {
+                    if (row.item.kind === 'image') openImage(row.item);
+                    else if (row.item.kind === 'note') void openNote(row.item);
+                  }} style={[styles.treeRow, row.item.uri === lastOpenedUri && styles.selectedRow, { paddingLeft: 14 + Math.min(row.depth, 10) * 16 }]}>
+                    {row.item.kind === 'image' ? <View style={styles.noteIcon}><ImageIcon size={17} color={palette.muted} /></View> : <NoteIcon emoji={noteIcons[row.item.path]} fallbackColor={palette.muted} />}
                     <View style={styles.noteText}>
-                      <Text style={styles.noteName} numberOfLines={1}>{row.item.name.replace(/\.md$/i, '')}</Text>
+                      <Text style={styles.noteName} numberOfLines={1}>{row.item.kind === 'note' ? row.item.name.replace(/\.md$/i, '') : row.item.name}</Text>
                       {row.searchResult && <Text style={styles.notePath} numberOfLines={1}>{row.item.path}</Text>}
                     </View>
-                    {row.item.uri === openingNoteUri && <ActivityIndicator size="small" color="#49627f" />}
+                    {row.item.uri === openingNoteUri && <ActivityIndicator size="small" color={palette.accent} />}
                   </Pressable>
                 )}
-                ListEmptyComponent={!busy && loadingFolders.size === 0 ? <Text style={styles.empty}>No Markdown notes or folders found.</Text> : null}
+                ListEmptyComponent={!busy && loadingFolders.size === 0 ? <Text style={styles.empty}>No notes, images, or folders found.</Text> : null}
               />}
             </>
           )}
@@ -545,19 +686,19 @@ export default function App() {
         <Pressable style={styles.modalBackdrop} onPress={() => { setSearchVisible(false); setSearch(''); }}>
           <Pressable style={[styles.modalPanel, styles.searchPanel]} onPress={(event) => event.stopPropagation()}>
             <View style={styles.modalTitleRow}>
-              <Search size={20} color="#49627f" />
+              <Search size={20} color={palette.accent} />
               <TextInput
                 ref={searchRef}
                 style={styles.searchInput}
                 placeholder="Find notes"
-                placeholderTextColor="#8a929e"
+                placeholderTextColor={palette.placeholder}
                 value={search}
                 onChangeText={setSearch}
                 autoCorrect={false}
                 returnKeyType="search"
               />
               <Pressable accessibilityRole="button" accessibilityLabel="Close search" onPress={() => { setSearchVisible(false); setSearch(''); }} style={styles.iconButton}>
-                <X size={20} color="#697180" />
+                <X size={20} color={palette.muted} />
               </Pressable>
             </View>
             <FlatList
@@ -566,7 +707,7 @@ export default function App() {
               keyboardShouldPersistTaps="handled"
               renderItem={({ item: row }) => (
                 <Pressable style={styles.searchResult} onPress={() => { setSearchVisible(false); setSearch(''); void openNote(row.item as LocalNote); }}>
-                  <NoteIcon emoji={noteIcons[row.item.path]} />
+                  <NoteIcon emoji={noteIcons[row.item.path]} fallbackColor={palette.muted} />
                   <View style={styles.noteText}>
                     <Text style={styles.noteName} numberOfLines={1}>{row.item.name.replace(/\.md$/i, '')}</Text>
                     <Text style={styles.notePath} numberOfLines={1}>{row.item.path}</Text>
@@ -587,7 +728,7 @@ export default function App() {
               ref={newNameRef}
               style={[styles.input, styles.modalInput]}
               placeholder={createKind === 'note' ? 'Note name' : 'Folder name'}
-              placeholderTextColor="#8a929e"
+              placeholderTextColor={palette.placeholder}
               value={newName}
               onChangeText={setNewName}
               onSubmitEditing={() => { void addItem(); }}
@@ -604,15 +745,61 @@ export default function App() {
           <Pressable style={styles.settingsPanel} onPress={(event) => event.stopPropagation()}>
             <View style={styles.settingsTitleRow}>
               <Text style={styles.modalTitle}>Settings</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="Close settings" onPress={() => setSettingsVisible(false)} style={styles.iconButton}><X size={20} color="#697180" /></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Close settings" onPress={() => setSettingsVisible(false)} style={styles.iconButton}><X size={20} color={palette.muted} /></Pressable>
+            </View>
+            <View style={styles.appearanceSetting}>
+              <Text style={styles.appearanceLabel}>Appearance</Text>
+              <View accessibilityRole="radiogroup" accessibilityLabel="Appearance" style={styles.appearanceSwitch}>
+                {(['system', 'light', 'dark'] as const).map((preference) => (
+                  <Pressable
+                    key={preference}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`${preference[0].toUpperCase()}${preference.slice(1)} appearance`}
+                    accessibilityState={{ selected: themePreference === preference }}
+                    onPress={() => updateThemePreference(preference)}
+                    style={[styles.appearanceButton, themePreference === preference && styles.appearanceButtonActive]}
+                  >
+                    <Text style={[styles.appearanceButtonText, themePreference === preference && styles.appearanceButtonTextActive]}>{preference[0].toUpperCase()}{preference.slice(1)}</Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
             <Pressable style={styles.menuItem} disabled={busy || scanning} onPress={() => { setSettingsVisible(false); if (vaultUri) void refresh(vaultUri); }}>
-              <RefreshCw size={19} color={busy || scanning ? '#9aa3af' : '#293241'} />
+              <RefreshCw size={19} color={busy || scanning ? palette.disabled : palette.textStrong} />
               <Text style={[styles.menuItemText, (busy || scanning) && styles.disabled]}>Refresh vault</Text>
             </Pressable>
             <Pressable style={styles.menuItem} disabled={busy || pickerPending} onPress={() => { setSettingsVisible(false); void pickVault(); }}>
-              <FolderOpen size={19} color={busy || pickerPending ? '#9aa3af' : '#293241'} />
+              <FolderOpen size={19} color={busy || pickerPending ? palette.disabled : palette.textStrong} />
               <Text style={[styles.menuItemText, (busy || pickerPending) && styles.disabled]}>Change vault folder</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+      <Modal visible={noteMenuVisible} transparent animationType="fade" onRequestClose={() => setNoteMenuVisible(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setNoteMenuVisible(false)}>
+          <Pressable style={styles.settingsPanel} onPress={(event) => event.stopPropagation()}>
+            {sequenceNavigation && (sequenceNavigation.previous || sequenceNavigation.next) && (
+              <View style={styles.sequenceNavigation} accessibilityRole="toolbar" accessibilityLabel="Sequential notes">
+                <Pressable accessibilityRole="button" accessibilityLabel={`Previous note: ${sequenceNavigation.previousNumber}`} disabled={!sequenceNavigation.previous} onPress={() => { void openSequenceNote(sequenceNavigation.previous); }} style={styles.sequenceButton}>
+                  <ChevronLeft size={18} color={sequenceNavigation.previous ? palette.textStrong : palette.disabled} /><Text style={[styles.sequenceNumber, !sequenceNavigation.previous && styles.disabled]}>{sequenceNavigation.previousNumber}</Text>
+                </Pressable>
+                <Text style={styles.sequenceCurrent}>{sequenceNavigation.currentNumber}</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Next note: ${sequenceNavigation.nextNumber}`} disabled={!sequenceNavigation.next} onPress={() => { void openSequenceNote(sequenceNavigation.next); }} style={styles.sequenceButton}>
+                  <Text style={[styles.sequenceNumber, !sequenceNavigation.next && styles.disabled]}>{sequenceNavigation.nextNumber}</Text><ChevronRight size={18} color={sequenceNavigation.next ? palette.textStrong : palette.disabled} />
+                </Pressable>
+              </View>
+            )}
+            {active?.frontmatter && <Pressable style={styles.menuItem} onPress={() => { setNoteMenuVisible(false); Alert.alert('Properties', active.frontmatter.trim().replace(/^---\r?\n?|\r?\n---$/g, '')); }}>
+              <FileText size={19} color={palette.textStrong} /><Text style={styles.menuItemText}>Properties</Text>
+            </Pressable>}
+            <Pressable style={styles.menuItem} disabled={!dirty || saving} onPress={() => { setNoteMenuVisible(false); void save(); }}>
+              <Save size={19} color={!dirty || saving ? palette.disabled : palette.textStrong} /><Text style={[styles.menuItemText, (!dirty || saving) && styles.disabled]}>Save now</Text>
+            </Pressable>
+            <Pressable style={styles.menuItem} disabled={!dirty || saving} onPress={() => { setNoteMenuVisible(false); Alert.alert('Discard changes?', 'Restore the last saved version of this note.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Discard', style: 'destructive', onPress: discardDraft }]); }}>
+              <X size={19} color={!dirty || saving ? palette.disabled : palette.error} /><Text style={[styles.menuItemText, (!dirty || saving) && styles.disabled]}>Discard changes</Text>
+            </Pressable>
+            <Pressable style={styles.menuItem} onPress={() => { setNoteMenuVisible(false); Alert.alert(active?.entry.name.replace(/\.md$/i, '') ?? 'Note', active?.entry.path ?? ''); }}>
+              <FileCode2 size={19} color={palette.textStrong} /><Text style={styles.menuItemText}>Note details</Text>
             </Pressable>
           </Pressable>
         </Pressable>
@@ -625,6 +812,17 @@ export default function App() {
             session={session}
             keyboardVisible={keyboardVisible}
             dismissRevision={dismissRevision}
+            requestedMode={editorMode}
+            darkMode={darkMode}
+            onModeChange={setEditorMode}
+            images={editorImages}
+            onLoadImage={loadEditorImage}
+            onUploadImage={uploadEditorImage}
+            calendarConnected={calendarConnected}
+            onCalendarConnect={connectCalendar}
+            onCalendarList={loadGoogleCalendars}
+            onCalendarEvents={loadGoogleCalendarEvents}
+            onOpenExternal={openExternal}
             snapshotRequest={0}
             onEvent={noop}
             onWriteAttempt={noop}
@@ -642,73 +840,131 @@ export default function App() {
           />
         </View>
       )}
+      {activeImage && <View style={styles.imageViewer}><NativeImage accessibilityLabel={activeImage.name} source={{ uri: activeImage.uri }} resizeMode="contain" style={styles.imageViewerImage} /></View>}
     </SafeAreaView>
   );
 }
 
-function NoteIcon({ emoji }: { emoji: string | null | undefined }) {
+function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return 'Size unknown';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function NoteIcon({ emoji, fallbackColor }: { emoji: string | null | undefined; fallbackColor: string }) {
+  const twemojiUrl = emoji ? getTwemojiUrl(emoji) : null;
   return (
-    <View style={styles.noteIcon}>
-      {emoji ? <Text style={styles.noteEmoji}>{emoji}</Text> : <FileText size={17} color="#697180" />}
+    <View style={noteIconStyles.noteIcon}>
+      {twemojiUrl ? <TwemojiNoteIcon key={twemojiUrl} url={twemojiUrl} fallbackColor={fallbackColor} /> : <GenericNoteIcon color={fallbackColor} />}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  page: { flex: 1, paddingTop: StatusBar.currentHeight ?? 0, backgroundColor: '#ffffff' },
-  header: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 14, borderBottomWidth: 1, borderColor: '#dfe3ea', backgroundColor: '#ffffff' },
-  title: { fontSize: 20, fontWeight: '700', color: '#202124' },
-  noteTitle: { flex: 1, fontSize: 17, fontWeight: '600', color: '#202124' },
+function TwemojiNoteIcon({ url, fallbackColor }: { url: string; fallbackColor: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const handleLoad = useCallback(() => setLoaded(true), []);
+  const handleError = useCallback(() => setFailed(true), []);
+
+  if (failed) return <GenericNoteIcon color={fallbackColor} />;
+  return (
+    <>
+      {!loaded && <GenericNoteIcon color={fallbackColor} />}
+      <SvgUri
+        height={18}
+        onError={handleError}
+        onLoad={handleLoad}
+        style={loaded ? undefined : noteIconStyles.loadingNoteEmoji}
+        uri={url}
+        width={18}
+      />
+    </>
+  );
+}
+
+function GenericNoteIcon({ color }: { color: string }) {
+  return <FileText size={17} color={color} />;
+}
+
+const noteIconStyles = StyleSheet.create({
+  noteIcon: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  loadingNoteEmoji: { position: 'absolute', opacity: 0 },
+});
+
+function createStyles(palette: Palette) {
+ return StyleSheet.create({
+  page: { flex: 1, paddingTop: StatusBar.currentHeight ?? 0, backgroundColor: palette.background },
+  header: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 14, borderBottomWidth: 1, borderColor: palette.border, backgroundColor: palette.surface },
+  title: { fontSize: 20, fontWeight: '700', color: palette.text },
+  noteToolbarActions: { flex: 1, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 6 },
+  imageHeaderDetails: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+  imageHeaderName: { maxWidth: '100%', color: palette.textStrong, fontSize: 15, fontWeight: '600' },
+  imageHeaderMeta: { color: palette.muted, fontSize: 11, marginTop: 2 },
+  editorModeSwitch: { flexDirection: 'row', alignItems: 'center', padding: 2, borderRadius: 7, backgroundColor: palette.control },
+  editorModeButton: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 5 },
+  editorModeButtonActive: { backgroundColor: palette.selected },
   toolbarActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   iconButton: { width: 40, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 6 },
-  headerButton: { minWidth: 58, paddingVertical: 8 },
-  headerAction: { color: '#24577a', fontSize: 15, fontWeight: '600' },
-  disabled: { color: '#9aa3af' },
-  error: { paddingHorizontal: 14, paddingVertical: 10, color: '#a14444', backgroundColor: '#fff1f0', borderBottomWidth: 1, borderColor: '#f2ceca' },
+  disabled: { color: palette.disabled },
+  error: { paddingHorizontal: 14, paddingVertical: 10, color: palette.error, backgroundColor: palette.errorBackground, borderBottomWidth: 1, borderColor: palette.errorBorder },
   editor: { flex: 1 },
   hiddenEditor: { display: 'none' },
+  imageViewer: { flex: 1, padding: 12, backgroundColor: palette.surfaceMuted },
+  imageViewerImage: { width: '100%', height: '100%' },
   welcome: { padding: 24, gap: 20 },
-  welcomeText: { fontSize: 16, lineHeight: 24, color: '#5f6673' },
-  primaryButton: { alignSelf: 'flex-start', backgroundColor: '#24577a', borderRadius: 6, paddingHorizontal: 18, paddingVertical: 12 },
+  welcomeText: { fontSize: 16, lineHeight: 24, color: palette.section },
+  primaryButton: { alignSelf: 'flex-start', backgroundColor: palette.accentStrong, borderRadius: 6, paddingHorizontal: 18, paddingVertical: 12 },
   primaryText: { color: 'white', fontSize: 16, fontWeight: '600' },
-  input: { marginHorizontal: 12, marginTop: 10, minHeight: 44, borderWidth: 1, borderColor: '#dfe3ea', borderRadius: 7, backgroundColor: '#ffffff', paddingHorizontal: 12, paddingVertical: 9, color: '#202124', fontSize: 15 },
+  input: { marginHorizontal: 12, marginTop: 10, minHeight: 44, borderWidth: 1, borderColor: palette.border, borderRadius: 7, backgroundColor: palette.surface, paddingHorizontal: 12, paddingVertical: 9, color: palette.text, fontSize: 15 },
   filesHeading: { minHeight: 39, flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, paddingHorizontal: 14 },
   filesToggle: { minHeight: 39, flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5 },
-  filesTitle: { color: '#5f6673', fontSize: 12, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
+  filesTitle: { color: palette.section, fontSize: 12, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
   sectionAction: { width: 34, minHeight: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 5 },
   favouritesSection: { marginTop: 12 },
-  favouritesHeading: { minHeight: 39, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 5, backgroundColor: '#ffffff' },
-  sectionTitle: { flex: 1, color: '#5f6673', fontSize: 12, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
+  favouritesHeading: { minHeight: 39, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 5, backgroundColor: palette.surface },
+  sectionTitle: { flex: 1, color: palette.section, fontSize: 12, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
   favouritesList: { maxHeight: 210 },
-  favouritesEmpty: { paddingHorizontal: 32, paddingBottom: 10, color: '#697180', fontSize: 13 },
+  favouritesEmpty: { paddingHorizontal: 32, paddingBottom: 10, color: palette.muted, fontSize: 13 },
   favouriteRow: { flexDirection: 'row', alignItems: 'center', minHeight: 42, marginHorizontal: 10, paddingHorizontal: 6, borderRadius: 5 },
   treeRow: { flexDirection: 'row', alignItems: 'center', minHeight: 43, marginHorizontal: 8, paddingRight: 8, borderRadius: 5 },
-  selectedRow: { backgroundColor: '#dfeaf2' },
+  selectedRow: { backgroundColor: palette.selected },
   folderToggle: { flex: 1, flexDirection: 'row', alignItems: 'center', minHeight: 43, gap: 8 },
-  folderLabel: { flex: 1, color: '#303640', fontSize: 15, fontWeight: '600' },
+  folderLabel: { flex: 1, color: palette.rowText, fontSize: 15, fontWeight: '600' },
   folderAdd: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   noteIcon: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
-  noteEmoji: { fontSize: 17, lineHeight: 21, textAlign: 'center' },
   noteText: { flex: 1, paddingVertical: 8 },
-  noteName: { color: '#303640', fontSize: 15 },
-  notePath: { color: '#697180', fontSize: 12, marginTop: 3 },
-  empty: { padding: 18, color: '#697180' },
+  noteName: { color: palette.rowText, fontSize: 15 },
+  notePath: { color: palette.muted, fontSize: 12, marginTop: 3 },
+  empty: { padding: 18, color: palette.muted },
   modalBackdrop: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: '#00000066' },
-  modalPanel: { maxHeight: '82%', padding: 20, borderRadius: 10, backgroundColor: '#ffffff', shadowColor: '#0f1721', shadowOpacity: 0.2, shadowRadius: 24, elevation: 8 },
+  modalPanel: { maxHeight: '82%', padding: 20, borderRadius: 10, backgroundColor: palette.surface, shadowColor: palette.shadow, shadowOpacity: 0.35, shadowRadius: 24, elevation: 8 },
   searchPanel: { height: '72%', padding: 0, overflow: 'hidden' },
-  modalTitleRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 16, paddingRight: 8, borderBottomWidth: 1, borderColor: '#dfe3ea' },
-  searchInput: { flex: 1, minHeight: 50, color: '#202124', fontSize: 16 },
-  modalTitle: { color: '#202124', fontSize: 19, fontWeight: '700' },
-  modalCopy: { marginTop: 6, color: '#697180', fontSize: 14 },
+  modalTitleRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 16, paddingRight: 8, borderBottomWidth: 1, borderColor: palette.border },
+  searchInput: { flex: 1, minHeight: 50, color: palette.text, fontSize: 16 },
+  modalTitle: { color: palette.text, fontSize: 19, fontWeight: '700' },
+  modalCopy: { marginTop: 6, color: palette.muted, fontSize: 14 },
   modalInput: { marginHorizontal: 0, marginTop: 18 },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 20 },
-  secondaryButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, borderRadius: 6, backgroundColor: '#eef3f7' },
-  secondaryButtonText: { color: '#293241', fontSize: 16, fontWeight: '600' },
+  secondaryButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, borderRadius: 6, backgroundColor: palette.controlHover },
+  secondaryButtonText: { color: palette.textStrong, fontSize: 16, fontWeight: '600' },
   buttonDisabled: { opacity: 0.5 },
-  searchResult: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, borderBottomWidth: 1, borderColor: '#edf0f4' },
-  modalEmpty: { padding: 18, color: '#697180', textAlign: 'center' },
-  settingsPanel: { marginTop: 'auto', marginBottom: 20, padding: 8, borderRadius: 10, backgroundColor: '#ffffff', shadowColor: '#0f1721', shadowOpacity: 0.2, shadowRadius: 24, elevation: 8 },
+  searchResult: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, borderBottomWidth: 1, borderColor: palette.subtleBorder },
+  modalEmpty: { padding: 18, color: palette.muted, textAlign: 'center' },
+  settingsPanel: { marginTop: 'auto', marginBottom: 20, padding: 8, borderRadius: 10, backgroundColor: palette.surface, shadowColor: palette.shadow, shadowOpacity: 0.35, shadowRadius: 24, elevation: 8 },
+  sequenceNavigation: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 48, marginBottom: 4, borderRadius: 6, backgroundColor: palette.surfaceMuted },
+  sequenceButton: { minWidth: 68, minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 5 },
+  sequenceNumber: { color: palette.textStrong, fontSize: 15, fontWeight: '600' },
+  sequenceCurrent: { minWidth: 38, color: palette.section, fontSize: 15, fontWeight: '700', textAlign: 'center' },
   settingsTitleRow: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 10 },
+  appearanceSetting: { gap: 8, paddingHorizontal: 12, paddingVertical: 10 },
+  appearanceLabel: { color: palette.section, fontSize: 12, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
+  appearanceSwitch: { flexDirection: 'row', padding: 2, borderRadius: 7, backgroundColor: palette.control },
+  appearanceButton: { flex: 1, minHeight: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 5 },
+  appearanceButtonActive: { backgroundColor: palette.selected },
+  appearanceButtonText: { color: palette.muted, fontSize: 13, fontWeight: '600' },
+  appearanceButtonTextActive: { color: palette.accentText },
   menuItem: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, borderRadius: 6 },
-  menuItemText: { color: '#303640', fontSize: 16 },
+  menuItemText: { color: palette.rowText, fontSize: 16 },
 });
+}

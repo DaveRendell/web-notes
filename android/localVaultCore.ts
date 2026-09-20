@@ -1,10 +1,13 @@
 import { applyWeeklyNoteTemplate, getWeeklyNoteDetails } from '../web/src/lib/weeklyNote';
 
 export type LocalNote = { kind: 'note'; uri: string; path: string; parentPath: string; name: string; size: number };
+export type LocalImage = { kind: 'image'; uri: string; path: string; parentPath: string; name: string; size: number; mimeType: string };
 export type LocalFolder = { kind: 'folder'; uri: string; path: string; parentPath: string; name: string };
-export type LocalVaultItem = LocalNote | LocalFolder;
+export type LocalVaultItem = LocalNote | LocalImage | LocalFolder;
 export type VaultListCache = { items: LocalVaultItem[]; complete: boolean };
-export type VaultEntry = { uri: string; isDirectory: boolean; name?: string };
+export type VaultEntry = { uri: string; isDirectory: boolean; name?: string; mimeType?: string; size?: number };
+
+const IMAGE_EXTENSION_PATTERN = /\.(?:avif|gif|jpe?g|png|svg|webp)$/i;
 
 export type VaultFiles = {
   readDirectory(uri: string): Promise<VaultEntry[]>;
@@ -49,7 +52,14 @@ export async function listVaultFolderCore(
     if (!name || name.startsWith('.')) continue;
     const path = parentPath ? `${parentPath}/${name}` : name;
     if (child.isDirectory) items.push({ kind: 'folder', uri: child.uri, path, parentPath, name });
-    else if (/\.md$/i.test(name)) items.push({ kind: 'note', uri: child.uri, path, parentPath, name, size: 0 });
+    else if (/\.md$/i.test(name)) items.push({ kind: 'note', uri: child.uri, path, parentPath, name, size: child.size ?? 0 });
+    else if (child.mimeType?.startsWith('image/') || IMAGE_EXTENSION_PATTERN.test(name)) {
+      items.push({
+        kind: 'image', uri: child.uri, path, parentPath, name,
+        size: child.size ?? 0,
+        mimeType: child.mimeType?.startsWith('image/') ? child.mimeType : imageMimeType(name),
+      });
+    }
   }
   return items;
 }
@@ -75,12 +85,20 @@ export function parseVaultListCache(value: unknown, rootUri: string): VaultListC
   const valid = cache.items.every((item: unknown) => {
     if (!item || typeof item !== 'object') return false;
     const entry = item as Record<string, unknown>;
-    return (entry.kind === 'note' || entry.kind === 'folder') &&
+    return (entry.kind === 'note' || entry.kind === 'image' || entry.kind === 'folder') &&
       typeof entry.uri === 'string' && typeof entry.path === 'string' &&
       typeof entry.parentPath === 'string' && typeof entry.name === 'string' &&
-      (entry.kind === 'folder' || typeof entry.size === 'number');
+      (entry.kind === 'folder' || typeof entry.size === 'number') &&
+      (entry.kind !== 'image' || typeof entry.mimeType === 'string');
   });
   return valid ? { items: cache.items as LocalVaultItem[], complete: cache.complete === true } : null;
+}
+
+function imageMimeType(name: string) {
+  const extension = name.split('.').pop()?.toLowerCase();
+  if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
+  if (extension === 'svg') return 'image/svg+xml';
+  return `image/${extension === 'avif' || extension === 'gif' || extension === 'png' || extension === 'webp' ? extension : 'png'}`;
 }
 
 export async function listVaultCore(
@@ -109,6 +127,9 @@ export async function listVaultCore(
 
 export async function saveNoteCore(uri: string, expectedOriginal: string, markdown: string, files: Pick<VaultFiles, 'readText' | 'writeText'>): Promise<void> {
   const current = await files.readText(uri);
+  // A provider may commit a write before reporting an error (or a verification
+  // read may fail). Retrying that same snapshot is already a successful save.
+  if (current === markdown) return;
   if (current !== expectedOriginal) throw new ExternalNoteChangeError();
   await files.writeText(uri, markdown);
   if (await files.readText(uri) !== markdown) {

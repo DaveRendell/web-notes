@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { noteIconFromMarkdown, parseFavouritePaths, parseNoteIconCache, resolveFavouriteNotes } from '../vaultFeatures';
 import type { LocalVaultItem } from '../localVaultCore';
+import { getTwemojiUrl } from '../../web/src/lib/twemoji';
 
 describe('Android vault favourites', () => {
   const items: LocalVaultItem[] = [
@@ -26,6 +27,10 @@ describe('Android vault favourites', () => {
 });
 
 describe('Android note icons', () => {
+  it('resolves cached note emoji to the same pinned SVG set as the web app', () => {
+    expect(getTwemojiUrl('📝')).toBe('https://cdn.jsdelivr.net/gh/jdecked/twemoji@v17.0.2/assets/svg/1f4dd.svg');
+  });
+
   it('uses the first visible emoji, ignoring frontmatter and heading syntax', () => {
     expect(noteIconFromMarkdown('---\nicon: ❌\n---\n# **🎮 Games**')).toBe('🎮');
     expect(noteIconFromMarkdown('# Plain text 🎮')).toBeNull();
