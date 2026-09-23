@@ -25,11 +25,11 @@ import {
   thematicBreakPlugin,
   toolbarPlugin,
 } from '@mdxeditor/editor';
-import { useEffect, useMemo, useRef, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { refreshContentEditableSpellcheck } from '../lib/contentEditableSpellcheck';
 import type { VaultNode } from '../types/vault';
-import { richEditorEnhancementsPlugin } from './richEditorEnhancements';
+import { decodeWikiLinkUrl, richEditorEnhancementsPlugin } from './richEditorEnhancements';
 import { richBlockDragPlugin } from './richBlockDrag';
 import { richBlockBackgroundPlugin } from './richBlockBackground';
 import { richEditorIcon } from './richEditorIcons';
@@ -47,13 +47,14 @@ type RichMarkdownEditorProps = {
   onChange: (markdown: string) => void;
   onError: (message: string) => void;
   onInitialNormalize: (markdown: string) => void;
+  onOpenWikilink?: (target: string, newTab: boolean) => void;
   onSave: () => void;
   readOnly?: boolean;
   recentNotes: VaultNode[];
   spellCheck: boolean;
 };
 
-export default function RichMarkdownEditor({ markdown, blockMovementDisabled = false, notes, onActiveChange, onActivity, onBlur, onChange, onError, onInitialNormalize, onSave, readOnly = false, recentNotes, spellCheck }: RichMarkdownEditorProps) {
+export default function RichMarkdownEditor({ markdown, blockMovementDisabled = false, notes, onActiveChange, onActivity, onBlur, onChange, onError, onInitialNormalize, onOpenWikilink, onSave, readOnly = false, recentNotes, spellCheck }: RichMarkdownEditorProps) {
   const { theme } = useTheme();
   const editorRef = useRef<MDXEditorMethods>(null);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -142,10 +143,24 @@ export default function RichMarkdownEditor({ markdown, blockMovementDisabled = f
     clearActiveTable();
   }
 
+  function openWikilink(event: ReactMouseEvent, newTab: boolean) {
+    if (!(event.target instanceof Element)) return;
+    const anchor = event.target.closest<HTMLAnchorElement>('a[href^="web-notes-wikilink:"]');
+    if (!anchor) return;
+    const target = decodeWikiLinkUrl(anchor.getAttribute('href') ?? '')?.target;
+    if (!target || !onOpenWikilink) return;
+    event.preventDefault();
+    onOpenWikilink(target, newTab);
+  }
+
   return (
     <div
       ref={shellRef}
       className="rich-markdown-editor-shell"
+      onClickCapture={(event) => openWikilink(event, event.ctrlKey || event.metaKey)}
+      onAuxClickCapture={(event) => {
+        if (event.button === 1) openWikilink(event, true);
+      }}
       onBlurCapture={(event) => {
         if (refreshingSpellcheckRef.current) return;
         if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;

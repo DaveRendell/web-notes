@@ -18,6 +18,7 @@ type NoteEditorShellProps = {
   notes: VaultNode[];
   onBlur?: () => void;
   onChange: (markdown: string) => void;
+  onOpenWikilink?: (target: string, newTab: boolean) => void;
   onSave: () => void;
   readOnly?: boolean;
   recentNotes: VaultNode[];
@@ -91,6 +92,7 @@ export function NoteEditorShell(props: NoteEditorShellProps) {
                   setRuntimeError('Rich text normalization changed this note, so Markdown mode is being used.');
                 }
               }}
+              onOpenWikilink={props.onOpenWikilink}
               onActiveChange={handleRichActiveChange}
               onActivity={showToolbar}
               onBlur={props.onBlur}

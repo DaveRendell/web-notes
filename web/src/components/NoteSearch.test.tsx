@@ -2,12 +2,13 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { VaultNode } from '../types/vault';
 
-const mocks = vi.hoisted(() => ({ selectFile: vi.fn() }));
+const mocks = vi.hoisted(() => ({ openFileInTab: vi.fn(), selectFile: vi.fn() }));
 const notes = [note('alpha', 'Alpha.md', 'Projects/Alpha.md'), note('beta', 'Beta.md', 'Beta.md')];
 
 vi.mock('../contexts/VaultContext', () => ({
   useVault: () => ({
     notes,
+    openFileInTab: mocks.openFileInTab,
     recentNotes: [notes[1], notes[0]],
     selectFile: mocks.selectFile,
   }),
@@ -54,6 +55,14 @@ describe('NoteSearch', () => {
     fireEvent.keyDown(search, { key: 'Enter' });
 
     expect(mocks.selectFile).toHaveBeenCalledWith(notes[0]);
+  });
+
+  it('opens a result in a background tab with the middle mouse button', () => {
+    render(<NoteSearch />);
+    fireEvent.click(screen.getByRole('button', { name: 'Find notes' }));
+    fireEvent(screen.getAllByRole('option')[0], new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    expect(mocks.openFileInTab).toHaveBeenCalledWith(notes[1]);
+    expect(mocks.selectFile).not.toHaveBeenCalled();
   });
 });
 

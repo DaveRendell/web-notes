@@ -10,6 +10,7 @@ import { ImageViewer } from './ImageViewer';
 import { NoteSearch } from './NoteSearch';
 import { Sidebar } from './Sidebar/Sidebar';
 import { VaultPicker } from './VaultPicker';
+import { FileTabs } from './FileTabs';
 
 export function AppShell() {
   const { disconnect, error: authError, isAuthenticated, signIn, signOut, status } = useAuth();
@@ -285,7 +286,10 @@ function ResizableWorkspace({ controls, isSidebarCollapsed, mobileSidebarOpen, o
         title="Drag to resize; double-click to reset"
       />
       <div className="workspace-viewer" inert={mobileSidebarOpen}>
-        <SelectedFileViewer onOpenSidebar={isSidebarCollapsed ? onOpenSidebar : undefined} />
+        <div className="tabbed-viewer">
+          <FileTabs />
+          <SelectedFileViewer onOpenSidebar={isSidebarCollapsed ? onOpenSidebar : undefined} />
+        </div>
       </div>
     </div>
   );

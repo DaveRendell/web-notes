@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   dropTargetForElements: vi.fn(() => () => undefined),
   monitorForElements: vi.fn(() => () => undefined),
   moveNode: vi.fn(),
+  openFileInTab: vi.fn(),
   toggleFavorite: vi.fn(),
 }));
 
@@ -34,6 +35,7 @@ vi.mock('../../contexts/VaultContext', () => ({
     isOnline: true,
     moveNode: mocks.moveNode,
     noteIcons: { note: '📝' },
+    openFileInTab: mocks.openFileInTab,
     renameFolder: vi.fn(),
     renameNote: vi.fn(),
     selectFile: vi.fn(),
@@ -60,6 +62,13 @@ describe('FileTree drag and drop', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Folder A' }));
 
     expect(container.querySelector<HTMLImageElement>('.note-emoji .twemoji')?.src).toMatch(/\/1f4dd\.svg$/);
+  });
+
+  it('opens notes in a background tab with the middle mouse button', () => {
+    render(<FileTree nodes={tree} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Folder A' }));
+    fireEvent(screen.getByRole('button', { name: 'Note' }), new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    expect(mocks.openFileInTab).toHaveBeenCalledWith(tree[0].children?.[1]);
   });
 
   it('keeps folder actions in a compact overflow menu', () => {

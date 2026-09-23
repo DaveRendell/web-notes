@@ -19,6 +19,7 @@ export function FavoriteNotes() {
     favoriteNotes,
     favoriteSyncError,
     noteIcons,
+    openFileInTab,
     reorderFavorite,
     selectFile,
     selectedFile,
@@ -67,6 +68,7 @@ export function FavoriteNotes() {
               isDragging={draggedNoteId === note.id}
               dropPlacement={dropTarget?.noteId === note.id ? dropTarget.placement : null}
               onOpen={() => selectFile(note)}
+              onOpenInTab={() => openFileInTab(note)}
               onRemove={() => toggleFavorite(note.id)}
             />
           ))}
@@ -84,10 +86,11 @@ type FavoriteNoteProps = {
   isDragging: boolean;
   dropPlacement: 'before' | 'after' | null;
   onOpen: () => void;
+  onOpenInTab: () => void;
   onRemove: () => void;
 };
 
-function FavoriteNote({ note, emoji, isSelected, isDragging, dropPlacement, onOpen, onRemove }: FavoriteNoteProps) {
+function FavoriteNote({ note, emoji, isSelected, isDragging, dropPlacement, onOpen, onOpenInTab, onRemove }: FavoriteNoteProps) {
   const rowRef = useRef<HTMLLIElement>(null);
   const handleRef = useRef<HTMLButtonElement>(null);
 
@@ -131,6 +134,11 @@ function FavoriteNote({ note, emoji, isSelected, isDragging, dropPlacement, onOp
         className={isSelected ? 'favorite-note selected' : 'favorite-note'}
         type="button"
         onClick={onOpen}
+        onAuxClick={(event) => {
+          if (event.button !== 1) return;
+          event.preventDefault();
+          onOpenInTab();
+        }}
         title={note.path}
       >
         {emoji ? <span className="note-emoji"><Twemoji emoji={emoji} hidden /></span> : <FileText size={15} />}

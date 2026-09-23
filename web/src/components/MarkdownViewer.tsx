@@ -26,8 +26,10 @@ export function MarkdownViewer({ onOpenSidebar }: { onOpenSidebar?: () => void }
     favoriteNoteIds,
     isOnline,
     notes,
+    openFileInTab,
     recentNotes,
     renameNote,
+    resolveWikilink,
     selectFile,
     selectedFile,
     selectedVault,
@@ -378,6 +380,11 @@ export function MarkdownViewer({ onOpenSidebar }: { onOpenSidebar?: () => void }
               className="note-sequence-button"
               type="button"
               onClick={() => sequenceNavigation.previous && selectFile(sequenceNavigation.previous)}
+              onAuxClick={(event) => {
+                if (event.button !== 1 || !sequenceNavigation.previous) return;
+                event.preventDefault();
+                openFileInTab(sequenceNavigation.previous);
+              }}
               disabled={!sequenceNavigation.previous}
               aria-label={`Previous note: ${sequenceNavigation.previousNumber}`}
               title={sequenceNavigation.previous?.path ?? `No note for ${sequenceNavigation.previousNumber}`}
@@ -392,6 +399,11 @@ export function MarkdownViewer({ onOpenSidebar }: { onOpenSidebar?: () => void }
               className="note-sequence-button"
               type="button"
               onClick={() => sequenceNavigation.next && selectFile(sequenceNavigation.next)}
+              onAuxClick={(event) => {
+                if (event.button !== 1 || !sequenceNavigation.next) return;
+                event.preventDefault();
+                openFileInTab(sequenceNavigation.next);
+              }}
               disabled={!sequenceNavigation.next}
               aria-label={`Next note: ${sequenceNavigation.nextNumber}`}
               title={sequenceNavigation.next?.path ?? `No note for ${sequenceNavigation.nextNumber}`}
@@ -500,6 +512,12 @@ export function MarkdownViewer({ onOpenSidebar }: { onOpenSidebar?: () => void }
               value={draft}
               onBlur={() => void persistDraft()}
               onChange={handleDraftChange}
+              onOpenWikilink={(target, newTab) => {
+                const note = resolveWikilink(target);
+                if (!note) return;
+                if (newTab) openFileInTab(note);
+                else selectFile(note);
+              }}
               onSave={() => void persistDraft(true)}
               readOnly={!isOnline}
               recentNotes={recentNotes}

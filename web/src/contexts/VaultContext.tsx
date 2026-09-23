@@ -67,6 +67,10 @@ type VaultContextValue = {
   isOnline: boolean;
   isRefreshing: boolean;
   moveNode: (node: VaultNode, destinationFolder: VaultNode | null) => Promise<VaultNode>;
+  openFileInTab: (file: VaultNode) => void;
+  openFiles: VaultNode[];
+  activateFileTab: (fileId: string) => void;
+  closeFileTab: (fileId: string) => void;
   openWeeklyNote: (date?: Date) => Promise<VaultNode>;
   noteIcons: Record<string, string | null>;
   notes: VaultNode[];
@@ -91,6 +95,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const { accessToken, accountId, ensureAccessToken, invalidateAccessToken, isAccountResolved } = useAuth();
   const [selectedVault, setSelectedVault] = useState<StoredVault | null>(() => readStoredVault());
   const [selectedFile, setSelectedFile] = useState<VaultNode | null>(null);
+  const [openFileIds, setOpenFileIds] = useState<string[]>([]);
+  const openFileIdsRef = useRef(openFileIds);
+  const selectedFileRef = useRef(selectedFile);
+  openFileIdsRef.current = openFileIds;
+  selectedFileRef.current = selectedFile;
   const [recentNoteIds, setRecentNoteIds] = useState<string[]>(() => readRecentNoteIds(selectedVault?.id ?? null));
   const [routePath, setRoutePath] = useState(() => getNotePathFromHash());
   const [noteIcons, setNoteIcons] = useState<Record<string, string | null>>({});
@@ -136,25 +145,49 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     });
   }, [favoriteNoteIds, notes]);
   const vaultIndex = useMemo(() => createVaultIndex(tree), [tree]);
+  const openFiles = useMemo(
+    () => openFileIds.flatMap((id) => {
+      const file = vaultIndex.byId.get(id);
+      return file && file.type !== 'folder' && file.type !== 'other' ? [file] : [];
+    }),
+    [openFileIds, vaultIndex],
+  );
+
+  const updateOpenFileIds = useCallback((nextIds: string[]) => {
+    openFileIdsRef.current = nextIds;
+    setOpenFileIds(nextIds);
+  }, []);
+
+  const activateFile = useCallback((file: VaultNode, replaceHistory = false) => {
+    selectedFileRef.current = file;
+    setSelectedFile(file);
+    setRoutePath(file.path);
+    if (replaceHistory) replaceNoteHash(file.path);
+    else setNoteHash(file.path);
+  }, []);
 
   const selectVault = useCallback((folder: Pick<DriveFile, 'id' | 'name'>) => {
     const vault = { id: folder.id, name: folder.name };
     localStorage.setItem(SELECTED_VAULT_KEY, JSON.stringify(vault));
     setSelectedVault(vault);
     setSelectedFile(null);
+    selectedFileRef.current = null;
+    updateOpenFileIds([]);
     setRecentNoteIds(readRecentNoteIds(vault.id));
     setRoutePath(null);
     clearNoteHash();
-  }, []);
+  }, [updateOpenFileIds]);
 
   const clearVault = useCallback(() => {
     removeMigratedStorage(localStorage, SELECTED_VAULT_KEY, LEGACY_SELECTED_VAULT_KEY);
     setSelectedVault(null);
     setSelectedFile(null);
+    selectedFileRef.current = null;
+    updateOpenFileIds([]);
     setRecentNoteIds([]);
     setRoutePath(null);
     clearNoteHash();
-  }, []);
+  }, [updateOpenFileIds]);
 
   const cacheNoteIcon = useCallback(
     (fileId: string, content: string) => {
@@ -177,10 +210,58 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   );
 
   const selectFile = useCallback((file: VaultNode) => {
-    setSelectedFile(file);
-    setRoutePath(file.path);
-    setNoteHash(file.path);
-  }, []);
+    if (file.type === 'folder' || file.type === 'other') return;
+    const currentIds = openFileIdsRef.current;
+    if (!currentIds.includes(file.id)) {
+      const activeIndex = currentIds.indexOf(selectedFileRef.current?.id ?? '');
+      const nextIds = activeIndex === -1
+        ? [...currentIds, file.id]
+        : currentIds.map((id, index) => index === activeIndex ? file.id : id);
+      updateOpenFileIds(nextIds);
+    }
+    activateFile(file);
+  }, [activateFile, updateOpenFileIds]);
+
+  const openFileInTab = useCallback((file: VaultNode) => {
+    if (file.type === 'folder' || file.type === 'other') return;
+    if (!openFileIdsRef.current.includes(file.id)) {
+      updateOpenFileIds([...openFileIdsRef.current, file.id]);
+    }
+    if (!selectedFileRef.current) activateFile(file);
+  }, [activateFile, updateOpenFileIds]);
+
+  const activateFileTab = useCallback((fileId: string) => {
+    const file = vaultIndex.byId.get(fileId);
+    if (!file || file.type === 'folder' || file.type === 'other') return;
+    activateFile(file);
+  }, [activateFile, vaultIndex]);
+
+  const closeFileTabs = useCallback((fileIds: ReadonlySet<string>) => {
+    const currentIds = openFileIdsRef.current;
+    const nextIds = currentIds.filter((id) => !fileIds.has(id));
+    if (nextIds.length !== currentIds.length) updateOpenFileIds(nextIds);
+
+    const activeId = selectedFileRef.current?.id;
+    if (!activeId || !fileIds.has(activeId)) return;
+    const closedIndex = currentIds.indexOf(activeId);
+    const nextActiveId = closedIndex === -1
+      ? nextIds[0]
+      : currentIds.slice(closedIndex + 1).find((id) => !fileIds.has(id))
+        ?? currentIds.slice(0, closedIndex).reverse().find((id) => !fileIds.has(id));
+    const nextFile = nextActiveId ? vaultIndex.byId.get(nextActiveId) : null;
+    if (nextFile && nextFile.type !== 'folder' && nextFile.type !== 'other') {
+      activateFile(nextFile, true);
+    } else {
+      selectedFileRef.current = null;
+      setSelectedFile(null);
+      setRoutePath(null);
+      clearNoteHash(true);
+    }
+  }, [activateFile, updateOpenFileIds, vaultIndex]);
+
+  const closeFileTab = useCallback((fileId: string) => {
+    closeFileTabs(new Set([fileId]));
+  }, [closeFileTabs]);
 
   const resolveWikilink = useCallback(
     (target: string) => {
@@ -403,7 +484,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     await deleteDriveFile(await ensureAccessToken(), image.id);
     if (imageUploadScopeRef.current !== imageUploadScope) return;
     setTree((nodes) => removeNodeFromTree(nodes, image.id));
-  }, [accessToken, ensureAccessToken, imageUploadScope, isOnline, setTree, tree]);
+    closeFileTab(image.id);
+  }, [accessToken, closeFileTab, ensureAccessToken, imageUploadScope, isOnline, setTree, tree]);
 
   const renameFolder = useCallback(
     async (folder: VaultNode, name: string) => {
@@ -448,13 +530,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         return nextIcons;
       });
 
-      if (selectedFile?.id === note.id) {
-        setSelectedFile(null);
-        setRoutePath(null);
-        clearNoteHash();
-      }
+      closeFileTab(note.id);
     },
-    [accessToken, accountId, ensureAccessToken, isOnline, removeFavorites, selectedFile?.id, selectedVault, setTree],
+    [accessToken, accountId, closeFileTab, ensureAccessToken, isOnline, removeFavorites, selectedVault, setTree],
   );
 
   const deleteFolder = useCallback(
@@ -465,11 +543,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       const currentFolder = findVaultNode(tree, folder.id);
       if (currentFolder?.type !== 'folder') throw new Error('This folder is no longer in the current vault.');
 
-      const removedNoteIds = new Set(
-        flattenVaultTree([currentFolder])
-          .filter((node) => node.type === 'markdown')
-          .map((node) => node.id),
-      );
+      const removedFiles = flattenVaultTree([currentFolder]).filter((node) => node.type === 'markdown' || node.type === 'image');
+      const removedFileIds = new Set(removedFiles.map((node) => node.id));
+      const removedNoteIds = new Set(removedFiles.filter((node) => node.type === 'markdown').map((node) => node.id));
       const validAccessToken = await ensureAccessToken();
       await deleteDriveFile(validAccessToken, currentFolder.id);
       setTree((currentTree) => removeNodeFromTree(currentTree, currentFolder.id));
@@ -491,13 +567,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         return nextIcons;
       });
 
-      if (selectedFile && removedNoteIds.has(selectedFile.id)) {
-        setSelectedFile(null);
-        setRoutePath(null);
-        clearNoteHash();
-      }
+      closeFileTabs(removedFileIds);
     },
-    [accessToken, accountId, ensureAccessToken, isOnline, removeFavorites, selectedFile, selectedVault, setTree, tree],
+    [accessToken, accountId, closeFileTabs, ensureAccessToken, isOnline, removeFavorites, selectedVault, setTree, tree],
   );
 
   const moveNode = useCallback(
@@ -656,21 +728,27 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
     if (!currentNote) {
       if (selectedFile && !isLoading && !isRefreshing) {
-        setSelectedFile(null);
-        setRoutePath(null);
-        clearNoteHash();
+        closeFileTab(selectedFile.id);
       }
       return;
     }
 
     if (currentNote === selectedFile) return;
 
+    const currentIds = openFileIdsRef.current;
+    if (!currentIds.includes(currentNote.id)) {
+      const activeIndex = currentIds.indexOf(selectedFileRef.current?.id ?? '');
+      updateOpenFileIds(activeIndex === -1
+        ? [...currentIds, currentNote.id]
+        : currentIds.map((id, index) => index === activeIndex ? currentNote.id : id));
+    }
+    selectedFileRef.current = currentNote;
     setSelectedFile(currentNote);
     if (currentNote.path !== routePath) {
       setRoutePath(currentNote.path);
       replaceNoteHash(currentNote.path);
     }
-  }, [isLoading, isRefreshing, routePath, selectedFile, vaultIndex]);
+  }, [closeFileTab, isLoading, isRefreshing, routePath, selectedFile, updateOpenFileIds, vaultIndex]);
 
   useEffect(() => {
     function handleHashChange() {
@@ -710,6 +788,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       isOnline,
       isRefreshing,
       moveNode,
+      openFileInTab,
+      openFiles,
+      activateFileTab,
+      closeFileTab,
       openWeeklyNote,
       noteIcons,
       notes,
@@ -745,6 +827,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       isOnline,
       isRefreshing,
       moveNode,
+      openFileInTab,
+      openFiles,
+      activateFileTab,
+      closeFileTab,
       openWeeklyNote,
       noteIcons,
       notes,
@@ -915,10 +1001,11 @@ function replaceNoteHash(path: string) {
   window.history.replaceState(null, '', `#/note/${encodeURIComponent(path)}`);
 }
 
-function clearNoteHash() {
+function clearNoteHash(replace = false) {
   if (!window.location.hash.startsWith('#/note/')) return;
 
-  window.history.pushState(null, '', window.location.pathname + window.location.search);
+  const method = replace ? 'replaceState' : 'pushState';
+  window.history[method](null, '', window.location.pathname + window.location.search);
 }
 
 export function useVault() {

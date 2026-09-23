@@ -138,6 +138,33 @@ it('renames and deletes an image, reconciles selection, and retains state on fai
 });
 
 describe('VaultContext cache mutations', () => {
+  it('opens background tabs, activates existing tabs, and selects an adjacent tab when closing', async () => {
+    mocks.createDriveMarkdownFile
+      .mockResolvedValueOnce(file('alpha', 'Alpha.md', 'created'))
+      .mockResolvedValueOnce(file('beta', 'Beta.md', 'created'));
+    const wrapper = ({ children }: { children: ReactNode }) => <VaultProvider>{children}</VaultProvider>;
+    const { result } = renderHook(() => useVault(), { wrapper });
+    let alpha!: VaultNode;
+    let beta!: VaultNode;
+
+    await act(async () => {
+      alpha = await result.current.createNote(null, 'Alpha');
+      beta = await result.current.createNote(null, 'Beta');
+    });
+    expect(result.current.openFiles.map(({ id }) => id)).toEqual(['beta']);
+
+    act(() => result.current.openFileInTab(alpha));
+    expect(result.current.openFiles.map(({ id }) => id)).toEqual(['beta', 'alpha']);
+    expect(result.current.selectedFile?.id).toBe('beta');
+
+    act(() => result.current.activateFileTab('alpha'));
+    expect(result.current.selectedFile?.id).toBe('alpha');
+    act(() => result.current.closeFileTab('alpha'));
+    expect(result.current.openFiles.map(({ id }) => id)).toEqual(['beta']);
+    expect(result.current.selectedFile?.id).toBe(beta.id);
+    expect(window.location.hash).toContain('Beta.md');
+  });
+
   it('updates the selected note for browser back and forward navigation', async () => {
     mocks.createDriveMarkdownFile
       .mockResolvedValueOnce(file('alpha', 'Alpha.md', 'created'))

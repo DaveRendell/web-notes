@@ -348,7 +348,7 @@ function encodeWikiLinkUrl(target: string, alias: string | null) {
   return `${WIKILINK_URL_PREFIX}${encodeURIComponent(target)}?alias=${alias === null ? '' : encodeURIComponent(alias)}`;
 }
 
-function decodeWikiLinkUrl(url: string) {
+export function decodeWikiLinkUrl(url: string) {
   if (!url.startsWith(WIKILINK_URL_PREFIX)) return null;
   const encoded = url.slice(WIKILINK_URL_PREFIX.length);
   const separator = encoded.indexOf('?alias=');

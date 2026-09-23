@@ -99,6 +99,43 @@ describe('rich Markdown checklists', () => {
   });
 });
 
+describe('rich Markdown wikilinks', () => {
+  it('opens ordinary clicks in the active tab and middle clicks in a new tab', async () => {
+    const onOpenWikilink = vi.fn();
+    const { container } = render(
+      <ThemeProvider>
+        <RichMarkdownEditor
+          markdown="See [[Projects/Roadmap|the roadmap]]."
+          notes={[]}
+          onActiveChange={vi.fn()}
+          onActivity={vi.fn()}
+          onChange={vi.fn()}
+          onError={vi.fn()}
+          onInitialNormalize={vi.fn()}
+          onOpenWikilink={onOpenWikilink}
+          onSave={vi.fn()}
+          recentNotes={[]}
+          spellCheck={false}
+        />
+      </ThemeProvider>,
+    );
+    const shell = await waitFor(() => {
+      const candidate = container.querySelector<HTMLElement>('.rich-markdown-editor-shell');
+      expect(candidate).not.toBeNull();
+      return candidate!;
+    });
+    const link = document.createElement('a');
+    link.href = 'web-notes-wikilink:Projects%2FRoadmap?alias=the%20roadmap';
+    link.textContent = 'the roadmap';
+    shell.append(link);
+
+    fireEvent.click(link);
+    expect(onOpenWikilink).toHaveBeenCalledWith('Projects/Roadmap', false);
+    fireEvent(link, new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    expect(onOpenWikilink).toHaveBeenCalledWith('Projects/Roadmap', true);
+  });
+});
+
 describe('portable rich Markdown corpus', () => {
   it.each(richMarkdownCorpus)('hydrates $name without treating initialization as an edit', async (fixture) => {
     const { markdown } = fixture;

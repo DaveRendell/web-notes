@@ -37,6 +37,7 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
     favoriteNoteIds,
     isOnline,
     noteIcons,
+    openFileInTab,
     renameFolder,
     renameNote,
     selectFile,
@@ -216,6 +217,11 @@ export function FileTreeItem({ node }: { node: VaultNode }) {
           aria-expanded={isFolder ? isOpen : undefined}
           type="button"
           onClick={handleClick}
+          onAuxClick={(event) => {
+            if (event.button !== 1 || (node.type !== 'markdown' && node.type !== 'image')) return;
+            event.preventDefault();
+            openFileInTab(node);
+          }}
           disabled={node.type === 'other'}
         >
           {isFolder ? (

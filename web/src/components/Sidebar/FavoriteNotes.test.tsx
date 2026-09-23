@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   draggable: vi.fn(() => () => undefined),
   dropTargetForElements: vi.fn(() => () => undefined),
   monitorForElements: vi.fn(() => () => undefined),
+  openFileInTab: vi.fn(),
   reorderFavorite: vi.fn(),
   selectFile: vi.fn(),
   toggleFavorite: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock('../../contexts/VaultContext', () => ({
   useVault: () => ({
     favoriteNotes: favorites,
     noteIcons: { one: '⭐' },
+    openFileInTab: mocks.openFileInTab,
     reorderFavorite: mocks.reorderFavorite,
     selectFile: mocks.selectFile,
     selectedFile: favorites[0],
@@ -54,6 +56,13 @@ describe('FavoriteNotes', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove Two from favourites' }));
     expect(mocks.toggleFavorite).toHaveBeenCalledWith('two');
+  });
+
+  it('opens favourite notes in a background tab with the middle mouse button', () => {
+    render(<FavoriteNotes />);
+    fireEvent(screen.getByRole('button', { name: 'Two' }), new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    expect(mocks.openFileInTab).toHaveBeenCalledWith(favorites[1]);
+    expect(mocks.selectFile).not.toHaveBeenCalled();
   });
 
   it('reorders notes with its isolated drag payload', () => {

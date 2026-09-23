@@ -34,6 +34,7 @@ vi.mock('../contexts/VaultContext', () => ({
   }),
 }));
 vi.mock('./MarkdownViewer', () => ({ MarkdownViewer: () => <div>Viewer</div> }));
+vi.mock('./FileTabs', () => ({ FileTabs: () => null }));
 vi.mock('./NoteSearch', () => ({
   NoteSearch: () => (
     <>

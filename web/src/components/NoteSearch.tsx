@@ -8,7 +8,7 @@ import { AppModal } from './AppModal';
 const MAX_RESULTS = 8;
 
 export function NoteSearch() {
-  const { notes, recentNotes, selectFile } = useVault();
+  const { notes, openFileInTab, recentNotes, selectFile } = useVault();
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -113,6 +113,11 @@ export function NoteSearch() {
                 key={note.id}
                 onMouseEnter={() => setActiveIndex(index)}
                 onClick={() => chooseNote(note)}
+                onAuxClick={(event) => {
+                  if (event.button !== 1) return;
+                  event.preventDefault();
+                  openFileInTab(note);
+                }}
                 role="option"
                 type="button"
               >
