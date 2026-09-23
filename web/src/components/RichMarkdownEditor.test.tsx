@@ -62,6 +62,43 @@ describe('rich Markdown table controls', () => {
   });
 });
 
+describe('rich Markdown checklists', () => {
+  it('keeps text clicks in editing mode without making Space toggle the checkbox', async () => {
+    const { container } = render(
+      <ThemeProvider>
+        <RichMarkdownEditor
+          markdown="- [ ] Existing item"
+          notes={[]}
+          onActiveChange={vi.fn()}
+          onActivity={vi.fn()}
+          onChange={vi.fn()}
+          onError={vi.fn()}
+          onInitialNormalize={vi.fn()}
+          onSave={vi.fn()}
+          recentNotes={[]}
+          spellCheck={false}
+        />
+      </ThemeProvider>,
+    );
+    const item = await waitFor(() => {
+      const candidate = container.querySelector<HTMLElement>('li[role="checkbox"]');
+      expect(candidate).not.toBeNull();
+      return candidate!;
+    });
+    vi.spyOn(item, 'getBoundingClientRect').mockReturnValue({
+      left: 0, right: 240, top: 0, bottom: 24, width: 240, height: 24, x: 0, y: 0, toJSON: () => ({}),
+    });
+
+    expect(item.getAttribute('tabindex')).toBe('-1');
+    fireEvent.pointerDown(item, { clientX: 80 });
+    expect(item.hasAttribute('tabindex')).toBe(false);
+    await waitFor(() => expect(item.getAttribute('tabindex')).toBe('-1'));
+
+    fireEvent.pointerDown(item, { clientX: 4 });
+    expect(item.getAttribute('tabindex')).toBe('-1');
+  });
+});
+
 describe('portable rich Markdown corpus', () => {
   it.each(richMarkdownCorpus)('hydrates $name without treating initialization as an edit', async (fixture) => {
     const { markdown } = fixture;

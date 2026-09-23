@@ -25,7 +25,7 @@ import {
   thematicBreakPlugin,
   toolbarPlugin,
 } from '@mdxeditor/editor';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { refreshContentEditableSpellcheck } from '../lib/contentEditableSpellcheck';
 import type { VaultNode } from '../types/vault';
@@ -157,7 +157,10 @@ export default function RichMarkdownEditor({ markdown, blockMovementDisabled = f
         updateActiveTable(event.target);
         if (!refreshingSpellcheckRef.current) onActiveChange(true);
       }}
-      onPointerDownCapture={onActivity}
+      onPointerDownCapture={(event) => {
+        preserveChecklistTextCaret(event);
+        onActivity();
+      }}
       onKeyDownCapture={(event) => {
         onActivity();
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
@@ -187,4 +190,32 @@ export default function RichMarkdownEditor({ markdown, blockMovementDisabled = f
       />
     </div>
   );
+}
+
+/**
+ * Lexical makes checklist rows programmatically focusable so their marker can
+ * be toggled with Space. Firefox also focuses that row when its ordinary text
+ * is clicked, which leaves the apparent caret attached to the checkbox. Make
+ * text clicks follow normal contenteditable focus while retaining the marker's
+ * keyboard behaviour.
+ */
+export function preserveChecklistTextCaret(event: Pick<ReactPointerEvent, 'target' | 'clientX'>) {
+  if (!(event.target instanceof HTMLElement)) return;
+  const item = event.target.closest<HTMLElement>('li[role="checkbox"]');
+  if (!item || event.target !== item || item.getAttribute('tabindex') === null) return;
+
+  const rect = item.getBoundingClientRect();
+  const markerWidth = Number.parseFloat(getComputedStyle(item, '::before').width) || 16;
+  const clickedMarker = item.dir === 'rtl'
+    ? event.clientX >= rect.right - markerWidth && event.clientX <= rect.right
+    : event.clientX >= rect.left && event.clientX <= rect.left + markerWidth;
+  if (clickedMarker) return;
+
+  const tabIndex = item.getAttribute('tabindex')!;
+  item.removeAttribute('tabindex');
+  window.setTimeout(() => {
+    if (item.isConnected && item.getAttribute('role') === 'checkbox' && item.getAttribute('tabindex') === null) {
+      item.setAttribute('tabindex', tabIndex);
+    }
+  }, 0);
 }
