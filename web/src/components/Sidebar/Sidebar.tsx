@@ -1,6 +1,9 @@
-import { AlertCircle, AlertTriangle, FilePlus2, FolderPlus, Loader2 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { AlertCircle, AlertTriangle, FilePlus2, FileText, FolderPlus, Loader2 } from 'lucide-react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { useVault } from '../../contexts/VaultContext';
+import { getWeeklyNoteDetails } from '../../lib/weeklyNote';
+import { flattenVaultNodes, getVaultNodeDisplayName } from '../../lib/vaultTree';
+import { Twemoji } from '../Twemoji';
 import { FileTree } from './FileTree';
 import { FavoriteNotes } from './FavoriteNotes';
 import { CollapsibleSidebarSection } from './CollapsibleSidebarSection';
@@ -13,10 +16,21 @@ export function Sidebar({ controls }: { controls?: ReactNode }) {
     isLoading,
     isOnline,
     isRefreshing,
+    noteIcons,
+    openWeeklyNote,
+    selectedFile,
     refreshError,
     selectedVault,
     tree,
   } = useVault();
+  const [isOpeningWeeklyNote, setIsOpeningWeeklyNote] = useState(false);
+  const weeklyDetails = getWeeklyNoteDetails(new Date());
+  const flatTree = useMemo(() => flattenVaultNodes(tree), [tree]);
+  const weeklyNote = flatTree.find((node) => node.path === weeklyDetails.path && node.type === 'markdown') ?? null;
+  const weeklyTemplate = flatTree.find((node) => node.path === 'Templates/Week.md' && node.type === 'markdown') ?? null;
+  const weeklyEmoji = weeklyNote
+    ? noteIcons[weeklyNote.id]
+    : weeklyTemplate ? noteIcons[weeklyTemplate.id] : null;
 
   async function handleCreateRootNote() {
     const name = window.prompt('New note name');
@@ -43,6 +57,31 @@ export function Sidebar({ controls }: { controls?: ReactNode }) {
   return (
     <aside className="sidebar" id="vault-sidebar" aria-label="Vault files">
       {controls && <div className="sidebar-toolbar">{controls}</div>}
+      {!isLoading && !error && (
+        <div className="weekly-note-row">
+          <span aria-hidden="true" />
+          <button
+            className={selectedFile?.id === weeklyNote?.id ? 'favorite-note selected' : 'favorite-note'}
+            type="button"
+            onClick={() => {
+              setIsOpeningWeeklyNote(true);
+              void openWeeklyNote()
+                .catch((requestError) => window.alert(
+                  requestError instanceof Error ? requestError.message : 'Failed to open this week’s note.',
+                ))
+                .finally(() => setIsOpeningWeeklyNote(false));
+            }}
+            disabled={isOpeningWeeklyNote || (!weeklyNote && !isOnline)}
+            aria-label={`Open this week's note: ${weeklyDetails.filename.replace(/\.md$/i, '')}`}
+            title={weeklyNote?.path ?? weeklyDetails.path}
+          >
+            {weeklyEmoji ? <span className="note-emoji"><Twemoji emoji={weeklyEmoji} hidden /></span> : <FileText size={15} />}
+            <span>{weeklyNote ? getVaultNodeDisplayName(weeklyNote) : weeklyDetails.filename.replace(/\.md$/i, '')}</span>
+            {isOpeningWeeklyNote && <Loader2 className="spin" size={14} aria-label="Opening weekly note" />}
+          </button>
+          <span aria-hidden="true" />
+        </div>
+      )}
       {!isLoading && !error && <FavoriteNotes />}
       <CollapsibleSidebarSection
         className="files-section"

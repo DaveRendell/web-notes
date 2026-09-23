@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ExternalNoteChangeError, displayNameFromSafUri, listVaultCore, listVaultFolderCore, openLocalWeeklyNoteCore, parseVaultListCache, replaceVaultFolderChildren, saveNoteCore, splitFrontmatter, type LocalFolder, type LocalNote, type LocalVaultItem, type VaultEntry, type VaultFiles } from '../localVaultCore';
+import { ExternalNoteChangeError, displayNameFromSafUri, listVaultCore, listVaultFolderCore, openLocalWeeklyNoteCore, parseVaultListCache, readLocalWeeklyTemplateCore, replaceVaultFolderChildren, saveNoteCore, splitFrontmatter, type LocalFolder, type LocalNote, type LocalVaultItem, type VaultEntry, type VaultFiles } from '../localVaultCore';
 import { buildBrowserRows, expandPath } from '../localVaultTree';
 
 const directories = new Map<string, VaultEntry[]>();
@@ -158,5 +158,17 @@ describe('Android local vault adapter', () => {
 
     expect(note.path).toBe('Weeks/2026/Week 38 2026.md');
     expect(writeText).toHaveBeenCalledWith(note.uri, '# Week 38 2026\n2026-09-14 to 2026-09-20');
+  });
+
+  it('reads the weekly template without creating a note', async () => {
+    const folders = new Map<string, LocalVaultItem[]>([
+      ['root', [{ kind: 'folder', uri: 'templates', path: 'Templates', parentPath: '', name: 'Templates' }]],
+      ['templates', [{ kind: 'note', uri: 'week-template', path: 'Templates/Week.md', parentPath: 'Templates', name: 'Week.md', size: 0 }]],
+    ]);
+
+    await expect(readLocalWeeklyTemplateCore('root', {
+      listFolder: async (uri) => folders.get(uri) ?? [],
+      readText: async () => '# 📅 Week $week',
+    })).resolves.toBe('# 📅 Week $week');
   });
 });

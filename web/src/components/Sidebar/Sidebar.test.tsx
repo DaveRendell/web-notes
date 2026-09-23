@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   createFolder: vi.fn(),
   createNote: vi.fn(),
   isRefreshing: false,
+  openWeeklyNote: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('../../contexts/VaultContext', () => ({
@@ -15,9 +16,16 @@ vi.mock('../../contexts/VaultContext', () => ({
     isLoading: false,
     isOnline: true,
     isRefreshing: mocks.isRefreshing,
+    noteIcons: { template: '📅' },
+    openWeeklyNote: mocks.openWeeklyNote,
     refreshError: null,
+    selectedFile: null,
     selectedVault: { id: 'vault', name: 'Vault' },
-    tree: [{ id: 'note' }],
+    tree: [{
+      id: 'templates', name: 'Templates', path: 'Templates', type: 'folder', source: {}, children: [
+        { id: 'template', name: 'Week.md', path: 'Templates/Week.md', type: 'markdown', source: {} },
+      ],
+    }],
   }),
 }));
 vi.mock('./FavoriteNotes', () => ({ FavoriteNotes: () => <section>Favourites section</section> }));
@@ -32,6 +40,17 @@ afterEach(() => {
 });
 
 describe('Sidebar files section', () => {
+  it("shows this week's prospective note as a note row above favourites", () => {
+    render(<Sidebar />);
+
+    const weeklyNote = screen.getByRole('button', { name: /Open this week's note: Week \d+ \d{4}/ });
+    expect(weeklyNote.querySelector('img')?.getAttribute('alt')).toBe('');
+    expect(weeklyNote.compareDocumentPosition(screen.getByText('Favourites section')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.click(weeklyNote);
+    expect(mocks.openWeeklyNote).toHaveBeenCalledOnce();
+  });
+
   it('puts root creation actions beside a collapsible Files heading', () => {
     render(<Sidebar />);
 

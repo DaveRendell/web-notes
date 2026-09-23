@@ -23,6 +23,8 @@ export type WeeklyVaultOperations = {
   writeText(uri: string, text: string): Promise<void>;
 };
 
+export type WeeklyTemplateOperations = Pick<WeeklyVaultOperations, 'listFolder' | 'readText'>;
+
 export class ExternalNoteChangeError extends Error {
   constructor() {
     super('This note changed on the phone since you opened it. Your draft is still here; reload the note before saving.');
@@ -164,4 +166,13 @@ export async function openLocalWeeklyNoteCore(rootUri: string, operations: Weekl
   const note = await operations.createNote(year.uri, year.path, details.filename);
   await operations.writeText(note.uri, applyWeeklyNoteTemplate(templateText, details));
   return note;
+}
+
+export async function readLocalWeeklyTemplateCore(rootUri: string, operations: WeeklyTemplateOperations): Promise<string | null> {
+  const rootItems = await operations.listFolder(rootUri, '');
+  const templateFolder = rootItems.find((item) => item.kind === 'folder' && item.name.localeCompare('Templates', undefined, { sensitivity: 'base' }) === 0);
+  if (!templateFolder || templateFolder.kind !== 'folder') return null;
+  const templateItems = await operations.listFolder(templateFolder.uri, templateFolder.path);
+  const template = templateItems.find((item) => item.kind === 'note' && item.name.localeCompare('Week.md', undefined, { sensitivity: 'base' }) === 0);
+  return template?.kind === 'note' ? operations.readText(template.uri) : null;
 }

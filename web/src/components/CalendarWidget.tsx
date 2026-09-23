@@ -1,8 +1,9 @@
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { $getNodeByKey, type NodeKey } from 'lexical';
-import { CalendarDays, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CalendarDays, Loader2, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 import { useCalendar } from '../contexts/CalendarContext';
+import { formatCalendarEventStart } from '../lib/calendarEventDisplay';
 import type { CalendarWidgetConfig } from '../lib/calendarWidget';
 import { GoogleCalendarError, type GoogleCalendarEvent } from '../lib/googleCalendar';
 import { InsertCalendarButton } from './InsertCalendarButton';
@@ -45,7 +46,6 @@ export function CalendarWidget({ config, nodeKey }: { config: CalendarWidgetConf
     if (hasAccess) void load();
   }, [configKey, hasAccess, load]);
 
-  const groups = useMemo(() => groupEvents(events, config.timezone), [config.timezone, events]);
   const rangeLabel = formatRange(config);
 
   return (
@@ -90,21 +90,14 @@ export function CalendarWidget({ config, nodeKey }: { config: CalendarWidgetConf
           catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not reconnect Google Calendar.'); }
           finally { setLoading(false); }
         }}>{needsReconnect ? 'Reconnect Calendar' : 'Try again'}</button></div>
-      ) : groups.length === 0 && errors.length > 0 ? (
+      ) : events.length === 0 && errors.length > 0 ? (
         <p className="calendar-widget-message error-text">Events could not be loaded from the selected calendars.</p>
-      ) : groups.length === 0 ? (
+      ) : events.length === 0 ? (
         <p className="calendar-widget-message">No events in this date range.</p>
       ) : (
-        <div className="calendar-event-groups">
-          {groups.map((group) => (
-            <section key={group.date} className="calendar-event-group">
-              <h4>{group.label}</h4>
-              <ul>
-                {group.events.map((event) => <CalendarEventRow event={event} key={`${event.calendarId}:${event.id}`} timeZone={config.timezone} />)}
-              </ul>
-            </section>
-          ))}
-        </div>
+        <ul className="calendar-event-list">
+          {events.map((event) => <CalendarEventRow event={event} key={`${event.calendarId}:${event.id}`} timeZone={config.timezone} />)}
+        </ul>
       )}
       {errors.length > 0 && (
         <p className="calendar-widget-warning" role="status">
@@ -116,41 +109,17 @@ export function CalendarWidget({ config, nodeKey }: { config: CalendarWidgetConf
 }
 
 function CalendarEventRow({ event, timeZone }: { event: GoogleCalendarEvent; timeZone: string }) {
-  const time = event.start.date ? 'All day' : new Intl.DateTimeFormat(undefined, {
-    hour: 'numeric', minute: '2-digit', timeZone,
-  }).format(new Date(event.start.dateTime!));
+  const start = formatCalendarEventStart(event, timeZone);
   return (
     <li>
-      <span className="calendar-event-time">{time}</span>
-      <span className="calendar-event-dot" style={{ backgroundColor: event.calendarColor }} aria-hidden="true" />
+      <span className="calendar-event-when">{start.date}{start.time ? ` · ${start.time}` : ''}</span>
       <span className="calendar-event-details">
         {event.htmlLink ? (
-          <a href={event.htmlLink} target="_blank" rel="noreferrer">{event.summary}<ExternalLink size={12} /></a>
+          <a href={event.htmlLink} target="_blank" rel="noreferrer">{event.summary}</a>
         ) : <strong>{event.summary}</strong>}
-        <small>{event.calendarName}{event.location ? ` · ${event.location}` : ''}</small>
       </span>
     </li>
   );
-}
-
-function groupEvents(events: GoogleCalendarEvent[], timeZone: string) {
-  const formatter = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-  const groups = new Map<string, GoogleCalendarEvent[]>();
-  for (const event of events) {
-    const date = event.start.date ?? dateInTimeZone(new Date(event.start.dateTime!), timeZone);
-    groups.set(date, [...(groups.get(date) ?? []), event]);
-  }
-  return [...groups].map(([date, groupedEvents]) => ({
-    date,
-    label: formatter.format(new Date(`${date}T12:00:00Z`)),
-    events: groupedEvents,
-  }));
-}
-
-function dateInTimeZone(date: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone }).formatToParts(date);
-  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function formatRange(config: CalendarWidgetConfig) {

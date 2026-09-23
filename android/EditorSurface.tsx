@@ -375,18 +375,13 @@ export default function EditorSurface({ fixtureName, markdown, onEvent, onEditor
         .calendar-widget-actions button { display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; }
         .calendar-widget-message { margin: 0; padding: 16px; color: #647180; }
         .calendar-widget-message button { min-height: 38px; padding: 7px 10px; background: #e5edf3; color: #183f59; }
-        .calendar-event-group { display: grid; grid-template-columns: 82px minmax(0, 1fr); align-items: start; gap: 7px; padding: 7px 12px; }
-        .calendar-event-group + .calendar-event-group { border-top: 1px solid #e7ebef; }
-        .calendar-event-group h4 { margin: 2px 0 0; color: #647180; font-size: 12px; text-transform: uppercase; white-space: nowrap; }
-        .calendar-event-group ul { margin: 0; padding: 0; list-style: none; }
-        .calendar-event-group li { display: grid; grid-template-columns: 62px 9px minmax(0, 1fr); align-items: center; gap: 7px; margin: 0; padding: 2px 0; min-width: 0; }
-        .calendar-event-time { color: #697586; font-size: 12px; white-space: nowrap; }
-        .calendar-event-dot { width: 8px; height: 8px; border-radius: 50%; background: #4c7fa5; }
+        .calendar-event-list { margin: 0; padding: 7px 12px; list-style: none; }
+        .calendar-event-list li { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 7px; margin: 0; padding: 2px 0; min-width: 0; }
+        .calendar-event-when { color: #697586; font-size: 12px; white-space: nowrap; }
         .calendar-event-details { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
         .calendar-event-link { display: inline-flex; max-width: 100%; gap: 4px; overflow: hidden; padding: 0; color: #225f87 !important; font: inherit; font-weight: 600 !important; text-align: left; text-overflow: ellipsis; white-space: nowrap; vertical-align: top; }
         .calendar-event-link svg { flex: 0 0 auto; }
         .calendar-event-details strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .calendar-event-details small { display: none; }
         .calendar-widget-warning { margin: 0; padding: 8px 12px; border-top: 1px solid #ead7aa; background: #fff6df; color: #805c15; font-size: 12px; }
         .app-modal-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; background: #0006; }
         .app-modal, .calendar-dialog { width: min(560px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow: auto;
@@ -437,10 +432,7 @@ export default function EditorSurface({ fixtureName, markdown, onEvent, onEditor
         .prototype-shell.dark-theme .calendar-widget { border-color: #3b4654; background: #252d38; color: #e2e7ed; }
         .prototype-shell.dark-theme .calendar-widget > header { border-color: #3b4654; background: #2d3743; }
         .prototype-shell.dark-theme .calendar-widget button { color: #b2bdca; }
-        .prototype-shell.dark-theme .calendar-event-group + .calendar-event-group { border-color: #394451; }
-        .prototype-shell.dark-theme .calendar-event-group h4,
-        .prototype-shell.dark-theme .calendar-event-time,
-        .prototype-shell.dark-theme .calendar-event-details small,
+        .prototype-shell.dark-theme .calendar-event-when,
         .prototype-shell.dark-theme .calendar-widget-message { color: #a8b3bf; }
         .prototype-shell.dark-theme .calendar-event-link { color: #8ec5ea !important; }
         .prototype-shell.dark-theme .calendar-widget-message button { background: #263d50; color: #dceefa; }

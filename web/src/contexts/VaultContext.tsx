@@ -705,6 +705,51 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, [accountId, selectedVault]);
 
   useEffect(() => {
+    const templateNote = vaultIndex.byPath.get('Templates/Week.md');
+    if (
+      !accountId
+      || !selectedVault
+      || templateNote?.type !== 'markdown'
+      || Object.hasOwn(noteIcons, templateNote.id)
+    ) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const cached = await getNoteContent(accountId, selectedVault.id, templateNote.id);
+        const cacheIsCurrent = Boolean(
+          cached?.modifiedTime
+          && templateNote.source.modifiedTime
+          && cached.modifiedTime === templateNote.source.modifiedTime,
+        );
+        let content = cached?.content ?? '';
+        if (!cacheIsCurrent && isOnline) {
+          try {
+            content = await getDriveFileText(await ensureAccessToken(), templateNote.id);
+          } catch (requestError) {
+            if (!isGoogleDriveAuthError(requestError)) throw requestError;
+            invalidateAccessToken();
+            content = await getDriveFileText(await ensureAccessToken(), templateNote.id);
+          }
+          void putNoteContent({
+            accountId,
+            vaultId: selectedVault.id,
+            fileId: templateNote.id,
+            content,
+            modifiedTime: templateNote.source.modifiedTime,
+            cachedAt: Date.now(),
+          });
+        }
+        if (!cancelled && (cached || cacheIsCurrent || isOnline)) cacheNoteIcon(templateNote.id, content);
+      } catch (previewError) {
+        console.warn('Could not load the weekly note template icon:', previewError);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [accountId, cacheNoteIcon, ensureAccessToken, invalidateAccessToken, isOnline, noteIcons, selectedVault, vaultIndex]);
+
+  useEffect(() => {
     if (!selectedVault || selectedFile?.type !== 'markdown') return;
 
     setRecentNoteIds((currentIds) => {

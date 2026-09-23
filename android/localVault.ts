@@ -1,6 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { Directory } from 'expo-file-system';
-import { displayNameFromSafUri, listVaultCore, listVaultFolderCore, openLocalWeeklyNoteCore, parseVaultListCache, saveNoteCore, type LocalFolder, type LocalImage, type LocalNote, type LocalVaultItem, type VaultFiles, type VaultListCache } from './localVaultCore';
+import { displayNameFromSafUri, listVaultCore, listVaultFolderCore, openLocalWeeklyNoteCore, parseVaultListCache, readLocalWeeklyTemplateCore, saveNoteCore, type LocalFolder, type LocalImage, type LocalNote, type LocalVaultItem, type VaultFiles, type VaultListCache } from './localVaultCore';
 import fastSaf from './modules/fast-saf';
 import { parseFavouritePaths, parseNoteIconCache } from './vaultFeatures';
 
@@ -185,4 +185,11 @@ export async function openLocalWeeklyNote(rootUri: string, date = new Date()): P
     readText: readNote,
     writeText: files.writeText,
   }, date);
+}
+
+export async function readLocalWeeklyTemplate(rootUri: string): Promise<string | null> {
+  return readLocalWeeklyTemplateCore(rootUri, {
+    listFolder: (parentUri, parentPath) => listVaultFolder(rootUri, parentUri, parentPath),
+    readText: readNote,
+  });
 }

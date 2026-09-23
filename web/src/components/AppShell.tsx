@@ -1,4 +1,4 @@
-import { CalendarDays, Loader2, LogOut, Moon, PanelLeftClose, RefreshCw, Settings, Sun, Unplug } from 'lucide-react';
+import { LogOut, Moon, PanelLeftClose, RefreshCw, Settings, Sun, Unplug } from 'lucide-react';
 import { CSSProperties, KeyboardEvent, PointerEvent, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -15,11 +15,10 @@ import { FileTabs } from './FileTabs';
 export function AppShell() {
   const { disconnect, error: authError, isAuthenticated, signIn, signOut, status } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const { clearVault, createNote, isLoading, isOnline, openWeeklyNote, selectedVault } = useVault();
+  const { clearVault, createNote, isOnline, selectedVault } = useVault();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readSidebarCollapsed);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 760);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [isOpeningWeeklyNote, setIsOpeningWeeklyNote] = useState(false);
   const sidebarToggleRef = useRef<HTMLButtonElement>(null);
   const { selectedFile } = useVault();
   const sidebarCollapsed = isMobile ? !mobileSidebarOpen : isSidebarCollapsed;
@@ -166,23 +165,6 @@ export function AppShell() {
               <PanelLeftClose size={18} />
             </button>
             <NoteSearch />
-            <button
-              className="icon-button"
-              type="button"
-              onClick={() => {
-                setIsOpeningWeeklyNote(true);
-                void openWeeklyNote()
-                  .catch((requestError) => window.alert(
-                    requestError instanceof Error ? requestError.message : 'Failed to open this week’s note.',
-                  ))
-                  .finally(() => setIsOpeningWeeklyNote(false));
-              }}
-              disabled={isLoading || isOpeningWeeklyNote}
-              aria-label="Open this week's note"
-              title={isLoading ? 'Wait for the vault to finish loading' : "Open this week's note"}
-            >
-              {isOpeningWeeklyNote ? <Loader2 className="spin" size={18} /> : <CalendarDays size={18} />}
-            </button>
             <HeaderActionsMenu onChangeVault={clearVault} onDisconnect={disconnect} onSignOut={signOut} />
           </>
         )}

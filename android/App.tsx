@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Appearance, AppState, BackHandler, FlatList, Image as NativeImage, Keyboard, Linking, Modal, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, useColorScheme, View } from 'react-native';
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, EllipsisVertical, FileCode2, FilePlus2, FileText, Folder, FolderOpen, FolderPlus, Image as ImageIcon, MoreHorizontal, RefreshCw, Save, Search, Settings, X } from 'lucide-react-native';
+import { ChevronDown, ChevronLeft, ChevronRight, EllipsisVertical, FileCode2, FilePlus2, FileText, Folder, FolderOpen, FolderPlus, Image as ImageIcon, MoreHorizontal, RefreshCw, Save, Search, Settings, X } from 'lucide-react-native';
 import { SvgUri } from 'react-native-svg';
 import EditorSurface from './EditorSurface';
-import { chooseVault, createFolder, createImage, createNote, listVault, listVaultFolder, openLocalWeeklyNote, readImageData, readNote, readNoteIconCache, readThemePreference, readVaultFavourites, readVaultListCache, restoreVault, saveNote, splitFrontmatter, writeNoteIconCache, writeThemePreference, writeVaultListCache, type LocalFolder, type LocalImage, type LocalNote, type LocalVaultItem, type ThemePreference } from './localVault';
+import { chooseVault, createFolder, createImage, createNote, listVault, listVaultFolder, openLocalWeeklyNote, readImageData, readLocalWeeklyTemplate, readNote, readNoteIconCache, readThemePreference, readVaultFavourites, readVaultListCache, restoreVault, saveNote, splitFrontmatter, writeNoteIconCache, writeThemePreference, writeVaultListCache, type LocalFolder, type LocalImage, type LocalNote, type LocalVaultItem, type ThemePreference } from './localVault';
 import { buildBrowserRows, expandPath } from './localVaultTree';
 import { replaceVaultFolderChildren } from './localVaultCore';
 import { noteIconFromMarkdown, resolveFavouriteNotes } from './vaultFeatures';
@@ -12,6 +12,7 @@ import { getTwemojiUrl } from '../web/src/lib/twemoji';
 import { getLocalNoteSequenceNavigation } from './noteSequence';
 import { resolveLocalVaultImage } from './vaultImages';
 import { connectGoogleCalendar, loadGoogleCalendarEvents, loadGoogleCalendars, restoreCalendarConnection } from './calendarService';
+import { getWeeklyNoteDetails } from '../web/src/lib/weeklyNote';
 
 type OpenNote = { entry: LocalNote; frontmatter: string; body: string };
 
@@ -53,6 +54,7 @@ export default function App() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [themePreference, setThemePreference] = useState<ThemePreference>('system');
   const [openingWeeklyNote, setOpeningWeeklyNote] = useState(false);
+  const [weeklyTemplateIcon, setWeeklyTemplateIcon] = useState<string | null>(null);
   const [active, setActive] = useState<OpenNote | null>(null);
   const [activeImage, setActiveImage] = useState<LocalImage | null>(null);
   const [editorNote, setEditorNote] = useState<OpenNote | null>(null);
@@ -214,6 +216,19 @@ export default function App() {
     const timer = setTimeout(() => { void writeNoteIconCache(vaultUri, noteIcons); }, 400);
     return () => clearTimeout(timer);
   }, [vaultUri, noteIcons, cacheLoaded]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setWeeklyTemplateIcon(null);
+    if (vaultUri) {
+      void readLocalWeeklyTemplate(vaultUri)
+        .then((template) => {
+          if (!cancelled) setWeeklyTemplateIcon(template ? noteIconFromMarkdown(template) : null);
+        })
+        .catch((cause) => console.warn('Could not load the weekly note template icon:', cause));
+    }
+    return () => { cancelled = true; };
+  }, [vaultUri]);
 
   useEffect(() => {
     if (!search.trim()) { searchIndexAttemptedRef.current = false; return; }
@@ -515,6 +530,9 @@ export default function App() {
     ? buildBrowserRows(items, expanded, search).filter(({ item }) => item.kind === 'note')
     : [], [items, expanded, search]);
   const favouriteNotes = useMemo(() => resolveFavouriteNotes(items, favouritePaths), [items, favouritePaths]);
+  const weeklyDetails = getWeeklyNoteDetails(new Date());
+  const weeklyNote = items.find((item): item is LocalNote => item.kind === 'note' && item.path === weeklyDetails.path) ?? null;
+  const weeklyIcon = weeklyNote ? noteIcons[weeklyNote.path] : weeklyTemplateIcon;
   const sequenceNavigation = useMemo(() => active
     ? getLocalNoteSequenceNavigation(active.entry, items.filter((item): item is LocalNote => item.kind === 'note'))
     : null, [active, items]);
@@ -598,9 +616,6 @@ export default function App() {
                 <Pressable accessibilityRole="button" accessibilityLabel="Find notes" onPress={() => { setSearchVisible(true); requestAnimationFrame(() => searchRef.current?.focus()); }} style={styles.iconButton}>
                   <Search size={20} color={palette.textStrong} />
                 </Pressable>
-                <Pressable accessibilityRole="button" accessibilityLabel="Open this week's note" onPress={() => { void openThisWeek(); }} disabled={busy || openingWeeklyNote} style={styles.iconButton}>
-                  {openingWeeklyNote ? <ActivityIndicator size="small" color={palette.accentStrong} /> : <CalendarDays size={20} color={busy ? palette.disabled : palette.textStrong} />}
-                </Pressable>
                 <Pressable accessibilityRole="button" accessibilityLabel="Settings" onPress={() => setSettingsVisible(true)} style={styles.iconButton}>
                   <Settings size={20} color={palette.textStrong} />
                 </Pressable>
@@ -615,6 +630,19 @@ export default function App() {
             </View>
           ) : (
             <>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Open this week's note: ${weeklyDetails.filename.replace(/\.md$/i, '')}`}
+                onPress={() => { void openThisWeek(); }}
+                disabled={busy || openingWeeklyNote}
+                style={[styles.favouriteRow, styles.weeklyNoteRow, weeklyNote?.uri === lastOpenedUri && styles.selectedRow]}
+              >
+                <NoteIcon emoji={weeklyIcon} fallbackColor={palette.muted} />
+                <View style={styles.noteText}>
+                  <Text style={styles.noteName} numberOfLines={1}>{weeklyDetails.filename.replace(/\.md$/i, '')}</Text>
+                </View>
+                {openingWeeklyNote && <ActivityIndicator size="small" color={palette.accent} />}
+              </Pressable>
               <View style={styles.favouritesSection}>
                 <Pressable accessibilityRole="button" accessibilityLabel={`${favouritesExpanded ? 'Collapse' : 'Expand'} favourites`} onPress={() => setFavouritesExpanded((open) => !open)} style={styles.favouritesHeading}>
                   {favouritesExpanded ? <ChevronDown size={15} color={palette.muted} /> : <ChevronRight size={15} color={palette.muted} />}
@@ -921,7 +949,8 @@ function createStyles(palette: Palette) {
   filesToggle: { minHeight: 39, flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5 },
   filesTitle: { color: palette.section, fontSize: 12, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
   sectionAction: { width: 34, minHeight: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 5 },
-  favouritesSection: { marginTop: 12 },
+  weeklyNoteRow: { marginTop: 10 },
+  favouritesSection: { marginTop: 2 },
   favouritesHeading: { minHeight: 39, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 5, backgroundColor: palette.surface },
   sectionTitle: { flex: 1, color: palette.section, fontSize: 12, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
   favouritesList: { maxHeight: 210 },

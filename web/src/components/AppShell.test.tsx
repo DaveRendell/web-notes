@@ -5,7 +5,6 @@ const mocks = vi.hoisted(() => ({
   clearVault: vi.fn(),
   createNote: vi.fn(() => Promise.resolve()),
   disconnect: vi.fn(),
-  openWeeklyNote: vi.fn(() => Promise.resolve()),
   signOut: vi.fn(),
   toggleTheme: vi.fn(),
 }));
@@ -29,7 +28,6 @@ vi.mock('../contexts/VaultContext', () => ({
     createNote: mocks.createNote,
     isOnline: true,
     isLoading: false,
-    openWeeklyNote: mocks.openWeeklyNote,
     selectedVault: { id: 'vault', name: 'My Vault' },
   }),
 }));
@@ -72,14 +70,6 @@ describe('AppShell sidebar controls', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Change vault' }));
     expect(mocks.clearVault).toHaveBeenCalledOnce();
     expect(screen.queryByRole('menuitem')).toBeNull();
-  });
-
-  it("opens this week's note from the sidebar toolbar", () => {
-    render(<AppShell />);
-
-    fireEvent.click(screen.getByRole('button', { name: "Open this week's note" }));
-
-    expect(mocks.openWeeklyNote).toHaveBeenCalledOnce();
   });
 
   it('closes on Escape and restores focus to the menu button', () => {
