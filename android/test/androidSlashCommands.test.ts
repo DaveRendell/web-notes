@@ -9,6 +9,7 @@ describe('Android slash commands', () => {
     ]));
     expect(MOBILE_SLASH_COMMAND_IDS.has('image')).toBe(true);
     expect(MOBILE_SLASH_COMMAND_IDS.has('calendar')).toBe(true);
+    expect(MOBILE_SLASH_COMMAND_IDS.has('clearBackground')).toBe(true);
     expect(getMobileSlashCommandSuggestions('image').map(({ id }) => id)).toContain('image');
     expect(getMobileSlashCommandSuggestions('calendar').map(({ id }) => id)).toContain('calendar');
     expect(getMobileSlashCommandSuggestions('agenda').map(({ id }) => id)).toEqual(['calendar']);
@@ -34,5 +35,7 @@ describe('Android slash commands', () => {
     expect(MOBILE_BLOCK_BACKGROUND_CSS).toContain('li[data-block-background-join-after]');
     expect(MOBILE_BLOCK_BACKGROUND_CSS).toContain('--block-marker-highlight-offset: -1.5rem');
     expect(MOBILE_BLOCK_BACKGROUND_CSS).toContain('--block-marker-highlight-offset: -2rem');
+    expect(MOBILE_BLOCK_BACKGROUND_CSS).toContain('margin-top: 0.4375rem');
+    expect(MOBILE_BLOCK_BACKGROUND_CSS).toContain('0 0 0 4px var(--block-bg)');
   });
 });

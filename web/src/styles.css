@@ -1565,17 +1565,19 @@ button {
 .calendar-widget-message button:hover { background: #d8e4ec; }
 
 .calendar-event-groups { display: grid; }
-.calendar-event-group { padding: 10px 12px; }
+.calendar-event-group { display: grid; grid-template-columns: 94px minmax(0, 1fr); align-items: start; gap: 8px; padding: 7px 12px; }
 .calendar-event-group + .calendar-event-group { border-top: 1px solid #e7ebef; }
-.calendar-event-group h4 { margin: 0 0 6px; color: #647180; font-size: 0.78rem; letter-spacing: 0.035em; text-transform: uppercase; }
+.calendar-event-group h4 { margin: 2px 0 0; color: #647180; font-size: 0.78rem; letter-spacing: 0.035em; text-transform: uppercase; white-space: nowrap; }
 .calendar-event-group ul { margin: 0; padding: 0; list-style: none; }
-.calendar-event-group li { display: grid; grid-template-columns: 70px 9px minmax(0, 1fr); align-items: start; gap: 8px; margin: 0.2rem 0 !important; padding: 4px 0; }
+.calendar-event-group li { display: grid; grid-template-columns: 70px 9px minmax(0, 1fr); align-items: center; gap: 8px; margin: 0 !important; padding: 2px 0; min-width: 0; }
 .calendar-event-time { color: #697586; font-size: 0.8rem; white-space: nowrap; }
-.calendar-event-dot { width: 8px; height: 8px; margin-top: 0.4em; border-radius: 50%; background: #4c7fa5; }
-.calendar-event-details { display: grid; min-width: 0; gap: 2px; }
-.calendar-event-details a { width: fit-content; max-width: 100%; gap: 4px; color: #225f87; font-weight: 600; text-decoration: none; }
+.calendar-event-dot { width: 8px; height: 8px; border-radius: 50%; background: #4c7fa5; }
+.calendar-event-details { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.calendar-event-details a { display: inline-flex; max-width: 100%; gap: 4px; overflow: hidden; color: #225f87; font-weight: 600; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; vertical-align: top; }
+.calendar-event-details a svg { flex: 0 0 auto; }
+.calendar-event-details strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .calendar-event-details a:hover { text-decoration: underline; }
-.calendar-event-details small { overflow: hidden; color: #7a8491; font-size: 0.76rem; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-event-details small { display: none; }
 .calendar-widget-warning { margin: 0; padding: 8px 12px; border-top: 1px solid #ead7aa; background: #fff6df; color: #805c15; font-size: 0.8rem; }
 
 .calendar-dialog { width: min(560px, calc(100vw - 32px)); }
@@ -1612,6 +1614,19 @@ button {
 [data-theme="dark"] .calendar-options, [data-theme="dark"] .calendar-dialog-fields input { border-color: #4a5664; }
 [data-theme="dark"] .calendar-options > label.calendar-select-all { border-color: #4a5664; }
 [data-theme="dark"] .calendar-dialog .app-modal-actions > button:not(.primary-button):hover { background: #35404d; }
+
+/* The editor's stock rule is nearly black; use the same quiet divider tone in
+   rich and rendered Markdown so thematic breaks do not dominate a note. */
+.markdown-body hr,
+.rich-markdown-content hr {
+  height: 1px;
+  margin-block: 1.25rem;
+  border: 0;
+  background: #aeb8c2;
+}
+
+[data-theme="dark"] .markdown-body hr,
+[data-theme="dark"] .rich-markdown-content hr { background: #5b6875; }
 
 .note-image { display: block; max-width: 100%; height: auto; }
 .image-viewer-content { flex: 1; min-height: 0; overflow: auto; padding: 24px; }

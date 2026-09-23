@@ -19,7 +19,7 @@ afterEach(() => {
 describe('slash commands', () => {
   it('offers all command groups and filters aliases', () => {
     expect(SLASH_COMMANDS.map(({ id }) => id)).toEqual(expect.arrayContaining([
-      'paragraph', 'heading', 'todo', 'bullet', 'numbered', 'gray', 'green', 'image', 'calendar',
+      'paragraph', 'heading', 'todo', 'bullet', 'numbered', 'gray', 'green', 'clearBackground', 'image', 'calendar',
     ]));
     expect(getSlashCommandSuggestions('check').map(({ id }) => id)).toContain('todo');
     expect(getSlashCommandSuggestions('pic').map(({ id }) => id)).toEqual(['image']);
@@ -84,6 +84,16 @@ describe('slash commands', () => {
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '/green' } });
     applyMarkdownSlashCommand(view, SLASH_COMMANDS.find(({ id }) => id === 'green')!, 0, 6, image);
     expect(view.state.doc.toString()).toBe('<!-- web-notes:background=green -->\n');
+
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '- Item <!-- web-notes:background=green --> /clear' } });
+    const clearFrom = view.state.doc.toString().indexOf('/clear');
+    applyMarkdownSlashCommand(view, SLASH_COMMANDS.find(({ id }) => id === 'clearBackground')!, clearFrom, clearFrom + '/clear'.length, image);
+    expect(view.state.doc.toString()).toBe('- Item ');
+
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '<!-- web-notes:background=blue -->\n\nText /remove' } });
+    const removeFrom = view.state.doc.toString().indexOf('/remove');
+    applyMarkdownSlashCommand(view, SLASH_COMMANDS.find(({ id }) => id === 'clearBackground')!, removeFrom, removeFrom + '/remove'.length, image);
+    expect(view.state.doc.toString()).toBe('Text ');
 
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '/image' } });
     applyMarkdownSlashCommand(view, SLASH_COMMANDS.find(({ id }) => id === 'image')!, 0, 6, image);

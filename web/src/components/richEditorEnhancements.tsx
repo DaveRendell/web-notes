@@ -434,7 +434,7 @@ function applyRichSlashCommand(editor: LexicalEditor, queryNode: TextNode, comma
   if (command.kind === 'background') {
     const listItem = $findMatchingParent(queryNode, $isListItemNode);
     const target = listItem ?? queryNode.getTopLevelElement();
-    if (target) $setState(target, blockBackgroundState, command.id as BlockBackground);
+    if (target) $setState(target, blockBackgroundState, command.id === 'clearBackground' ? null : command.id as BlockBackground);
     return;
   }
 

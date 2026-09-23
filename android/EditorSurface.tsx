@@ -308,13 +308,12 @@ export default function EditorSurface({ fixtureName, markdown, onEvent, onEditor
         .prototype-shell { height: 100%; overflow: auto; }
         .prototype-editor-status { padding: 8px 14px; color: #8a4d1e; background: #fff7e8; font-size: 13px; }
         .mdxeditor { padding: 12px; }
-        .rich-markdown-toolbar { position: sticky; top: 0; z-index: 12; display: flex; gap: 4px;
-          width: fit-content; margin-left: auto; padding: 4px; border: 1px solid #dfe3ea;
-          border-radius: 8px; background: #ffffffed; box-shadow: 0 4px 14px #1e263018; }
-        .prototype-rich-dormant .rich-markdown-toolbar { display: none; }
-        .rich-markdown-toolbar button { display: inline-flex; width: 38px; height: 38px; align-items: center;
-          justify-content: center; border: 0; border-radius: 6px; background: transparent; color: #697180; }
-        .rich-markdown-toolbar button:hover, .rich-markdown-toolbar button:focus-visible { background: #eef3f7; color: #183f59; }
+        /* The toolbar components remain mounted as invisible dialog hosts for
+           /image and /calendar. display: contents avoids a floating toolbar
+           or any layout space while keeping their slash-command event hooks. */
+        .rich-markdown-toolbar { display: contents; }
+        .rich-markdown-toolbar .rich-toolbar-action,
+        .source-insert-actions > .rich-toolbar-action { display: none; }
         .prototype-rich-dormant .rich-markdown-content,
         .prototype-rich-dormant .rich-markdown-content * {
           user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
@@ -343,7 +342,6 @@ export default function EditorSurface({ fixtureName, markdown, onEvent, onEditor
         .prototype-source-editor .cm-tooltip-autocomplete > ul > li[aria-selected="true"] {
           background: #eef3f7; color: #183f59; }
         .prototype-source-editor .cm-completionDetail { color: #697180; }
-        .source-insert-actions > .rich-toolbar-action { display: none; }
         .twemoji { display: inline-block; width: 1em; height: 1em; margin: 0 0.04em;
           vertical-align: -0.1em; object-fit: contain; }
         .rich-touch-drag-pending, .rich-touch-drag-pending *,
@@ -377,16 +375,18 @@ export default function EditorSurface({ fixtureName, markdown, onEvent, onEditor
         .calendar-widget-actions button { display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; }
         .calendar-widget-message { margin: 0; padding: 16px; color: #647180; }
         .calendar-widget-message button { min-height: 38px; padding: 7px 10px; background: #e5edf3; color: #183f59; }
-        .calendar-event-group { padding: 10px 12px; }
+        .calendar-event-group { display: grid; grid-template-columns: 82px minmax(0, 1fr); align-items: start; gap: 7px; padding: 7px 12px; }
         .calendar-event-group + .calendar-event-group { border-top: 1px solid #e7ebef; }
-        .calendar-event-group h4 { margin: 0 0 6px; color: #647180; font-size: 12px; text-transform: uppercase; }
+        .calendar-event-group h4 { margin: 2px 0 0; color: #647180; font-size: 12px; text-transform: uppercase; white-space: nowrap; }
         .calendar-event-group ul { margin: 0; padding: 0; list-style: none; }
-        .calendar-event-group li { display: grid; grid-template-columns: 62px 9px minmax(0, 1fr); align-items: start; gap: 7px; margin: 3px 0; padding: 4px 0; }
+        .calendar-event-group li { display: grid; grid-template-columns: 62px 9px minmax(0, 1fr); align-items: center; gap: 7px; margin: 0; padding: 2px 0; min-width: 0; }
         .calendar-event-time { color: #697586; font-size: 12px; white-space: nowrap; }
-        .calendar-event-dot { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: #4c7fa5; }
-        .calendar-event-details { display: grid; min-width: 0; gap: 2px; }
-        .calendar-event-link { width: fit-content; gap: 4px; padding: 0; color: #225f87 !important; font: inherit; font-weight: 600 !important; text-align: left; }
-        .calendar-event-details small { overflow: hidden; color: #7a8491; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+        .calendar-event-dot { width: 8px; height: 8px; border-radius: 50%; background: #4c7fa5; }
+        .calendar-event-details { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        .calendar-event-link { display: inline-flex; max-width: 100%; gap: 4px; overflow: hidden; padding: 0; color: #225f87 !important; font: inherit; font-weight: 600 !important; text-align: left; text-overflow: ellipsis; white-space: nowrap; vertical-align: top; }
+        .calendar-event-link svg { flex: 0 0 auto; }
+        .calendar-event-details strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .calendar-event-details small { display: none; }
         .calendar-widget-warning { margin: 0; padding: 8px 12px; border-top: 1px solid #ead7aa; background: #fff6df; color: #805c15; font-size: 12px; }
         .app-modal-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; background: #0006; }
         .app-modal, .calendar-dialog { width: min(560px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow: auto;
@@ -411,18 +411,13 @@ export default function EditorSurface({ fixtureName, markdown, onEvent, onEditor
         .image-dialog form { gap: 16px; }
         .image-dialog input, .image-dialog select { min-width: 0; padding: 9px; border: 1px solid #cbd3dc; border-radius: 6px; font: inherit; }
         .prototype-shell.dark-theme { color: #e7ebf0; background: #181e25; }
-        .prototype-shell.dark-theme .rich-markdown-editor,
-        .prototype-shell.dark-theme .rich-markdown-toolbar {
+        .prototype-shell.dark-theme .rich-markdown-editor {
           --baseBase: #181e25; --baseBgSubtle: #202832; --baseBg: #26313d;
           --baseText: #e7ebf0; --baseTextContrast: #ffffff;
           --accentBgSubtle: #21394a; --accentBg: #2c536d; --accentTextContrast: #ffffff;
           border-color: #2b3643; background: #181e25; color: #e7ebf0;
         }
         .prototype-shell.dark-theme .rich-markdown-content { color: #dce3ea; caret-color: #ffffff; }
-        .prototype-shell.dark-theme .rich-markdown-toolbar { background: #181e25ed; box-shadow: 0 4px 14px #0006; }
-        .prototype-shell.dark-theme .rich-markdown-toolbar button { color: #b8c2cd; }
-        .prototype-shell.dark-theme .rich-markdown-toolbar button:hover,
-        .prototype-shell.dark-theme .rich-markdown-toolbar button:focus-visible { background: #26313d; color: #f3f6f9; }
         .prototype-shell.dark-theme .prototype-editor-status { color: #e5bd79; background: #3a3020; }
         .prototype-shell.dark-theme .rich-completion-menu,
         .prototype-shell.dark-theme .prototype-source-editor .cm-tooltip-autocomplete {
@@ -450,6 +445,8 @@ export default function EditorSurface({ fixtureName, markdown, onEvent, onEditor
         .prototype-shell.dark-theme .calendar-event-link { color: #8ec5ea !important; }
         .prototype-shell.dark-theme .calendar-widget-message button { background: #263d50; color: #dceefa; }
         .prototype-shell.dark-theme .calendar-widget-warning { border-color: #695629; background: #41391f; color: #e2c873; }
+        .rich-markdown-content hr { height: 1px; margin-block: 1.25rem; border: 0; background: #aeb8c2; }
+        .prototype-shell.dark-theme .rich-markdown-content hr { background: #5b6875; }
         .prototype-shell.dark-theme .app-modal,
         .prototype-shell.dark-theme .calendar-dialog,
         .prototype-shell.dark-theme .image-dialog { background: #202938; color: #e7ebf0; }

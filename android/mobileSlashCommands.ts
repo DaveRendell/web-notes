@@ -3,7 +3,7 @@ import { getSlashCommandSuggestions, type SlashCommandId } from '../web/src/lib/
 
 export const MOBILE_SLASH_COMMAND_IDS: ReadonlySet<SlashCommandId> = new Set<SlashCommandId>([
   'paragraph', 'heading', 'heading2', 'heading3', 'quote',
-  'todo', 'bullet', 'numbered', ...BLOCK_BACKGROUNDS,
+  'todo', 'bullet', 'numbered', ...BLOCK_BACKGROUNDS, 'clearBackground',
   'image', 'calendar',
 ]);
 
@@ -56,16 +56,16 @@ ${darkBackgroundColorCss}
     0 0 0 6px var(--block-bg);
 }
 .rich-markdown-content li {
-  margin-top: 0.375rem;
-  margin-bottom: 0.375rem;
+  margin-top: 0.4375rem;
+  margin-bottom: 0.4375rem;
 }
 .rich-markdown-content li[data-block-background]:not(.rich-block-drop-nest) {
   --block-marker-highlight-offset: 0px;
   box-shadow:
     inset 0 0 0 1px var(--block-bg),
     0 0 0 1px var(--block-bg),
-    0 0 0 3px var(--block-bg),
-    var(--block-marker-highlight-offset) 0 0 3px var(--block-bg);
+    0 0 0 4px var(--block-bg),
+    var(--block-marker-highlight-offset) 0 0 4px var(--block-bg);
 }
 .rich-markdown-content li[data-block-background-join-before] {
   border-start-start-radius: 0;

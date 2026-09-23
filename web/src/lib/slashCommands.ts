@@ -11,6 +11,7 @@ const MAX_RECENT_COMMANDS = 8;
 export type SlashCommandId =
   | 'paragraph' | 'heading' | 'heading2' | 'heading3' | 'quote'
   | 'todo' | 'bullet' | 'numbered' | 'image' | 'calendar'
+  | 'clearBackground'
   | BlockBackground;
 
 export type SlashCommand = {
@@ -37,6 +38,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     keywords: [color, ...(color === 'gray' ? ['grey'] : []), 'background', 'colour', 'color'],
     kind: 'background',
   })),
+  { id: 'clearBackground', label: 'Remove background', detail: 'Return this block to its default background', keywords: ['remove', 'clear', 'default', 'background', 'colour', 'color'], kind: 'background' },
   { id: 'image', label: 'Image', detail: 'Upload or link an image', keywords: ['image', 'picture', 'photo', 'upload'], kind: 'insert' },
   { id: 'calendar', label: 'Calendar', detail: 'Show Google Calendar events', keywords: ['calendar', 'events', 'agenda', 'schedule'], kind: 'insert' },
 ];
@@ -146,6 +148,11 @@ export function applyMarkdownSlashCommand(view: EditorView, command: SlashComman
     return;
   }
   if (command.kind === 'background') {
+    if (command.id === 'clearBackground') {
+      removeMarkdownBlockBackground(view, from, to);
+      view.focus();
+      return;
+    }
     const insertion = `${backgroundComment(command.id as BlockBackground)}\n`;
     const lineFrom = view.state.doc.lineAt(from).from;
     view.dispatch({
@@ -154,4 +161,40 @@ export function applyMarkdownSlashCommand(view: EditorView, command: SlashComman
     });
     view.focus();
   }
+}
+
+function removeMarkdownBlockBackground(view: EditorView, from: number, to: number) {
+  const comment = /\s*<!-- web-notes:background=[a-z]+ -->/g;
+  const line = view.state.doc.lineAt(from);
+  const currentLine = view.state.sliceDoc(line.from, line.to);
+  const commandStart = from - line.from;
+  const commandEnd = to - line.from;
+  const withoutCommand = `${currentLine.slice(0, commandStart)}${currentLine.slice(commandEnd)}`;
+  const currentMatch = comment.exec(withoutCommand);
+
+  if (currentMatch) {
+    const start = line.from + currentMatch.index;
+    view.dispatch({ changes: [
+      { from: start, to: start + currentMatch[0].length, insert: '' },
+      { from, to, insert: '' },
+    ] });
+    return;
+  }
+
+  // Block annotations live on their own line before the block, commonly with
+  // one Markdown separator line between them and the content.
+  if (line.number > 1) {
+    let annotationLine = line.number - 1;
+    while (annotationLine > 0 && view.state.doc.line(annotationLine).text.trim() === '') annotationLine--;
+    const annotation = view.state.doc.line(annotationLine);
+    if (/^<!-- web-notes:background=[a-z]+ -->\s*$/.test(annotation.text)) {
+      view.dispatch({ changes: [
+        { from: annotation.from, to: line.from, insert: '' },
+        { from, to, insert: '' },
+      ] });
+      return;
+    }
+  }
+
+  view.dispatch({ changes: { from, to, insert: '' } });
 }
