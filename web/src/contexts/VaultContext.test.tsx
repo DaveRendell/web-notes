@@ -157,6 +157,9 @@ describe('VaultContext cache mutations', () => {
     expect(result.current.openFiles.map(({ id }) => id)).toEqual(['beta', 'alpha']);
     expect(result.current.selectedFile?.id).toBe('beta');
 
+    act(() => result.current.reorderFileTab('alpha', 'beta', 'before'));
+    expect(result.current.openFiles.map(({ id }) => id)).toEqual(['alpha', 'beta']);
+
     act(() => result.current.activateFileTab('alpha'));
     expect(result.current.selectedFile?.id).toBe('alpha');
     act(() => result.current.closeFileTab('alpha'));

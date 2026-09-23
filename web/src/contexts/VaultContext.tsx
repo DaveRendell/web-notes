@@ -75,6 +75,7 @@ type VaultContextValue = {
   noteIcons: Record<string, string | null>;
   notes: VaultNode[];
   recentNotes: VaultNode[];
+  reorderFileTab: (fileId: string, targetFileId: string, placement: 'before' | 'after') => void;
   reorderFavorite: (noteId: string, targetNoteId: string, placement: 'before' | 'after') => void;
   refreshError: string | null;
   renameFolder: (folder: VaultNode, name: string) => Promise<VaultNode>;
@@ -262,6 +263,15 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const closeFileTab = useCallback((fileId: string) => {
     closeFileTabs(new Set([fileId]));
   }, [closeFileTabs]);
+
+  const reorderFileTab = useCallback((fileId: string, targetFileId: string, placement: 'before' | 'after') => {
+    const currentIds = openFileIdsRef.current;
+    if (fileId === targetFileId || !currentIds.includes(fileId) || !currentIds.includes(targetFileId)) return;
+    const nextIds = currentIds.filter((id) => id !== fileId);
+    const targetIndex = nextIds.indexOf(targetFileId);
+    nextIds.splice(targetIndex + (placement === 'after' ? 1 : 0), 0, fileId);
+    updateOpenFileIds(nextIds);
+  }, [updateOpenFileIds]);
 
   const resolveWikilink = useCallback(
     (target: string) => {
@@ -796,6 +806,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       noteIcons,
       notes,
       recentNotes,
+      reorderFileTab,
       reorderFavorite,
       refreshError,
       renameFolder,
@@ -835,6 +846,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       noteIcons,
       notes,
       recentNotes,
+      reorderFileTab,
       reorderFavorite,
       refreshError,
       renameFolder,

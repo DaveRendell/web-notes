@@ -474,6 +474,7 @@ button {
 }
 
 .file-tab {
+  position: relative;
   display: flex;
   min-width: 120px;
   max-width: 220px;
@@ -482,6 +483,24 @@ button {
   background: #edf1f5;
   color: #5f6976;
 }
+
+.file-tab.dragging { opacity: 0.45; }
+
+.file-tab.drop-before::before,
+.file-tab.drop-after::after {
+  position: absolute;
+  z-index: 2;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  border-radius: 2px;
+  background: #3d7fa9;
+  content: "";
+  pointer-events: none;
+}
+
+.file-tab.drop-before::before { left: -1px; }
+.file-tab.drop-after::after { right: -1px; }
 
 .file-tab.active {
   background: #fbfcfd;
@@ -2489,6 +2508,9 @@ li.markdown-block > .markdown-block-controls {
   color: #e7ebf0;
   box-shadow: inset 0 -2px #6ca6ce;
 }
+
+[data-theme="dark"] .file-tab.drop-before::before,
+[data-theme="dark"] .file-tab.drop-after::after { background: #8ec5ea; }
 
 [data-theme="dark"] .file-tab-select:hover,
 [data-theme="dark"] .file-tab-select:focus-visible,
