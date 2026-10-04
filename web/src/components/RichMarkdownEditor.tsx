@@ -25,7 +25,7 @@ import {
   thematicBreakPlugin,
   toolbarPlugin,
 } from '@mdxeditor/editor';
-import { useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { refreshContentEditableSpellcheck } from '../lib/contentEditableSpellcheck';
 import type { VaultNode } from '../types/vault';
@@ -178,6 +178,7 @@ export default function RichMarkdownEditor({ markdown, blockMovementDisabled = f
       }}
       onKeyDownCapture={(event) => {
         onActivity();
+        preserveChecklistTextSpace(event);
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
           event.preventDefault();
           onSave();
@@ -205,6 +206,32 @@ export default function RichMarkdownEditor({ markdown, blockMovementDisabled = f
       />
     </div>
   );
+}
+
+/**
+ * Firefox can focus Lexical's programmatically-focusable checklist row while
+ * leaving the DOM caret inside its text. Lexical interprets Space on a focused
+ * row as a request to toggle the checkbox. Move focus back to the editor root
+ * before Lexical's bubbling key handler runs so the same key inserts text at
+ * the existing DOM selection instead.
+ */
+export function preserveChecklistTextSpace(event: Pick<ReactKeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'target'>) {
+  if (event.key !== ' ' || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (!(event.target instanceof HTMLElement)) return;
+
+  const item = event.target.closest<HTMLElement>('li[role="checkbox"]');
+  if (!item || item.ownerDocument.activeElement !== item) return;
+
+  const selection = item.ownerDocument.getSelection();
+  const anchor = selection?.anchorNode;
+  if (!selection?.isCollapsed || selection.rangeCount === 0 || !anchor || anchor === item || !item.contains(anchor)) return;
+
+  const editable = item.closest<HTMLElement>('[contenteditable="true"][data-lexical-editor="true"]');
+  if (!editable) return;
+  const caret = selection.getRangeAt(0).cloneRange();
+  editable.focus({ preventScroll: true });
+  selection.removeAllRanges();
+  selection.addRange(caret);
 }
 
 /**

@@ -97,6 +97,48 @@ describe('rich Markdown checklists', () => {
     fireEvent.pointerDown(item, { clientX: 4 });
     expect(item.getAttribute('tabindex')).toBe('-1');
   });
+
+  it('inserts Space into checklist text instead of toggling after the row receives focus', async () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <ThemeProvider>
+        <RichMarkdownEditor
+          markdown="- [ ] Existing item"
+          notes={[]}
+          onActiveChange={vi.fn()}
+          onActivity={vi.fn()}
+          onChange={onChange}
+          onError={vi.fn()}
+          onInitialNormalize={vi.fn()}
+          onSave={vi.fn()}
+          recentNotes={[]}
+          spellCheck={false}
+        />
+      </ThemeProvider>,
+    );
+    const item = await waitFor(() => {
+      const candidate = container.querySelector<HTMLElement>('li[role="checkbox"]');
+      expect(candidate).not.toBeNull();
+      return candidate!;
+    });
+    const text = item.querySelector<HTMLElement>('[data-lexical-text]')!.firstChild!;
+    item.focus();
+    expect(document.activeElement).toBe(item);
+    const selection = document.getSelection()!;
+    const range = document.createRange();
+    range.setStart(text, 8);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    fireEvent.keyDown(item, { key: ' ', code: 'Space' });
+
+    expect(document.activeElement).toBe(container.querySelector('[contenteditable="true"][data-lexical-editor="true"]'));
+    expect(document.getSelection()?.anchorNode).toBe(text);
+    expect(document.getSelection()?.anchorOffset).toBe(8);
+    expect(item.getAttribute('aria-checked')).toBe('false');
+    expect(onChange).not.toHaveBeenCalledWith(expect.stringContaining('[x]'));
+  });
 });
 
 describe('rich Markdown wikilinks', () => {
