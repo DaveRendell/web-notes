@@ -11,7 +11,7 @@ import {
   realmPlugin,
 } from '@mdxeditor/editor';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { $getRoot, $isTextNode, PASTE_COMMAND, type LexicalEditor } from 'lexical';
+import { $getRoot, $isElementNode, $isTextNode, INSERT_PARAGRAPH_COMMAND, PASTE_COMMAND, type LexicalEditor } from 'lexical';
 import {
   emojiTrigger,
   richEditorEnhancementsPlugin,
@@ -56,6 +56,21 @@ const selectEditorEndPlugin = realmPlugin({
 });
 
 describe('rich editor enhancements', () => {
+  it('preserves paragraph indentation after Enter', async () => {
+    render(<MDXEditor markdown="Indented" plugins={[
+      richEditorEnhancementsPlugin({ notes: [], recentNotes: [] }), captureEditorPlugin(),
+    ]} />);
+    lexicalEditor.update(() => {
+      const block = $getRoot().getFirstChildOrThrow();
+      if ($isElementNode(block)) { block.setIndent(2); block.selectEnd(); }
+    }, { discrete: true });
+    lexicalEditor.dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined);
+    await waitFor(() => lexicalEditor.getEditorState().read(() => {
+      const blocks = $getRoot().getChildren();
+      expect(blocks).toHaveLength(2);
+      expect($isElementNode(blocks[1]) && blocks[1].getIndent()).toBe(2);
+    }));
+  });
   it('pastes a URL as a link around selected text without replacing the label', async () => {
     const ref = createRef<MDXEditorMethods>();
     render(<MDXEditor ref={ref} markdown="Selected label" plugins={[

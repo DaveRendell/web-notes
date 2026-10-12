@@ -51,6 +51,7 @@ import {
   COMMAND_PRIORITY_HIGH,
   KEY_DOWN_COMMAND,
   PASTE_COMMAND,
+  INSERT_PARAGRAPH_COMMAND,
   TextNode,
   type LexicalEditor,
 } from 'lexical';
@@ -134,7 +135,19 @@ export const richEditorEnhancementsPlugin = realmPlugin<RichEditorEnhancementsPa
         const unregisterKey = editor.registerCommand(KEY_DOWN_COMMAND,
           (event: KeyboardEvent) => handleChecklistShortcut(event, editor), COMMAND_PRIORITY_HIGH);
         const unregisterPaste = editor.registerCommand(PASTE_COMMAND, handleLinkPaste, COMMAND_PRIORITY_HIGH);
-        return () => { unregisterKey(); unregisterPaste(); };
+        const unregisterParagraph = editor.registerCommand(INSERT_PARAGRAPH_COMMAND, () => {
+          const selection = $getSelection();
+          if (!$isRangeSelection(selection)) return false;
+          const block = $findMatchingParent(selection.anchor.getNode(), (node) =>
+            $isElementNode(node) && !node.isInline());
+          // Lists already implement their own Enter/exit behaviour.
+          if (!$isElementNode(block) || $isListItemNode(block) || block.getIndent() === 0) return false;
+          const indent = block.getIndent();
+          const next = selection.insertParagraph();
+          if (next) next.setIndent(indent);
+          return true;
+        }, COMMAND_PRIORITY_HIGH);
+        return () => { unregisterKey(); unregisterPaste(); unregisterParagraph(); };
       },
     });
   },
