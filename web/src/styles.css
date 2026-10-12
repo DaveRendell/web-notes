@@ -550,11 +550,20 @@ button {
 .file-tab.active .file-tab-close,
 .file-tab-close:focus-visible { opacity: 1; }
 
+.file-tab:hover,
+.file-tab:focus-within {
+  background: #dfe7ee;
+}
+
 .file-tab-select:hover,
-.file-tab-select:focus-visible,
+.file-tab-select:focus-visible {
+  background: transparent;
+  outline: none;
+}
+
 .file-tab-close:hover,
 .file-tab-close:focus-visible {
-  background: #dfe7ee;
+  background: #cbd7e2;
   outline: none;
 }
 
@@ -2516,10 +2525,14 @@ li.markdown-block > .markdown-block-controls {
 [data-theme="dark"] .file-tab.drop-before::before,
 [data-theme="dark"] .file-tab.drop-after::after { background: #8ec5ea; }
 
+[data-theme="dark"] .file-tab:hover,
+[data-theme="dark"] .file-tab:focus-within { background: #26323d; }
+
 [data-theme="dark"] .file-tab-select:hover,
-[data-theme="dark"] .file-tab-select:focus-visible,
+[data-theme="dark"] .file-tab-select:focus-visible { background: transparent; }
+
 [data-theme="dark"] .file-tab-close:hover,
-[data-theme="dark"] .file-tab-close:focus-visible { background: #26323d; }
+[data-theme="dark"] .file-tab-close:focus-visible { background: #3b4a59; }
 
 [data-theme="dark"] .properties-modal .frontmatter-table a {
   color: #8ec8ed;
