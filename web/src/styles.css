@@ -2545,6 +2545,10 @@ li.markdown-block > .markdown-block-controls {
 [data-theme="dark"] .rich-markdown-editor,
 [data-theme="dark"] .rich-markdown-editor-shell [class*='_toolbarRoot_'],
 [data-theme="dark"] .rich-markdown-toolbar {
+  --basePageBg: #181e25;
+  --baseBg: #26313d;
+  --baseBgHover: #303e4d;
+  --baseBgActive: #36485b;
   --baseTextContrast: #b8c2cd;
   border-color: #2b3643;
   background: #181e25;
