@@ -2,7 +2,7 @@ import { autoScrollForElements } from '@atlaskit/pragmatic-drag-and-drop-auto-sc
 import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, type ListItemNode, type ListNode } from '@lexical/list';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { addComposerChild$, addImportVisitor$, Cell, realmPlugin, useCellValue, type MdastImportVisitor } from '@mdxeditor/editor';
+import { addComposerChild$, addImportVisitor$, createRootEditorSubscription$, Cell, realmPlugin, useCellValue, type MdastImportVisitor } from '@mdxeditor/editor';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, GripVertical, Trash2 } from 'lucide-react';
 import {
   $getNodeByKey,
@@ -10,6 +10,11 @@ import {
   $getState,
   $setState,
   $getRoot,
+  $getSelection,
+  $isRangeSelection,
+  $findMatchingParent,
+  COMMAND_PRIORITY_HIGH,
+  KEY_DOWN_COMMAND,
   $isElementNode,
   $isParagraphNode,
   $isRootNode,
@@ -40,6 +45,22 @@ export const richBlockDragPlugin = realmPlugin<{ disabled: boolean }>({
       [addComposerChild$]: RichBlockDrag,
       [addImportVisitor$]: NestedParagraphVisitor,
       [disabled$]: params?.disabled ?? false,
+      [createRootEditorSubscription$]: (editor: LexicalEditor) => editor.registerCommand(
+        KEY_DOWN_COMMAND,
+        (event: KeyboardEvent) => {
+          if (realm.getValue(disabled$) || !event.altKey || !(event.ctrlKey || event.metaKey)
+            || event.shiftKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return false;
+          const selection = $getSelection();
+          if (!$isRangeSelection(selection)) return false;
+          const node = $findMatchingParent(selection.anchor.getNode(), (candidate) =>
+            $isListItemNode(candidate) || $isRootNode(candidate.getParent()));
+          if (!node) return false;
+          event.preventDefault();
+          runMenuAction(editor, node.getKey(), event.key === 'ArrowUp' ? 'up' : 'down');
+          return true;
+        },
+        COMMAND_PRIORITY_HIGH,
+      ),
     });
   },
   update(realm, params) {

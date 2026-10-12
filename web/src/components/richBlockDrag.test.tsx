@@ -64,6 +64,18 @@ async function openBlockMenu(element: Element) {
 }
 
 describe('rich block movement', () => {
+  it('moves the block at the caret with Ctrl+Alt+Arrow and keeps its selection', async () => {
+    const { container, editorRef } = renderEditor('First\n\nSecond\n\nThird');
+    const second = findNode('Second')!;
+    lexicalEditor.update(() => {
+      if ($isElementNode(second)) second.selectStart();
+    }, { discrete: true });
+    const root = container.querySelector<HTMLElement>('[contenteditable="true"]')!;
+    fireEvent.keyDown(root, { ctrlKey: true, altKey: true, key: 'ArrowUp' });
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe('Second\n\nFirst\n\nThird'));
+    fireEvent.keyDown(root, { ctrlKey: true, altKey: true, key: 'ArrowDown' });
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe('First\n\nSecond\n\nThird'));
+  });
   it('moves top-level blocks through the accessible grabber menu', async () => {
     const { container, editorRef } = renderEditor('First\n\nSecond');
     const paragraphs = container.querySelectorAll('p');

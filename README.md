@@ -8,6 +8,8 @@ Web Notes is installable as a Progressive Web App in supporting browsers. Its ap
 
 Notes open in an in-place rich-text surface. Its formatting toolbar stays out of the way until the note receives focus, and changes save to the local cache immediately before being pushed to Drive after one second of inactivity or when focus leaves the editor. Rich text supports common Markdown formatting, lists and checklists, links, wikilinks, tables, quotes, thematic breaks, and fenced code. Hover a block to reveal its grabber, then drag it to reorder or nest content; the same menu provides keyboard-accessible move, indent, outdent, and delete actions. Markdown remains the canonical stored format and an explicit source editor is available from the note menu; notes containing syntax that cannot be preserved safely automatically use source mode.
 
+In rich text, Ctrl+Alt+Up/Down moves the block containing the cursor (Cmd+Option+Up/Down on Mac). List items move with their nested content.
+
 Type `/` after whitespace to open slash commands for headings, plain text, quotes, lists, to-dos, block background colours, images, and calendar widgets. Continue typing to filter the list; recently selected commands appear first the next time the empty `/` menu opens. Slash commands work in both rich-text and Markdown source modes.
 
 Emoji are stored as standard Unicode in Markdown but displayed consistently using the Twemoji artwork in rich text and the surrounding interface. Twemoji graphics are licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
