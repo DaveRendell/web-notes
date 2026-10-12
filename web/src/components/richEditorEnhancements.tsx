@@ -18,7 +18,7 @@ import {
   type LexicalExportVisitor,
   type MdastImportVisitor,
 } from '@mdxeditor/editor';
-import { $createLinkNode, $isLinkNode, type LinkNode } from '@lexical/link';
+import { $createLinkNode, $isLinkNode, $toggleLink, type LinkNode } from '@lexical/link';
 import {
   INSERT_CHECK_LIST_COMMAND,
   INSERT_ORDERED_LIST_COMMAND,
@@ -50,6 +50,7 @@ import {
   $isElementNode,
   COMMAND_PRIORITY_HIGH,
   KEY_DOWN_COMMAND,
+  PASTE_COMMAND,
   TextNode,
   type LexicalEditor,
 } from 'lexical';
@@ -129,11 +130,12 @@ export const richEditorEnhancementsPlugin = realmPlugin<RichEditorEnhancementsPa
       [addComposerChild$]: RichEditorCompletions,
       [addNestedEditorChild$]: RichEditorCompletions,
       [addTableCellEditorChild$]: RichEditorCompletions,
-      [createRootEditorSubscription$]: (editor: LexicalEditor) => editor.registerCommand(
-        KEY_DOWN_COMMAND,
-        (event: KeyboardEvent) => handleChecklistShortcut(event, editor),
-        COMMAND_PRIORITY_HIGH,
-      ),
+      [createRootEditorSubscription$]: (editor: LexicalEditor) => {
+        const unregisterKey = editor.registerCommand(KEY_DOWN_COMMAND,
+          (event: KeyboardEvent) => handleChecklistShortcut(event, editor), COMMAND_PRIORITY_HIGH);
+        const unregisterPaste = editor.registerCommand(PASTE_COMMAND, handleLinkPaste, COMMAND_PRIORITY_HIGH);
+        return () => { unregisterKey(); unregisterPaste(); };
+      },
     });
   },
   update(realm, params) {
@@ -635,6 +637,18 @@ export const slashCommandTrigger: TriggerFn = (text): MenuTextMatch | null => {
     ? { leadOffset: match.index + match[0].lastIndexOf('/'), matchingString: match[2], replaceableString: match[1] }
     : null;
 };
+
+export function handleLinkPaste(event: ClipboardEvent | InputEvent | KeyboardEvent) {
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection) || selection.isCollapsed() || !selection.getTextContent()) return false;
+  if (!('clipboardData' in event)) return false;
+  const text = event.clipboardData?.getData('text/plain').trim();
+  if (!text || !/^https?:\/\/\S+$/i.test(text)) return false;
+  try { new URL(text); } catch { return false; }
+  event.preventDefault();
+  $toggleLink(text);
+  return true;
+}
 
 function handleChecklistShortcut(event: KeyboardEvent, editor: LexicalEditor) {
   if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'l') return false;

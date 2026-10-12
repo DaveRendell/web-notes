@@ -108,6 +108,26 @@ test('opens rich text, switches to source, and follows browser history', async (
   expect(errors).toEqual([]);
 });
 
+test('pasting a URL over selected rich text preserves its label', async ({ page }) => {
+  await page.goto('/#/note/Welcome.md');
+  const paragraph = page.locator('.rich-markdown-content p').first();
+  await paragraph.click();
+  await paragraph.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await page.locator('.rich-markdown-content').evaluate((element) => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData('text/plain', 'https://example.com/page');
+    element.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+  });
+  await expect(paragraph.getByRole('link')).toHaveText('A browser-tested note.');
+  await expect(paragraph.getByRole('link')).toHaveAttribute('href', 'https://example.com/page');
+});
+
 test('retains cached note after reload when Drive is unavailable', async ({ page }) => {
   await page.goto('/#/note/Welcome.md');
   await expect(page.locator('.rich-markdown-content')).toContainText('A browser-tested note.');

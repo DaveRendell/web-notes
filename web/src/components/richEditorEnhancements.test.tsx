@@ -11,7 +11,7 @@ import {
   realmPlugin,
 } from '@mdxeditor/editor';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { $getRoot } from 'lexical';
+import { $getRoot, $isTextNode, PASTE_COMMAND, type LexicalEditor } from 'lexical';
 import {
   emojiTrigger,
   richEditorEnhancementsPlugin,
@@ -20,6 +20,16 @@ import {
 } from './richEditorEnhancements';
 
 afterEach(cleanup);
+
+let lexicalEditor: LexicalEditor;
+function CaptureEditor() {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => { lexicalEditor = editor; }, [editor]);
+  return null;
+}
+const captureEditorPlugin = realmPlugin({
+  init(realm) { realm.pub(addComposerChild$, CaptureEditor); },
+});
 
 function SelectEditorStart() {
   const [editor] = useLexicalComposerContext();
@@ -46,6 +56,23 @@ const selectEditorEndPlugin = realmPlugin({
 });
 
 describe('rich editor enhancements', () => {
+  it('pastes a URL as a link around selected text without replacing the label', async () => {
+    const ref = createRef<MDXEditorMethods>();
+    render(<MDXEditor ref={ref} markdown="Selected label" plugins={[
+      linkPlugin(), richEditorEnhancementsPlugin({ notes: [], recentNotes: [] }), captureEditorPlugin(),
+    ]} />);
+    lexicalEditor.update(() => {
+      const block = $getRoot().getFirstChildOrThrow();
+      const text = $isElementNode(block) ? block.getFirstDescendant() : null;
+      if ($isTextNode(text)) text.select(0, 8);
+    }, { discrete: true });
+    const preventDefault = vi.fn();
+    lexicalEditor.dispatchCommand(PASTE_COMMAND, {
+      clipboardData: { getData: () => 'https://example.com/page' }, preventDefault,
+    } as unknown as ClipboardEvent);
+    await waitFor(() => expect(ref.current?.getMarkdown()).toBe('[Selected](https://example.com/page) label'));
+    expect(preventDefault).toHaveBeenCalled();
+  });
   it.each([
     ['[[pro', { leadOffset: 0, matchingString: 'pro', replaceableString: '[[pro' }],
     ['See [[Project plan', { leadOffset: 4, matchingString: 'Project plan', replaceableString: '[[Project plan' }],
