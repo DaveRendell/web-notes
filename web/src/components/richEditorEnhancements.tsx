@@ -677,6 +677,26 @@ function handleChecklistShortcut(event: KeyboardEvent, editor: LexicalEditor) {
   } else if ($isListItemNode(listItem) && $isListNode(list)) {
     convertListItemToChecklist(listItem);
   } else {
+    const block = $findMatchingParent(selection.anchor.getNode(), (node) =>
+      $isElementNode(node) && !node.isInline());
+    if ($isElementNode(block) && block.getType() === 'paragraph' && block.isEmpty()) {
+      // Lexical's list merge can relocate an element-anchored caret to the
+      // preceding paragraph. Explicitly select the new item after merging.
+      const item = $createListItemNode(false);
+      const next = block.getNextSibling();
+      const previous = block.getPreviousSibling();
+      if ($isListNode(next) && next.getListType() === 'check') {
+        next.splice(0, 0, [item]);
+        block.remove();
+      } else if ($isListNode(previous) && previous.getListType() === 'check') {
+        previous.append(item);
+        block.remove();
+      } else {
+        block.replace($createListNode('check').append(item));
+      }
+      item.selectStart();
+      return true;
+    }
     editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
   }
   return true;

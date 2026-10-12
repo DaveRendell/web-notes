@@ -11,7 +11,7 @@ import {
   realmPlugin,
 } from '@mdxeditor/editor';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { $getRoot, $isElementNode, $isTextNode, INSERT_PARAGRAPH_COMMAND, PASTE_COMMAND, type LexicalEditor } from 'lexical';
+import { $createParagraphNode, $getRoot, $getSelection, $isRangeSelection, $isElementNode, $isTextNode, INSERT_PARAGRAPH_COMMAND, PASTE_COMMAND, type LexicalEditor } from 'lexical';
 import {
   emojiTrigger,
   richEditorEnhancementsPlugin,
@@ -56,6 +56,23 @@ const selectEditorEndPlugin = realmPlugin({
 });
 
 describe('rich editor enhancements', () => {
+  it('keeps Ctrl+L on the new empty item before an existing checklist', async () => {
+    const { container } = render(<MDXEditor markdown={'Above\n\n- [ ] Below'} plugins={[
+      listsPlugin(), richEditorEnhancementsPlugin({ notes: [], recentNotes: [] }), captureEditorPlugin(),
+    ]} />);
+    lexicalEditor.update(() => {
+      const paragraph = $createParagraphNode();
+      $getRoot().getFirstChildOrThrow().insertAfter(paragraph);
+      paragraph.selectStart();
+    }, { discrete: true });
+    fireEvent.keyDown(container.querySelector('[contenteditable="true"]')!, { key: 'l', ctrlKey: true });
+    await waitFor(() => lexicalEditor.getEditorState().read(() => {
+      const selection = $getSelection();
+      expect($isRangeSelection(selection) && selection.anchor.getNode().getType()).toBe('listitem');
+      expect($isRangeSelection(selection) && selection.anchor.getNode().getTextContent()).toBe('');
+      expect($isRangeSelection(selection) && selection.anchor.offset).toBe(0);
+    }));
+  });
   it('preserves paragraph indentation after Enter', async () => {
     render(<MDXEditor markdown="Indented" plugins={[
       richEditorEnhancementsPlugin({ notes: [], recentNotes: [] }), captureEditorPlugin(),
