@@ -1,4 +1,5 @@
 import '@mdxeditor/editor/style.css';
+import { EditorView } from '@codemirror/view';
 import {
   BlockTypeSelect,
   BoldItalicUnderlineToggles,
@@ -70,7 +71,20 @@ export default function RichMarkdownEditor({ markdown, blockMovementDisabled = f
     tablePlugin(),
     thematicBreakPlugin(),
     codeBlockPlugin({ defaultCodeBlockLanguage: '' }),
-    codeMirrorPlugin({ codeBlockLanguages: { '': 'Plain text' }, autoLoadLanguageSupport: false }),
+    codeMirrorPlugin({
+      codeBlockLanguages: { '': 'Plain text' },
+      autoLoadLanguageSupport: false,
+      codeMirrorExtensions: theme === 'dark' ? [EditorView.theme({
+        '&': { backgroundColor: '#181e25', color: '#dce3ea' },
+        '.cm-content': { caretColor: '#ffffff' },
+        '.cm-cursor': { borderLeftColor: '#ffffff' },
+        '.cm-gutters': { backgroundColor: '#181e25', color: '#8995a4', borderColor: '#2b3643' },
+        '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: '#222c37' },
+        '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+          backgroundColor: '#36536f',
+        },
+      }, { dark: true })] : [],
+    }),
     richEditorEnhancementsPlugin({ notes, recentNotes }),
     richBlockBackgroundPlugin(),
     richCalendarPlugin(),
@@ -97,7 +111,7 @@ export default function RichMarkdownEditor({ markdown, blockMovementDisabled = f
         </>
       ),
     }),
-  ], [blockMovementDisabled, notes, readOnly, recentNotes]);
+  ], [blockMovementDisabled, notes, readOnly, recentNotes, theme]);
 
   useEffect(() => {
     if (markdown === lastEmittedMarkdownRef.current) return;
