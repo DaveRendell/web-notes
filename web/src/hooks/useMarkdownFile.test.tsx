@@ -25,6 +25,32 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('useMarkdownFile', () => {
+  it('retains the loaded document throughout token expiry and renewal', async () => {
+    mocks.getNoteContent.mockResolvedValue(cachedContent('cached body', 'same'));
+    const { result, rerender } = renderHook(({ token }: { token: string | null }) =>
+      useMarkdownFile(token, 'account', 'vault', note('same')), { initialProps: { token: 'old' as string | null } });
+    await waitFor(() => expect(result.current.content).toBe('cached body'));
+    act(() => result.current.setContent('newly saved body'));
+    rerender({ token: null });
+    expect(result.current.content).toBe('newly saved body');
+    expect(result.current.isLoading).toBe(false);
+    rerender({ token: 'renewed' });
+    await waitFor(() => expect(mocks.getNoteContent).toHaveBeenCalledTimes(2));
+    expect(result.current.content).toBe('newly saved body');
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('ignores a late Drive read after a newer local save', async () => {
+    const response = deferred<string>();
+    mocks.getNoteContent.mockResolvedValue(cachedContent('baseline', 'old'));
+    mocks.getDriveFileText.mockReturnValue(response.promise);
+    const { result } = renderHook(() => useMarkdownFile('token', 'account', 'vault', note('new')));
+    await waitFor(() => expect(result.current.isRefreshing).toBe(true));
+    act(() => result.current.cacheContent('my saved edit', 'saved'));
+    await act(async () => response.resolve('older remote body'));
+    expect(result.current.content).toBe('my saved edit');
+    expect(mocks.putNoteContent).not.toHaveBeenCalledWith(expect.objectContaining({ content: 'older remote body' }));
+  });
   it('uses cached content without a Drive body request when timestamps match exactly', async () => {
     mocks.getNoteContent.mockResolvedValue(cachedContent('cached body', 'same'));
 

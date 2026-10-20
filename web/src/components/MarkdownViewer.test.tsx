@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   cacheContent: vi.fn(),
   cacheNoteIcon: vi.fn(),
   content: 'original body',
+  accessToken: 'token' as string | null,
   deleteNote: vi.fn(),
   ensureAccessToken: vi.fn(() => Promise.resolve('valid-token')),
   invalidateAccessToken: vi.fn(),
@@ -34,7 +35,7 @@ const selectedFile: VaultNode = {
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
-    accessToken: 'token',
+    accessToken: mocks.accessToken,
     accountId: 'account',
     ensureAccessToken: mocks.ensureAccessToken,
     invalidateAccessToken: mocks.invalidateAccessToken,
@@ -109,6 +110,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.useRealTimers();
   mocks.content = 'original body';
+  mocks.accessToken = 'token';
   selectedFile.name = 'Note.md';
   selectedFile.path = 'Note.md';
   mocks.isOnline = true;
@@ -125,6 +127,36 @@ afterEach(() => {
 });
 
 describe('MarkdownViewer rich editing', () => {
+  it('does not flag an earlier successful save as a remote conflict while typing continues', async () => {
+    const { rerender } = render(<MarkdownViewer />);
+    const editor = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: 'first saved edit' } });
+    fireEvent.blur(editor);
+    await waitFor(() => expect(mocks.storeSavedNote).toHaveBeenCalled());
+    fireEvent.change(editor, { target: { value: 'newer unsaved typing' } });
+    mocks.content = 'first saved edit';
+    rerender(<MarkdownViewer />);
+    expect(editor.value).toBe('newer unsaved typing');
+    expect(screen.queryByText(/changed in Google Drive/)).toBeNull();
+    mocks.content = 'a genuinely different remote edit';
+    rerender(<MarkdownViewer />);
+    expect(editor.value).toBe('newer unsaved typing');
+    expect(screen.queryByText(/changed in Google Drive/)).not.toBeNull();
+  });
+  it('keeps the live draft and cursor on re-auth without reporting its own content as a conflict', () => {
+    const { rerender } = render(<MarkdownViewer />);
+    const editor = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: 'typing a newer local draft' } });
+    editor.setSelectionRange(8, 8);
+    mocks.accessToken = 'renewed';
+    rerender(<MarkdownViewer />);
+    expect(editor.value).toBe('typing a newer local draft');
+    expect(editor.selectionStart).toBe(8);
+    mocks.content = editor.value;
+    rerender(<MarkdownViewer />);
+    expect(editor.selectionStart).toBe(8);
+    expect(screen.queryByText(/changed in Google Drive/)).toBeNull();
+  });
   it('does not mount an editor or save a loading placeholder, including navigation away', async () => {
     vi.useFakeTimers();
     mocks.isLoading = true;

@@ -49,6 +49,7 @@ export function MarkdownViewer({ onOpenSidebar }: { onOpenSidebar?: () => void }
   const queuedSavesRef = useRef(new Map<string, QueuedNoteSave>());
   const processSaveQueueRef = useRef<() => void>(() => undefined);
   const acceptedContentUpdateRef = useRef<{ content: string; fileId: string } | null>(null);
+  const ownSavedVersionsRef = useRef(new Map<string, string[]>());
   const selectedFileRef = useRef(selectedFile);
   const draftRef = useRef('');
   const previousContentRef = useRef(content);
@@ -113,6 +114,9 @@ export function MarkdownViewer({ onOpenSidebar }: { onOpenSidebar?: () => void }
       try {
         const validAccessToken = await ensureAccessToken();
         const updatedFile = await updateDriveFileText(validAccessToken, save.note.id, save.content);
+        const versions = ownSavedVersionsRef.current;
+        versions.set(save.note.id, [...(versions.get(save.note.id) ?? []), save.content].slice(-4));
+        if (versions.size > 32) versions.delete(versions.keys().next().value!);
         const newerSave = queuedSavesRef.current.get(save.note.id);
 
         // Always advance the Drive metadata, but never let an older response replace a
@@ -204,12 +208,24 @@ export function MarkdownViewer({ onOpenSidebar }: { onOpenSidebar?: () => void }
     const acceptedUpdate = acceptedContentUpdateRef.current;
     if (acceptedUpdate && acceptedUpdate.fileId === selectedFile?.id && acceptedUpdate.content === content) {
       acceptedContentUpdateRef.current = null;
-      setDraft(content);
       setHasRemoteUpdate(false);
       return;
     }
 
-    if (content !== previousContent && draftRef.current !== previousContent) {
+    // Auth/metadata rerenders are not new document versions. In particular,
+    // never send the saved baseline back to a live editor on token renewal.
+    if (content === previousContent) return;
+    if (content === draftRef.current) {
+      setHasRemoteUpdate(false);
+      return;
+    }
+    if (selectedFile && ownSavedVersionsRef.current.get(selectedFile.id)?.includes(content)) {
+      // A delayed listing/body response may acknowledge an earlier save while
+      // typing has already continued. That is our baseline, not a remote edit.
+      setHasRemoteUpdate(false);
+      return;
+    }
+    if (draftRef.current !== previousContent) {
       setHasRemoteUpdate(true);
       return;
     }
