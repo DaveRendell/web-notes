@@ -52,6 +52,35 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test('Enter before a checked item creates an unchecked row that survives saving and reloading', async ({ page }) => {
+  let body = '- [x] Existing';
+  await page.route('https://www.googleapis.com/drive/v3/files/welcome?*', route =>
+    route.fulfill({ contentType: 'text/plain', body }));
+  await page.route('https://www.googleapis.com/upload/drive/v3/files/welcome?*', async (route) => {
+    body = route.request().postData() ?? '';
+    await route.fulfill({ json: { id: 'welcome', name: 'Welcome.md', mimeType: 'text/markdown', parents: ['vault'], modifiedTime: '2026-01-02T00:00:00Z' } });
+  });
+  await page.goto('/#/note/Welcome.md');
+  const items = page.locator('.rich-markdown-content li[role="checkbox"]');
+  await items.first().locator('[data-lexical-text]').click();
+  await expect(page.locator('.rich-markdown-toolbar')).toBeVisible();
+  await items.first().locator('[data-lexical-text]').evaluate(element => {
+    window.getSelection()!.collapse(element.firstChild, 0);
+    document.dispatchEvent(new Event('selectionchange'));
+  });
+  await expect.poll(() => page.evaluate(() => window.getSelection()?.anchorOffset)).toBe(0);
+  await page.keyboard.press('Enter');
+  await expect(items).toHaveCount(2);
+  await expect(items.nth(0)).toHaveAttribute('aria-checked', 'false');
+  await expect(items.nth(1)).toHaveAttribute('aria-checked', 'true');
+  await expect(items.nth(1)).toHaveText('Existing');
+  await expect.poll(() => body).toContain('[ ] &#x20;');
+  await page.reload();
+  await expect(items).toHaveCount(2);
+  await expect(items.nth(0)).toHaveAttribute('aria-checked', 'false');
+  await expect(items.nth(1)).toHaveAttribute('aria-checked', 'true');
+});
+
 test('renders comment-backed events from primary and shared calendars', async ({ page }) => {
   const widget = '<!-- web-notes:calendar {"start":"2026-09-14","end":"2026-09-20","timezone":"Europe/London","calendars":["primary","team@example.com"]} -->';
   await page.route('https://www.googleapis.com/drive/v3/files/welcome?*', route => route.fulfill({ contentType: 'text/plain', body: `# This week\n\n${widget}\n` }));

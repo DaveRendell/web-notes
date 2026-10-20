@@ -11,6 +11,7 @@ import {
   realmPlugin,
 } from '@mdxeditor/editor';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
+import { $createListNode, $createListItemNode } from '@lexical/list';
 import { $createParagraphNode, $getRoot, $getSelection, $isRangeSelection, $isElementNode, $isTextNode, INSERT_PARAGRAPH_COMMAND, PASTE_COMMAND, type LexicalEditor } from 'lexical';
 import {
   emojiTrigger,
@@ -56,6 +57,22 @@ const selectEditorEndPlugin = realmPlugin({
 });
 
 describe('rich editor enhancements', () => {
+  it.each([' ', 'x'])('round-trips an empty checkbox with state "%s"', async (checked) => {
+    const ref = createRef<MDXEditorMethods>();
+    const { unmount } = render(<MDXEditor ref={ref} markdown="" plugins={[
+      listsPlugin(), richEditorEnhancementsPlugin({ notes: [], recentNotes: [] }), captureEditorPlugin(),
+    ]} />);
+    lexicalEditor.update(() => {
+      $getRoot().clear().append($createListNode('check').append($createListItemNode(checked === 'x')));
+    }, { discrete: true });
+    await waitFor(() => expect(ref.current?.getMarkdown()).toBe(`* [${checked}] &#x20;`));
+    const saved = ref.current!.getMarkdown();
+    unmount();
+    render(<MDXEditor markdown={saved} plugins={[
+      listsPlugin(), richEditorEnhancementsPlugin({ notes: [], recentNotes: [] }),
+    ]} />);
+    expect(screen.getByRole('checkbox').getAttribute('aria-checked')).toBe(String(checked === 'x'));
+  });
   it('inserts an unchecked item before a checked item without changing its state', async () => {
     const ref = createRef<MDXEditorMethods>();
     render(<MDXEditor ref={ref} markdown="- [x] Existing" plugins={[

@@ -55,9 +55,10 @@ import {
   TextNode,
   type LexicalEditor,
 } from 'lexical';
-import type { Image, List, Parent, RootContent, Text } from 'mdast';
+import type { Image, List, Parent, PhrasingContent, RootContent, Text } from 'mdast';
 import type { Extension as FromMarkdownExtension } from 'mdast-util-from-markdown';
 import type { Handle, Options as ToMarkdownExtension } from 'mdast-util-to-markdown';
+import { gfmTaskListItemToMarkdown } from 'mdast-util-gfm-task-list-item';
 import type { Literal } from 'unist';
 import { useEffect, useMemo, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
@@ -310,7 +311,19 @@ const wikiLinkHandler: Handle = (node: WikiLinkMdastNode) => {
 };
 
 const wikiLinkToMarkdownExtension: ToMarkdownExtension = {
-  handlers: { wikiLink: wikiLinkHandler },
+  handlers: {
+    wikiLink: wikiLinkHandler,
+    listItem(node, parent, state, info) {
+      if (typeof node.checked === 'boolean' && (node.children.length === 0
+        || node.children.length === 1 && node.children[0].type === 'paragraph'
+          && node.children[0].children.every((child: PhrasingContent) => child.type === 'text' && !child.value.trim()))) {
+        // GFM requires content after a checkbox. An encoded space survives the
+        // editor's trimming and remains visually empty in other Markdown viewers.
+        return `${state.options.bullet ?? '*'} [${node.checked ? 'x' : ' '}] &#x20;`;
+      }
+      return gfmTaskListItemToMarkdown().handlers!.listItem!(node, parent, state, info);
+    },
+  },
 };
 
 function transformWikiLinkText(parent: Parent, insideLink = false) {
