@@ -2,7 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Directory } from 'expo-file-system';
 import { displayNameFromSafUri, listVaultCore, listVaultFolderCore, openLocalWeeklyNoteCore, parseVaultListCache, readLocalWeeklyTemplateCore, saveNoteCore, type LocalFolder, type LocalImage, type LocalNote, type LocalVaultItem, type VaultFiles, type VaultListCache } from './localVaultCore';
 import fastSaf from './modules/fast-saf';
-import { parseFavouritePaths, parseNoteIconCache } from './vaultFeatures';
+import { parseNoteIconCache } from './vaultFeatures';
 
 export { displayNameFromSafUri, splitFrontmatter, ExternalNoteChangeError, type LocalNote, type LocalImage, type LocalFolder, type LocalVaultItem } from './localVaultCore';
 
@@ -92,13 +92,6 @@ export async function writeVaultListCache(rootUri: string, items: LocalVaultItem
   } catch (cause) {
     console.warn('Could not write the local vault listing cache:', cause);
   }
-}
-
-export async function readVaultFavourites(rootUri: string): Promise<string[]> {
-  const children = await vaultFiles(rootUri).readDirectory(rootUri);
-  const settings = children.find((child) => !child.isDirectory && (child.name ?? displayNameFromSafUri(child.uri)) === '.web-notes.json');
-  if (!settings) return [];
-  return parseFavouritePaths(await files.readText(settings.uri));
 }
 
 export async function readNoteIconCache(rootUri: string): Promise<Record<string, string | null>> {

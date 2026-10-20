@@ -1,6 +1,6 @@
 # Web Notes
 
-This repository contains the [web app](web/) and an [Android app](android/). Android currently opens a locally synced vault through Android's folder picker; it is not yet feature-parity with the Drive-backed web app. See the [Android README](android/README.md) for its current capabilities and limitations.
+This repository contains the [web app](web/) and a [Google Drive-backed Android app](android/). Both use the same vault files and settings; Android adds a durable offline note-save queue and native local caching. See the [Android README](android/README.md) for setup and remaining feature differences.
 
 A static React SPA for browsing and editing Markdown notes stored in Google Drive.
 

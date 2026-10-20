@@ -116,7 +116,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     selectedVault?.name ?? null,
   );
   const notes = useMemo(() => flattenVaultTree(tree).filter((node) => node.type === 'markdown'), [tree]);
-  const notePathsById = useMemo(() => new Map(notes.map((note) => [note.id, note.path])), [notes]);
   const {
     favoriteNoteIds,
     favoriteSyncError,
@@ -128,7 +127,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     ensureAccessToken,
     invalidateAccessToken,
     isOnline,
-    notePathsById,
     vaultId: selectedVault?.id ?? null,
   });
   const recentNotes = useMemo(() => {

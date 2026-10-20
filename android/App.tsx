@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Appearance, AppState, BackHandler, FlatList, Image as NativeImage, Keyboard, Linking, Modal, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Alert, Appearance, AppState, BackHandler, FlatList, Image as NativeImage, Keyboard, Linking, Modal, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, useColorScheme, View } from 'react-native';
 import { ChevronDown, ChevronLeft, ChevronRight, EllipsisVertical, FileCode2, FilePlus2, FileText, Folder, FolderOpen, FolderPlus, Image as ImageIcon, MoreHorizontal, RefreshCw, Save, Search, Settings, X } from 'lucide-react-native';
 import { SvgUri } from 'react-native-svg';
 import EditorSurface from './EditorSurface';
-import { chooseVault, createFolder, createImage, createNote, listVault, listVaultFolder, openLocalWeeklyNote, readImageData, readLocalWeeklyTemplate, readNote, readNoteIconCache, readThemePreference, readVaultFavourites, readVaultListCache, restoreVault, saveNote, splitFrontmatter, writeNoteIconCache, writeThemePreference, writeVaultListCache, type LocalFolder, type LocalImage, type LocalNote, type LocalVaultItem, type ThemePreference } from './localVault';
+import { createFolder, createImage, createNote, listVault, listVaultFolder, openLocalWeeklyNote, overwritePendingNote, readImageData, readLocalWeeklyTemplate, readNote, readNoteIconCache, readThemePreference, readVaultFavourites, readVaultListCache, reconnectCurrentVault, restoreVault, saveNote, splitFrontmatter, subscribeDriveStatus, syncPendingWrites, writeNoteIconCache, writeThemePreference, writeVaultListCache, type LocalFolder, type LocalImage, type LocalNote, type LocalVaultItem, type ThemePreference } from './driveVault';
+import DriveVaultPicker from './DriveVaultPicker';
+import * as Network from 'expo-network';
+import { createVaultReconnectCoordinator } from './vaultReconnect';
 import { buildBrowserRows, expandPath } from './localVaultTree';
 import { replaceVaultFolderChildren } from './localVaultCore';
+import { parseDriveUri } from './driveVaultCore';
 import { noteIconFromMarkdown, resolveFavouriteNotes } from './vaultFeatures';
 import { MOBILE_AUTOSAVE_DELAY_MS, flushLatestDraft, shouldAutosave, type MobileEditorMode } from './autosave';
 import { getTwemojiUrl } from '../web/src/lib/twemoji';
@@ -42,7 +46,7 @@ export default function App() {
   const styles = useMemo(() => createStyles(palette), [palette]);
   const [vaultUri, setVaultUri] = useState<string | null>(null);
   const [items, setItems] = useState<LocalVaultItem[]>([]);
-  const [favouritePaths, setFavouritePaths] = useState<string[]>([]);
+  const [favouriteNoteIds, setFavouriteNoteIds] = useState<string[]>([]);
   const [favouritesExpanded, setFavouritesExpanded] = useState(true);
   const [filesExpanded, setFilesExpanded] = useState(true);
   const [noteIcons, setNoteIcons] = useState<Record<string, string | null>>({});
@@ -64,6 +68,8 @@ export default function App() {
   const [newName, setNewName] = useState('');
   const [busy, setBusy] = useState(true);
   const [pickerPending, setPickerPending] = useState(false);
+  const [drivePickerVisible, setDrivePickerVisible] = useState(false);
+  const [driveStatus, setDriveStatus] = useState<string | null>(null);
   const [loadingFolders, setLoadingFolders] = useState<Set<string>>(() => new Set());
   const [indexComplete, setIndexComplete] = useState(false);
   const [cacheLoaded, setCacheLoaded] = useState(false);
@@ -74,6 +80,7 @@ export default function App() {
   const [autosaveBlockedRevision, setAutosaveBlockedRevision] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState(0);
+  const [readyEditorSession, setReadyEditorSession] = useState<number | null>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [editorFocused, setEditorFocused] = useState(false);
   const [editorMode, setEditorMode] = useState<MobileEditorMode>('rich');
@@ -103,6 +110,8 @@ export default function App() {
   const openRequestRef = useRef(0);
   itemsRef.current = items;
 
+  useEffect(() => subscribeDriveStatus(setDriveStatus), []);
+
   useEffect(() => {
     void restoreCalendarConnection().then(setCalendarConnected).catch((cause) => console.warn('Could not restore Google Calendar connection:', cause));
   }, []);
@@ -122,8 +131,8 @@ export default function App() {
 
   const loadFavourites = useCallback(async (uri: string) => {
     try {
-      const paths = await readVaultFavourites(uri);
-      if (vaultUriRef.current === uri) setFavouritePaths(paths);
+      const ids = await readVaultFavourites(uri);
+      if (vaultUriRef.current === uri) setFavouriteNoteIds(ids);
     } catch (cause) {
       if (vaultUriRef.current === uri) setError(`Could not read favourites: ${String(cause)}`);
     }
@@ -197,13 +206,34 @@ export default function App() {
       setVaultUri(uri);
       const cached = await readVaultListCache(uri);
       if (vaultUriRef.current !== uri) return;
-      if (cached) { setItems(cached.items); setIndexComplete(cached.complete); }
+      if (cached) {
+        setItems(cached.items); setIndexComplete(cached.complete);
+        if (cached.complete) loadedFoldersRef.current = new Set([uri, ...cached.items.filter((item) => item.kind === 'folder').map((item) => item.uri)]);
+      }
       setNoteIcons(await readNoteIconCache(uri));
       setCacheLoaded(true);
-      await Promise.all([loadFolder(uri, '', true), loadFavourites(uri)]);
-    }).catch(() => setError('Saved folder access has expired. Choose your vault again.'))
+      void loadFavourites(uri);
+      await syncPendingWrites(uri);
+      void refresh(uri, false);
+    }).catch((cause) => setError(`Could not restore Google Drive: ${String(cause)}`))
       .finally(() => setBusy(false));
-  }, [loadFolder, loadFavourites]);
+  }, [refresh, loadFavourites]);
+
+  useEffect(() => {
+    const coordinator = createVaultReconnectCoordinator(async () => {
+      const uri = vaultUriRef.current;
+      if (!uri) return;
+      await syncPendingWrites(uri);
+      if (vaultUriRef.current === uri) await refresh(uri, false);
+    }, (cause) => setError(String(cause)), AppState.currentState);
+    const network = Network.addNetworkStateListener((state) => {
+      const online = state.isConnected === false || state.isInternetReachable === false
+        ? false : state.isConnected === true ? true : null;
+      coordinator.networkChanged(online);
+    });
+    const foreground = AppState.addEventListener('change', coordinator.appStateChanged);
+    return () => { coordinator.dispose(); network.remove(); foreground.remove(); };
+  }, [refresh]);
 
   useEffect(() => {
     if (!vaultUri || !cacheLoaded) return;
@@ -240,11 +270,11 @@ export default function App() {
 
   useEffect(() => {
     if (!vaultUri || !cacheLoaded || indexComplete || scanning || loadingFolders.size > 0 || scanPendingRef.current || favoriteIndexAttemptedRef.current) return;
-    if (favouritePaths.some((path) => !items.some((item) => item.kind === 'note' && item.path === path))) {
+    if (favouriteNoteIds.some((id) => !items.some((item) => item.kind === 'note' && parseDriveUri(item.uri).fileId === id))) {
       favoriteIndexAttemptedRef.current = true;
       void refresh(vaultUri, false);
     }
-  }, [vaultUri, cacheLoaded, indexComplete, scanning, loadingFolders, favouritePaths, items, refresh]);
+  }, [vaultUri, cacheLoaded, indexComplete, scanning, loadingFolders, favouriteNoteIds, items, refresh]);
 
   useEffect(() => {
     const shown = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
@@ -299,6 +329,16 @@ export default function App() {
     if (result === 'changing') setError('The note kept changing while it was being saved. Please try again.');
     return result === 'saved';
   }, [save]);
+
+  const reconnectDrive = useCallback(async () => {
+    setSettingsVisible(false); setNoteMenuVisible(false);
+    try {
+      await reconnectCurrentVault();
+      setAutosaveBlockedRevision(null);
+      if (activeRef.current) await saveLatestDraft();
+      if (vaultUriRef.current) await syncPendingWrites(vaultUriRef.current);
+    } catch (cause) { setError(String(cause)); }
+  }, [saveLatestDraft]);
 
   useEffect(() => {
     if (!active?.entry.uri || !shouldAutosave({
@@ -400,7 +440,19 @@ export default function App() {
     setError(null);
     setNoteMenuVisible(false);
     try {
-      const original = await readNote(entry.uri);
+      const original = await readNote(entry.uri, (updated) => {
+        if (request !== openRequestRef.current || activeRef.current?.entry.uri !== entry.uri || updated === originalRef.current) return;
+        if (draftRef.current !== originalRef.current || savingRef.current) {
+          setError('This note changed on Drive. Your current draft has been preserved.');
+          return;
+        }
+        const { frontmatter, body } = splitFrontmatter(updated);
+        const next = { entry, frontmatter, body };
+        originalRef.current = updated; draftRef.current = updated;
+        activeRef.current = next; setActive(next); setEditorNote(next);
+        activeSessionRef.current += 1; setSession(activeSessionRef.current);
+        setNoteIcons((previous) => ({ ...previous, [entry.path]: noteIconFromMarkdown(updated) }));
+      }, () => { if (request === openRequestRef.current) setError('Showing cached note; Drive refresh failed.'); });
       if (request !== openRequestRef.current) return;
       const { frontmatter, body } = splitFrontmatter(original);
       const next = { entry, frontmatter, body };
@@ -433,14 +485,42 @@ export default function App() {
     Keyboard.dismiss();
   }, []);
 
+  useEffect(() => {
+    const note = activeRef.current;
+    if (!note || savingRef.current) return;
+    const updated = items.find((item): item is LocalNote => item.kind === 'note' && item.uri === note.entry.uri);
+    if (!updated || updated.modifiedTime === note.entry.modifiedTime) return;
+    const noteSession = activeSessionRef.current;
+    const apply = (content: string) => {
+      if (activeSessionRef.current !== noteSession || activeRef.current?.entry.uri !== updated.uri) return;
+      if (content === originalRef.current) { note.entry = updated; return; }
+      if (draftRef.current !== originalRef.current || savingRef.current) {
+        setError('This note changed on Drive. Your current draft has been preserved.'); return;
+      }
+      const { frontmatter, body } = splitFrontmatter(content);
+      const next = { entry: updated, frontmatter, body };
+      originalRef.current = content; draftRef.current = content;
+      activeRef.current = next; setActive(next); setEditorNote(next);
+      activeSessionRef.current += 1; setSession(activeSessionRef.current);
+      setNoteIcons((previous) => ({ ...previous, [updated.path]: noteIconFromMarkdown(content) }));
+    };
+    void readNote(updated.uri, apply, () => { if (activeSessionRef.current === noteSession) setError('Showing cached note; Drive refresh failed.'); }).then(apply).catch((cause) => {
+      if (activeSessionRef.current === noteSession) setError(String(cause));
+    });
+  }, [items]);
+
   const pickVault = async () => {
     if (pickerPendingRef.current || busy) return;
+    if (!await saveLatestDraft() && activeRef.current) return;
+    setDrivePickerVisible(true);
+  };
+
+  const activateVault = async (uri: string) => {
+    setDrivePickerVisible(false);
     pickerPendingRef.current = true;
     setPickerPending(true);
     setBusy(true);
     try {
-      const uri = await chooseVault();
-      if (!uri) return;
       openRequestRef.current += 1;
       setOpeningNoteUri(null);
       vaultGenerationRef.current += 1;
@@ -455,18 +535,25 @@ export default function App() {
       setIndexComplete(false);
       setVaultUri(uri);
       setItems([]);
-      setFavouritePaths([]);
+      setFavouriteNoteIds([]);
       setNoteIcons({});
       setExpanded(new Set());
       setCreateParent(null);
       setLastOpenedUri(null);
       setEditorNote(null);
+      activeRef.current = null; setActive(null); setActiveImage(null);
+      originalRef.current = ''; draftRef.current = ''; setDirty(false);
       const cached = await readVaultListCache(uri);
-      if (cached) { setItems(cached.items); setIndexComplete(cached.complete); }
+      if (cached) {
+        setItems(cached.items); setIndexComplete(cached.complete);
+        if (cached.complete) loadedFoldersRef.current = new Set([uri, ...cached.items.filter((item) => item.kind === 'folder').map((item) => item.uri)]);
+      }
       setNoteIcons(await readNoteIconCache(uri));
       setCacheLoaded(true);
-      await Promise.all([loadFolder(uri, '', true), loadFavourites(uri)]);
-    } catch (cause) { setError(`Could not open the selected folder: ${String(cause)}`); }
+      void loadFavourites(uri);
+      await syncPendingWrites(uri);
+      void refresh(uri, false);
+    } catch (cause) { setError(`Could not open the selected Drive vault: ${String(cause)}`); }
     finally {
       pickerPendingRef.current = false;
       setPickerPending(false);
@@ -529,7 +616,7 @@ export default function App() {
   const searchRows = useMemo(() => search.trim()
     ? buildBrowserRows(items, expanded, search).filter(({ item }) => item.kind === 'note')
     : [], [items, expanded, search]);
-  const favouriteNotes = useMemo(() => resolveFavouriteNotes(items, favouritePaths), [items, favouritePaths]);
+  const favouriteNotes = useMemo(() => resolveFavouriteNotes(items, favouriteNoteIds), [items, favouriteNoteIds]);
   const weeklyDetails = getWeeklyNoteDetails(new Date());
   const weeklyNote = items.find((item): item is LocalNote => item.kind === 'note' && item.path === weeklyDetails.path) ?? null;
   const weeklyIcon = weeklyNote ? noteIcons[weeklyNote.path] : weeklyTemplateIcon;
@@ -582,9 +669,14 @@ export default function App() {
     await openNote(note);
   }, [openNote, saveLatestDraft]);
 
+  const editorVisible = readyEditorSession === session
+    && (!openingNoteUri || openingNoteUri === editorNote?.entry.uri);
+
   return (
     <SafeAreaView style={styles.page}>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} backgroundColor={palette.statusBar} />
+      {drivePickerVisible && <DriveVaultPicker dark={darkMode} onCancel={() => setDrivePickerVisible(false)} onSelect={(uri) => { void activateVault(uri); }} />}
+      {driveStatus && <Text style={{ color: palette.muted, paddingHorizontal: 16, paddingVertical: 4 }}>{driveStatus}</Text>}
       {active || activeImage ? (
         <>
           <View style={styles.header}>
@@ -622,11 +714,17 @@ export default function App() {
               </View>
             )}
           </View>
+        <FlatList
+          style={styles.browserPage}
+          data={vaultUri && filesExpanded ? rows : []}
+          keyExtractor={({ item }) => item.uri}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={<>
           {error && <Text style={styles.error}>{error}</Text>}
           {!vaultUri ? (
             <View style={styles.welcome}>
-              <Text style={styles.welcomeText}>Choose the folder where your notes are synced on this phone. Web Notes will only read and write inside that folder.</Text>
-              <Pressable onPress={() => { void pickVault(); }} disabled={busy || pickerPending} style={styles.primaryButton}><Text style={styles.primaryText}>{pickerPending ? 'Waiting for folder picker…' : busy ? 'Checking saved folder…' : 'Choose vault folder'}</Text></Pressable>
+              <Text style={styles.welcomeText}>Connect Google Drive and choose your notes folder. Notes are cached on this phone, with offline changes synced when you reconnect.</Text>
+              <Pressable onPress={() => { void pickVault(); }} disabled={busy || pickerPending} style={styles.primaryButton}><Text style={styles.primaryText}>{busy ? 'Restoring Google Drive…' : 'Choose Drive vault'}</Text></Pressable>
             </View>
           ) : (
             <>
@@ -649,7 +747,7 @@ export default function App() {
                   <Text style={styles.sectionTitle}>Favourites</Text>
                 </Pressable>
                 {favouritesExpanded && (
-                  <ScrollView style={styles.favouritesList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                  <View>
                     {favouriteNotes.length === 0 ? <Text style={styles.favouritesEmpty}>Favourite notes will appear here.</Text> : favouriteNotes.map((note) => (
                       <Pressable key={note.uri} accessibilityRole="button" accessibilityLabel={`Open favourite ${note.path}`} onPress={() => { void openNote(note); }} style={[styles.favouriteRow, note.uri === lastOpenedUri && styles.selectedRow]}>
                         <NoteIcon emoji={noteIcons[note.path]} fallbackColor={palette.muted} />
@@ -659,7 +757,7 @@ export default function App() {
                         {note.uri === openingNoteUri && <ActivityIndicator size="small" color={palette.accent} />}
                       </Pressable>
                     ))}
-                  </ScrollView>
+                  </View>
                 )}
               </View>
               <View style={styles.filesHeading}>
@@ -675,10 +773,9 @@ export default function App() {
                   <FolderPlus size={18} color={palette.textStrong} />
                 </Pressable>
               </View>
-              {filesExpanded && <FlatList
-                data={rows}
-                keyExtractor={({ item }) => item.uri}
-                keyboardShouldPersistTaps="handled"
+            </>
+          )}
+          </>}
                 renderItem={({ item: row }) => row.item.kind === 'folder' ? (
                   <View style={[styles.treeRow, { paddingLeft: 14 + Math.min(row.depth, 10) * 16 }]}>
                     <Pressable accessibilityRole="button" accessibilityLabel={`${expanded.has(row.item.path) ? 'Collapse' : 'Expand'} ${row.item.name}`} onPress={() => toggleFolder(row.item as LocalFolder)} style={styles.folderToggle}>
@@ -704,10 +801,8 @@ export default function App() {
                     {row.item.uri === openingNoteUri && <ActivityIndicator size="small" color={palette.accent} />}
                   </Pressable>
                 )}
-                ListEmptyComponent={!busy && loadingFolders.size === 0 ? <Text style={styles.empty}>No notes, images, or folders found.</Text> : null}
-              />}
-            </>
-          )}
+                ListEmptyComponent={vaultUri && filesExpanded && !busy && loadingFolders.size === 0 ? <Text style={styles.empty}>No notes, images, or folders found.</Text> : null}
+        />
         </>
       )}
       <Modal visible={searchVisible} transparent animationType="fade" onRequestClose={() => { setSearchVisible(false); setSearch(''); }}>
@@ -796,6 +891,10 @@ export default function App() {
               <RefreshCw size={19} color={busy || scanning ? palette.disabled : palette.textStrong} />
               <Text style={[styles.menuItemText, (busy || scanning) && styles.disabled]}>Refresh vault</Text>
             </Pressable>
+            <Pressable style={styles.menuItem} onPress={() => { setSettingsVisible(false); if (vaultUri) void syncPendingWrites(vaultUri).catch((cause) => setError(String(cause))); }}>
+              <Save size={19} color={palette.textStrong} /><Text style={styles.menuItemText}>Sync local changes</Text>
+            </Pressable>
+            <Pressable style={styles.menuItem} onPress={() => { void reconnectDrive(); }}><RefreshCw size={19} color={palette.textStrong} /><Text style={styles.menuItemText}>Reconnect Google Drive</Text></Pressable>
             <Pressable style={styles.menuItem} disabled={busy || pickerPending} onPress={() => { setSettingsVisible(false); void pickVault(); }}>
               <FolderOpen size={19} color={busy || pickerPending ? palette.disabled : palette.textStrong} />
               <Text style={[styles.menuItemText, (busy || pickerPending) && styles.disabled]}>Change vault folder</Text>
@@ -806,6 +905,20 @@ export default function App() {
       <Modal visible={noteMenuVisible} transparent animationType="fade" onRequestClose={() => setNoteMenuVisible(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setNoteMenuVisible(false)}>
           <Pressable style={styles.settingsPanel} onPress={(event) => event.stopPropagation()}>
+            <Pressable style={styles.menuItem} onPress={() => { void reconnectDrive(); }}><RefreshCw size={19} color={palette.textStrong} /><Text style={styles.menuItemText}>Reconnect Google Drive</Text></Pressable>
+            {driveStatus?.includes('changed on Google Drive') && active && <Pressable style={styles.menuItem} onPress={() => {
+              setNoteMenuVisible(false);
+              const uri = active.entry.uri;
+              Alert.alert('Overwrite Google Drive?', 'Replace the Drive version with your local version? This cannot be undone.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Overwrite', style: 'destructive', onPress: () => {
+                if (activeRef.current?.entry.uri !== uri) return;
+                const snapshot = draftRef.current;
+                void overwritePendingNote(uri, snapshot).then(() => {
+                  if (activeRef.current?.entry.uri !== uri) return;
+                  originalRef.current = snapshot; setDirty(draftRef.current !== snapshot);
+                  setError(null); setAutosaveBlockedRevision(null);
+                }).catch((cause) => setError(String(cause)));
+              } }]);
+            }}><Save size={19} color={palette.error} /><Text style={styles.menuItemText}>Resolve conflict: use local version</Text></Pressable>}
             {sequenceNavigation && (sequenceNavigation.previous || sequenceNavigation.next) && (
               <View style={styles.sequenceNavigation} accessibilityRole="toolbar" accessibilityLabel="Sequential notes">
                 <Pressable accessibilityRole="button" accessibilityLabel={`Previous note: ${sequenceNavigation.previousNumber}`} disabled={!sequenceNavigation.previous} onPress={() => { void openSequenceNote(sequenceNavigation.previous); }} style={styles.sequenceButton}>
@@ -834,6 +947,7 @@ export default function App() {
       </Modal>
       {editorNote && (
         <View style={active ? styles.editor : styles.hiddenEditor}>
+          <View style={[styles.editor, !editorVisible && styles.editorAwaitingReady]} pointerEvents={editorVisible ? 'auto' : 'none'}>
           <EditorSurface
             fixtureName={editorNote.entry.path}
             markdown={editorNote.body}
@@ -852,7 +966,9 @@ export default function App() {
             onCalendarEvents={loadGoogleCalendarEvents}
             onOpenExternal={openExternal}
             snapshotRequest={0}
-            onEvent={noop}
+            onEvent={async (event) => {
+              if (event.kind === 'ready' && event.session === activeSessionRef.current) setReadyEditorSession(event.session);
+            }}
             onWriteAttempt={noop}
             onEditorFocusChange={async (event) => { if (activeRef.current && event.session === session) setEditorFocused(event.focused); }}
             onDraftChange={async ({ markdown: body, mode, session: draftSession }) => {
@@ -866,6 +982,8 @@ export default function App() {
               setDirty(full !== originalRef.current);
             }}
           />
+          </View>
+          {active && !editorVisible && <View style={styles.editorLoadingOverlay} accessibilityLabel="Loading note"><ActivityIndicator color={palette.accent} /></View>}
         </View>
       )}
       {activeImage && <View style={styles.imageViewer}><NativeImage accessibilityLabel={activeImage.name} source={{ uri: activeImage.uri }} resizeMode="contain" style={styles.imageViewerImage} /></View>}
@@ -938,6 +1056,8 @@ function createStyles(palette: Palette) {
   error: { paddingHorizontal: 14, paddingVertical: 10, color: palette.error, backgroundColor: palette.errorBackground, borderBottomWidth: 1, borderColor: palette.errorBorder },
   editor: { flex: 1 },
   hiddenEditor: { display: 'none' },
+  editorAwaitingReady: { opacity: 0 },
+  editorLoadingOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.background },
   imageViewer: { flex: 1, padding: 12, backgroundColor: palette.surfaceMuted },
   imageViewerImage: { width: '100%', height: '100%' },
   welcome: { padding: 24, gap: 20 },
@@ -950,10 +1070,10 @@ function createStyles(palette: Palette) {
   filesTitle: { color: palette.section, fontSize: 12, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
   sectionAction: { width: 34, minHeight: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 5 },
   weeklyNoteRow: { marginTop: 10 },
-  favouritesSection: { marginTop: 2 },
+  favouritesSection: { marginTop: 2, flexShrink: 0 },
   favouritesHeading: { minHeight: 39, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 5, backgroundColor: palette.surface },
   sectionTitle: { flex: 1, color: palette.section, fontSize: 12, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
-  favouritesList: { maxHeight: 210 },
+  browserPage: { flex: 1 },
   favouritesEmpty: { paddingHorizontal: 32, paddingBottom: 10, color: palette.muted, fontSize: 13 },
   favouriteRow: { flexDirection: 'row', alignItems: 'center', minHeight: 42, marginHorizontal: 10, paddingHorizontal: 6, borderRadius: 5 },
   treeRow: { flexDirection: 'row', alignItems: 'center', minHeight: 43, marginHorizontal: 8, paddingRight: 8, borderRadius: 5 },

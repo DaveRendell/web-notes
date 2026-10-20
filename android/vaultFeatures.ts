@@ -1,25 +1,11 @@
 import { findLeadingEmoji } from '../web/src/lib/markdown';
 import type { LocalNote, LocalVaultItem } from './localVaultCore';
+import { parseDriveUri } from './driveVaultCore';
 
-export function parseFavouritePaths(content: string): string[] {
-  const value: unknown = JSON.parse(content);
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid .web-notes.json settings.');
-  const settings = value as Record<string, unknown>;
-  if (settings.version !== 1 || !Array.isArray(settings.favourites)) throw new Error('Unsupported .web-notes.json settings.');
-  const paths = settings.favouritePaths;
-  if (!paths || typeof paths !== 'object' || Array.isArray(paths)) return [];
-  const byId = paths as Record<string, unknown>;
-  return [...new Set(settings.favourites.flatMap((id) => {
-    const path = typeof id === 'string' ? byId[id] : undefined;
-    return typeof path === 'string' && path.endsWith('.md') && !path.startsWith('/') && !path.split('/').includes('..')
-      ? [path] : [];
-  }))];
-}
-
-export function resolveFavouriteNotes(items: LocalVaultItem[], paths: string[]): LocalNote[] {
-  const notes = new Map(items.filter((item): item is LocalNote => item.kind === 'note').map((note) => [note.path, note]));
-  return paths.flatMap((path) => {
-    const note = notes.get(path);
+export function resolveFavouriteNotes(items: LocalVaultItem[], ids: string[]): LocalNote[] {
+  const notes = new Map(items.filter((item): item is LocalNote => item.kind === 'note').map((note) => [parseDriveUri(note.uri).fileId, note]));
+  return ids.flatMap((id) => {
+    const note = notes.get(id);
     return note ? [note] : [];
   });
 }

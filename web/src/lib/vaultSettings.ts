@@ -11,7 +11,6 @@ export const VAULT_SETTINGS_FILE_NAME = '.web-notes.json';
 export type VaultSettings = {
   version: 1;
   favourites: string[];
-  favouritePaths?: Record<string, string>;
 };
 
 export type LoadedVaultSettings = {
@@ -19,14 +18,8 @@ export type LoadedVaultSettings = {
   settings: VaultSettings;
 };
 
-export function createVaultSettings(favourites: string[] = [], favouritePaths?: Record<string, string>): VaultSettings {
-  const unique = uniqueStrings(favourites);
-  const paths = Object.fromEntries(unique.flatMap((id) => {
-    const path = favouritePaths?.[id];
-    return typeof path === 'string' && path.endsWith('.md') && !path.startsWith('/') && !path.split('/').includes('..')
-      ? [[id, path]] : [];
-  }));
-  return Object.keys(paths).length ? { version: 1, favourites: unique, favouritePaths: paths } : { version: 1, favourites: unique };
+export function createVaultSettings(favourites: string[] = []): VaultSettings {
+  return { version: 1, favourites: uniqueStrings(favourites) };
 }
 
 export function parseVaultSettings(content: string): VaultSettings {
@@ -36,12 +29,11 @@ export function parseVaultSettings(content: string): VaultSettings {
     throw new Error(`${VAULT_SETTINGS_FILE_NAME} is not a valid Web Notes settings file.`);
   }
 
-  const paths = isObject(value.favouritePaths) ? value.favouritePaths as Record<string, string> : undefined;
-  return createVaultSettings(value.favourites.filter((item): item is string => typeof item === 'string'), paths);
+  return createVaultSettings(value.favourites.filter((item): item is string => typeof item === 'string'));
 }
 
 export function serializeVaultSettings(settings: VaultSettings) {
-  return `${JSON.stringify(createVaultSettings(settings.favourites, settings.favouritePaths), null, 2)}\n`;
+  return `${JSON.stringify(createVaultSettings(settings.favourites), null, 2)}\n`;
 }
 
 export async function loadDriveVaultSettings(

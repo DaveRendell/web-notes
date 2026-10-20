@@ -6,7 +6,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import { autocompletion } from '@codemirror/autocomplete';
 import { markdown as markdownLanguage } from '@codemirror/lang-markdown';
 import type { EditorView } from '@codemirror/view';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { richEditorEnhancementsPlugin } from '../web/src/components/richEditorEnhancements';
 import { richBlockBackgroundPlugin } from '../web/src/components/richBlockBackground';
 import { richBlockTouchDragPlugin } from '../web/src/components/richBlockTouchDrag';
@@ -25,6 +25,7 @@ import { MobileCalendarProvider, type MobileCalendarServices } from './shims/Cal
 import type { CalendarWidgetConfig } from '../web/src/lib/calendarWidget';
 import type { GoogleCalendarEvent, GoogleCalendarListEntry } from '../web/src/lib/googleCalendar';
 import { calendarWidgetInsertion } from '../web/src/lib/calendarWidget';
+import { afterEditorPaint } from './editorReady';
 
 type Props = {
   dom?: import('expo/dom').DOMProps;
@@ -60,6 +61,7 @@ export default function EditorSurface({ fixtureName, markdown, onEvent, onEditor
   const revision = useRef(0);
   const startedAt = useRef(performance.now());
   const hydrated = useRef(false);
+  const readySession = useRef<number | null>(null);
   const lastSnapshotRequest = useRef(0);
   const lastDismissRevision = useRef(dismissRevision);
   const richBaseline = useRef(markdown);
@@ -118,7 +120,9 @@ export default function EditorSurface({ fixtureName, markdown, onEvent, onEditor
     view.focus();
   }
 
-  useEffect(() => {
+  // This DOM editor stays mounted between notes. Hydrate the new session
+  // before paint rather than exposing the previous note for a frame.
+  useLayoutEffect(() => {
     if (loadedSession.current === session) return;
     loadedSession.current = session;
     loadingMarkdown.current = markdown;
@@ -151,12 +155,15 @@ export default function EditorSurface({ fixtureName, markdown, onEvent, onEditor
   }, [onEditorFocusChange, session]);
 
   useEffect(() => {
-    // Expo may replace the callback proxy after each native render. Ready is a
-    // per-editor-session event, not an acknowledgement to resend on rerender.
-    if (hydrated.current) return;
     hydrated.current = true;
-    emit('ready', markdown);
-  }, [emit, markdown]);
+    // The native host must not reveal the reused WebView until this session
+    // has rendered. Cancel old acknowledgements if another note arrives first.
+    if (readySession.current === session) return;
+    return afterEditorPaint(() => {
+      readySession.current = session;
+      emit('ready', markdown);
+    });
+  }, [emit, markdown, session]);
 
   useEffect(() => {
     if (snapshotRequest === 0 || snapshotRequest === lastSnapshotRequest.current) return;

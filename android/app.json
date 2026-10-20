@@ -8,6 +8,7 @@
     "userInterfaceStyle": "automatic",
     "android": {
       "package": "dev.webnotes.editorgate",
+      "permissions": ["android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#49627f"

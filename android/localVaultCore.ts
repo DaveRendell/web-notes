@@ -1,7 +1,7 @@
 import { applyWeeklyNoteTemplate, getWeeklyNoteDetails } from '../web/src/lib/weeklyNote';
 
-export type LocalNote = { kind: 'note'; uri: string; path: string; parentPath: string; name: string; size: number };
-export type LocalImage = { kind: 'image'; uri: string; path: string; parentPath: string; name: string; size: number; mimeType: string };
+export type LocalNote = { kind: 'note'; uri: string; path: string; parentPath: string; name: string; size: number; modifiedTime?: string };
+export type LocalImage = { kind: 'image'; uri: string; path: string; parentPath: string; name: string; size: number; mimeType: string; modifiedTime?: string };
 export type LocalFolder = { kind: 'folder'; uri: string; path: string; parentPath: string; name: string };
 export type LocalVaultItem = LocalNote | LocalImage | LocalFolder;
 export type VaultListCache = { items: LocalVaultItem[]; complete: boolean };

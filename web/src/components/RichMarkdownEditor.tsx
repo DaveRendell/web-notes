@@ -26,7 +26,7 @@ import {
   thematicBreakPlugin,
   toolbarPlugin,
 } from '@mdxeditor/editor';
-import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { refreshContentEditableSpellcheck } from '../lib/contentEditableSpellcheck';
 import type { VaultNode } from '../types/vault';
@@ -113,7 +113,9 @@ export default function RichMarkdownEditor({ markdown, blockMovementDisabled = f
     }),
   ], [blockMovementDisabled, notes, readOnly, recentNotes, theme]);
 
-  useEffect(() => {
+  // MDXEditor treats its markdown prop as an initial value. Replace external
+  // content before paint so it cannot briefly display the previous document.
+  useLayoutEffect(() => {
     if (markdown === lastEmittedMarkdownRef.current) return;
     lastEmittedMarkdownRef.current = markdown;
     editorRef.current?.setMarkdown(markdown);

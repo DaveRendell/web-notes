@@ -35,9 +35,9 @@ describe('vault settings', () => {
     expect(() => parseVaultSettings('not json')).toThrow();
   });
 
-  it('stores optional paths alongside Drive IDs for the local Android vault', () => {
-    const settings = createVaultSettings(['first', 'second'], { first: 'Media/2025/Week 1.md', second: '../outside.md' });
-    expect(settings).toEqual({ version: 1, favourites: ['first', 'second'], favouritePaths: { first: 'Media/2025/Week 1.md' } });
+  it('stores only Drive IDs, without path metadata', () => {
+    const settings = createVaultSettings(['first', 'second']);
+    expect(settings).toEqual({ version: 1, favourites: ['first', 'second'] });
     expect(parseVaultSettings(serializeVaultSettings(settings))).toEqual(settings);
   });
 

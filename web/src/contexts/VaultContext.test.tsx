@@ -219,19 +219,17 @@ describe('VaultContext cache mutations', () => {
     expect(result.current.favoriteNoteIds).toEqual(['first']);
   });
 
-  it('writes paths for favourites once their notes are in the vault tree', async () => {
+  it('resolves favourite IDs when their notes arrive without rewriting settings', async () => {
     mocks.loadDriveVaultSettings.mockResolvedValue({
       file: { id: 'settings', mimeType: 'application/json', name: '.web-notes.json' },
       settings: { version: 1, favourites: ['note'] },
     });
     const wrapper = ({ children }: { children: ReactNode }) => <VaultProvider>{children}</VaultProvider>;
     const { result } = renderHook(() => useVault(), { wrapper });
-
+    await waitFor(() => expect(result.current.favoriteNoteIds).toEqual(['note']));
     await act(async () => { await result.current.createNote(null, 'Note'); });
-    await waitFor(() => expect(mocks.saveDriveVaultSettings).toHaveBeenCalledWith(
-      'valid-token', 'vault', 'settings',
-      { version: 1, favourites: ['note'], favouritePaths: { note: 'Note.md' } },
-    ));
+    expect(result.current.favoriteNotes.map((note) => note.id)).toEqual(['note']);
+    expect(mocks.saveDriveVaultSettings).not.toHaveBeenCalled();
   });
 
   it('loads remote favourites and refreshes them when the browser regains focus', async () => {

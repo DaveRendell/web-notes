@@ -1,5 +1,5 @@
 import { Check, ChevronLeft, ChevronRight, EllipsisVertical, FileCode2, FileText, ListTree, Loader2, PanelLeftOpen, Pencil, Star, StarOff, Trash2, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useVault } from '../contexts/VaultContext';
 import { useMarkdownFile } from '../hooks/useMarkdownFile';
@@ -151,7 +151,7 @@ export function MarkdownViewer({ onOpenSidebar }: { onOpenSidebar?: () => void }
     cacheNoteIcon(selectedFile.id, content);
   }, [accessToken, cacheNoteIcon, content, error, isLoading, selectedFile]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const previousContent = previousContentRef.current;
     const previousFile = previousFileRef.current;
     const fileChanged = previousFileIdRef.current !== selectedFile?.id;
