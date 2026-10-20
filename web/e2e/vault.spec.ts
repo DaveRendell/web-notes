@@ -52,6 +52,29 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test('note tabs have equal widths, cap their width, and shrink together', async ({ page }) => {
+  const names = ['Welcome.md', 'A.md', 'A considerably longer note title.md', 'Other.md', 'Last.md'];
+  await page.route('https://www.googleapis.com/drive/v3/files?*', route => {
+    const query = new URL(route.request().url()).searchParams.get('q') ?? '';
+    return route.fulfill({ json: { files: query.includes('.web-notes.json') ? [] : names.map((name, index) => ({
+      id: index === 0 ? 'welcome' : `tab-${index}`, name, mimeType: 'text/markdown', parents: ['vault'], modifiedTime: '2026-01-01T00:00:00Z',
+    })) } });
+  });
+  await page.setViewportSize({ width: 1800, height: 900 });
+  await page.goto('/#/note/Welcome.md');
+  for (const name of names.slice(1)) {
+    await page.getByRole('button', { name: name.replace(/\.md$/, ''), exact: true }).click({ button: 'middle' });
+  }
+  await expect(page.getByRole('tab')).toHaveCount(5);
+  const widths = () => page.locator('.file-tab').evaluateAll(tabs => tabs.map(tab => tab.getBoundingClientRect().width));
+  const wide = await widths();
+  expect(wide.every(width => Math.abs(width - 220) < 1)).toBe(true);
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await expect.poll(async () => Math.max(...await widths())).toBeLessThan(220);
+  const narrow = await widths();
+  expect(Math.max(...narrow) - Math.min(...narrow)).toBeLessThan(1);
+});
+
 test('Enter before a checked item creates an unchecked row that survives saving and reloading', async ({ page }) => {
   let body = '- [x] Existing';
   await page.route('https://www.googleapis.com/drive/v3/files/welcome?*', route =>

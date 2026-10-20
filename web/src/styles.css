@@ -476,7 +476,8 @@ button {
 .file-tab {
   position: relative;
   display: flex;
-  min-width: 120px;
+  flex: 1 1 220px;
+  min-width: 0;
   max-width: 220px;
   align-items: center;
   border-right: 1px solid #dfe3ea;
@@ -3127,7 +3128,8 @@ li.markdown-block > .markdown-block-controls {
   }
 
   .file-tab {
-    min-width: 112px;
+    flex-basis: 180px;
+    min-width: 0;
     max-width: 180px;
   }
 
