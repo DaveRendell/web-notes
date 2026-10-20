@@ -1,6 +1,6 @@
 export type MobileEditorMode = 'rich' | 'source';
 
-export const MOBILE_AUTOSAVE_DELAY_MS = 350;
+export const MOBILE_AUTOSAVE_DELAY_MS = 1500;
 
 export async function flushLatestDraft({
   getPendingSave, isClean, save,

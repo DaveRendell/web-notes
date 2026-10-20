@@ -24,8 +24,8 @@ describe('Android rich-text autosave', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
-  it('uses a short local-filesystem debounce', () => {
-    expect(MOBILE_AUTOSAVE_DELAY_MS).toBe(350);
+  it('waits for a typing pause before autosaving to Drive', () => {
+    expect(MOBILE_AUTOSAVE_DELAY_MS).toBe(1500);
   });
 
   it('saves changed rich-text drafts when no write is active', () => {

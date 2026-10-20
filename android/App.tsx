@@ -676,14 +676,15 @@ export default function App() {
     <SafeAreaView style={styles.page}>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} backgroundColor={palette.statusBar} />
       {drivePickerVisible && <DriveVaultPicker dark={darkMode} onCancel={() => setDrivePickerVisible(false)} onSelect={(uri) => { void activateVault(uri); }} />}
-      {driveStatus && <Text style={{ color: palette.muted, paddingHorizontal: 16, paddingVertical: 4 }}>{driveStatus}</Text>}
+      {driveStatus && driveStatus !== 'Syncing…' && driveStatus !== 'Changes saved locally; waiting to sync'
+        && <Text accessibilityRole="alert" style={{ color: palette.error, paddingHorizontal: 16, paddingVertical: 4 }}>{driveStatus}</Text>}
       {active || activeImage ? (
         <>
           <View style={styles.header}>
             <Pressable accessibilityRole="button" accessibilityLabel={active ? 'Close note' : 'Close image'} onPress={active ? closeNote : () => setActiveImage(null)} style={styles.iconButton}><ChevronLeft size={23} color={palette.textStrong} /></Pressable>
             <View style={styles.noteToolbarActions}>
               {activeImage && <View style={styles.imageHeaderDetails}><Text style={styles.imageHeaderName} numberOfLines={1}>{activeImage.name}</Text><Text style={styles.imageHeaderMeta}>{activeImage.mimeType.replace(/^image\//, '').toUpperCase()} · {formatFileSize(activeImage.size)}</Text></View>}
-              {active && saving && <ActivityIndicator accessibilityLabel="Saving note" size="small" color={palette.accent} />}
+              {active && (saving || driveStatus === 'Syncing…') && <ActivityIndicator accessibilityLabel="Saving note" size="small" color={palette.accent} />}
               {active && <>
               <View accessibilityRole="radiogroup" accessibilityLabel="Editor mode" style={styles.editorModeSwitch}>
                 <Pressable accessibilityRole="radio" accessibilityLabel="Rich text" accessibilityState={{ selected: editorMode === 'rich' }} onPress={() => setEditorMode('rich')} style={[styles.editorModeButton, editorMode === 'rich' && styles.editorModeButtonActive]}>
