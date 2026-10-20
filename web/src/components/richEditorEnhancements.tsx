@@ -140,6 +140,15 @@ export const richEditorEnhancementsPlugin = realmPlugin<RichEditorEnhancementsPa
           if (!$isRangeSelection(selection)) return false;
           const block = $findMatchingParent(selection.anchor.getNode(), (node) =>
             $isElementNode(node) && !node.isInline());
+          if ($isListItemNode(block) && selection.isCollapsed() && block.getTextContentSize() > 0
+            && selection.anchor.offset === 0
+            && (selection.anchor.getNode().is(block) || selection.anchor.getNode().is(block.getFirstDescendant()!))
+            && $isListNode(block.getParent()) && (block.getParent() as ListNode).getListType() === 'check') {
+            // Splitting at the start must not transfer the checked state to the
+            // newly inserted empty item. Leave the existing item and caret intact.
+            block.insertBefore($createListItemNode(false));
+            return true;
+          }
           // Lists already implement their own Enter/exit behaviour.
           if (!$isElementNode(block) || $isListItemNode(block) || block.getIndent() === 0) return false;
           const indent = block.getIndent();

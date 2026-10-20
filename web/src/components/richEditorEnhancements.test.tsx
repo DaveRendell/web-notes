@@ -56,6 +56,20 @@ const selectEditorEndPlugin = realmPlugin({
 });
 
 describe('rich editor enhancements', () => {
+  it('inserts an unchecked item before a checked item without changing its state', async () => {
+    const ref = createRef<MDXEditorMethods>();
+    render(<MDXEditor ref={ref} markdown="- [x] Existing" plugins={[
+      listsPlugin(), richEditorEnhancementsPlugin({ notes: [], recentNotes: [] }), captureEditorPlugin(),
+    ]} />);
+    lexicalEditor.update(() => $getRoot().selectStart(), { discrete: true });
+    lexicalEditor.dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined);
+    await waitFor(() => {
+      const items = screen.getAllByRole('checkbox');
+      expect(items[0].getAttribute('aria-checked')).toBe('false');
+      expect(items[1].getAttribute('aria-checked')).toBe('true');
+      expect(items[1].textContent).toBe('Existing');
+    });
+  });
   it('keeps Ctrl+L on the new empty item before an existing checklist', async () => {
     const { container } = render(<MDXEditor markdown={'Above\n\n- [ ] Below'} plugins={[
       listsPlugin(), richEditorEnhancementsPlugin({ notes: [], recentNotes: [] }), captureEditorPlugin(),
