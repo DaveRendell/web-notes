@@ -190,6 +190,27 @@ describe('Drive vault native cache and sync', () => {
     mocks.find.mockRejectedValue(new TypeError('Network request failed'));
     expect(await readVaultFavourites(root)).toEqual(['unlisted', 'note']);
   });
+  it('shows cached favourites before a slow Drive refresh and applies the updated order', async () => {
+    mocks.storage.set(`favourite-ids:${root}`, ['note']);
+    let resolve!: (value: unknown) => void;
+    mocks.find.mockReturnValue(new Promise((done) => { resolve = done; }));
+    mocks.text.mockResolvedValue(JSON.stringify({ version: 1, favourites: ['other', 'note'] }));
+    const refreshed = vi.fn();
+    expect(await readVaultFavourites(root, refreshed)).toEqual(['note']);
+    expect(refreshed).not.toHaveBeenCalled();
+    resolve({ id: 'settings' });
+    await vi.waitFor(() => expect(refreshed).toHaveBeenCalledWith(['other', 'note']));
+    expect(mocks.storage.get(`favourite-ids:${root}`)).toEqual(['other', 'note']);
+  });
+  it('isolates cached favourites by vault and account', async () => {
+    mocks.storage.set(`favourite-ids:${root}`, ['secret']);
+    const other = 'drive:account:other:other';
+    await selectDriveVault(account, 'other');
+    expect(await readVaultFavourites(other)).toEqual([]);
+    await selectDriveVault(account, 'vault');
+    mocks.user = 'another-account';
+    await expect(readVaultFavourites(root)).rejects.toThrow('Reconnect');
+  });
 });
 
 describe('Drive cache pure helpers', () => {

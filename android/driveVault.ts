@@ -249,20 +249,22 @@ export async function syncPendingWrites(root: string): Promise<void> {
     if (!queue.length) status(null);
   });
 }
-export async function readVaultFavourites(root: string): Promise<string[]> {
+export async function readVaultFavourites(root: string, onRefresh?: (ids: string[]) => void): Promise<string[]> {
   await assertAccount(root);
   const cacheKey = `favourite-ids:${root}`;
-  try {
+  const cached = await mobileCache.get(cacheKey, (value): value is string[] => Array.isArray(value) && value.every((id) => typeof id === 'string'));
+  const refresh = async () => {
     const file = await withVaultToken(root, (accessToken) => findDriveChildByName({ accessToken, folderId: parseDriveUri(root).vaultId, name: '.web-notes.json' }));
     const settings = file ? parseVaultSettings(await withVaultToken(root, (token) => getDriveFileText(token, file.id))) : null;
     const ids = settings?.favourites ?? [];
     await mobileCache.put(cacheKey, ids);
     return ids;
-  } catch (cause) {
-    const cached = await mobileCache.get(cacheKey, (value): value is string[] => Array.isArray(value) && value.every((path) => typeof path === 'string'));
-    if (cached) return cached;
-    throw cause;
+  };
+  if (cached) {
+    void refresh().then((ids) => onRefresh?.(ids)).catch((cause) => console.warn('Could not refresh cached favourites:', cause));
+    return cached;
   }
+  return refresh();
 }
 function validateName(name: string) {
   if (!name.trim() || name.startsWith('.') || /[\\/\x00-\x1f]/.test(name)) throw new Error('Enter a name without a leading dot, slashes, or control characters.');

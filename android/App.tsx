@@ -131,8 +131,9 @@ export default function App() {
 
   const loadFavourites = useCallback(async (uri: string) => {
     try {
-      const ids = await readVaultFavourites(uri);
-      if (vaultUriRef.current === uri) setFavouriteNoteIds(ids);
+      const apply = (ids: string[]) => { if (vaultUriRef.current === uri) setFavouriteNoteIds(ids); };
+      const ids = await readVaultFavourites(uri, apply);
+      apply(ids);
     } catch (cause) {
       if (vaultUriRef.current === uri) setError(`Could not read favourites: ${String(cause)}`);
     }
