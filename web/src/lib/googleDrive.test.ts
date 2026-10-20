@@ -1,7 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createDriveTextFile, findDriveChildByName, getDriveImage, listDriveChildren, moveDriveFile, updateDriveTextFile, uploadDriveImage } from './googleDrive';
+import { createDriveMarkdownFile, createDriveTextFile, findDriveChildByName, getDriveImage, listDriveChildren, moveDriveFile, updateDriveTextFile, uploadDriveImage } from './googleDrive';
 
 afterEach(() => vi.unstubAllGlobals());
+
+it('creates new notes with their heading in the same Drive upload', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(Response.json({ id: 'new', name: 'My note.md' }));
+  vi.stubGlobal('fetch', fetchMock);
+  await createDriveMarkdownFile('token', 'root', 'My note.md');
+  expect(fetchMock).toHaveBeenCalledOnce();
+  expect(fetchMock.mock.calls[0][0]).toContain('uploadType=multipart');
+  expect(fetchMock.mock.calls[0][1].body).toContain('# My note\n');
+});
 
 describe('Drive listing integrity', () => {
   const file = { id: 'note', name: 'Note.md', mimeType: 'text/markdown' };

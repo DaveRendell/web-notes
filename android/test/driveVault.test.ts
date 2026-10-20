@@ -176,7 +176,7 @@ describe('Drive vault native cache and sync', () => {
     mocks.createNote.mockResolvedValue({ ...file, id: 'new', name: 'New.md' });
     const note = await createNote(root, '', 'New');
     expect((await readVaultListCache(root))?.items.some((entry) => entry.uri === note.uri)).toBe(true);
-    expect(await readNote(note.uri)).toBe('');
+    expect(await readNote(note.uri)).toBe('# New\n');
   });
   it('updates tree after folder creation', async () => {
     mocks.createFolder.mockResolvedValue({ id: 'folder', name: 'Folder', mimeType: 'application/vnd.google-apps.folder' });

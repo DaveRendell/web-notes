@@ -1,4 +1,5 @@
 import { DriveFile, GOOGLE_FOLDER_MIME_TYPE } from '../types/drive';
+import { getNewNoteContent } from './noteDefaults';
 
 const DRIVE_API_ROOT = 'https://www.googleapis.com/drive/v3';
 
@@ -227,22 +228,7 @@ export async function createDriveMarkdownFile(
   parentFolderId: string,
   name: string,
 ): Promise<DriveFile> {
-  const params = new URLSearchParams({
-    fields: 'id, name, mimeType, parents, modifiedTime, size',
-    supportsAllDrives: 'true',
-  });
-
-  return driveFetch<DriveFile>(`${DRIVE_API_ROOT}/files?${params.toString()}`, accessToken, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-    },
-    body: JSON.stringify({
-      mimeType: 'text/markdown',
-      name: ensureMarkdownExtension(name),
-      parents: [parentFolderId],
-    }),
-  });
+  return createDriveTextFile(accessToken, parentFolderId, ensureMarkdownExtension(name), getNewNoteContent(name), 'text/markdown');
 }
 
 export async function createDriveFolder(

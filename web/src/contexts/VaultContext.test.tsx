@@ -379,7 +379,7 @@ describe('VaultContext cache mutations', () => {
     expect(result.current.tree[0]?.id).toBe('note');
     await waitFor(() => expect(document.title).toBe('Note'));
     expect(mocks.putNoteContent).toHaveBeenCalledWith(
-      expect.objectContaining({ accountId: 'account', content: '', fileId: 'note', modifiedTime: 'created' }),
+      expect.objectContaining({ accountId: 'account', content: '# Note\n', fileId: 'note', modifiedTime: 'created' }),
     );
 
     let renamed!: VaultNode;

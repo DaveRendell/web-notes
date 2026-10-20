@@ -1,4 +1,5 @@
 import { createDriveFolder, createDriveMarkdownFile, findDriveChildByName, getDriveFileText, GoogleDriveError, listDriveChildren, updateDriveFileText } from '../web/src/lib/googleDrive';
+import { getNewNoteContent } from '../web/src/lib/noteDefaults';
 import type { DriveFile } from '../web/src/types/drive';
 import { connectDrive, restoreDriveUser, withDriveToken } from './driveAuth';
 import { mobileCache } from './mobileCache';
@@ -279,7 +280,7 @@ export async function createNote(parent: string, path: string, name: string): Pr
   await assertAccount(parent); validateName(name);
   const file = await withVaultToken(parent, (token) => createDriveMarkdownFile(token, parseDriveUri(parent).fileId, name));
   const item = await rememberCreated(parent, path, file) as LocalNote;
-  await mobileCache.put(`body:${item.uri}`, { content: '', modifiedTime: file.modifiedTime });
+  await mobileCache.put(`body:${item.uri}`, { content: getNewNoteContent(name), modifiedTime: file.modifiedTime });
   return item;
 }
 export async function createFolder(parent: string, path: string, name: string): Promise<LocalFolder> {

@@ -1,6 +1,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useVaultTree } from '../hooks/useVaultTree';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { getNewNoteContent } from '../lib/noteDefaults';
 import { useVaultFavorites } from '../hooks/useVaultFavorites';
 import {
   createDriveFolder,
@@ -298,7 +299,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           accountId,
           vaultId: selectedVault.id,
           fileId: node.id,
-          content: '',
+          content: getNewNoteContent(name),
           modifiedTime: file.modifiedTime,
           cachedAt: Date.now(),
         });
