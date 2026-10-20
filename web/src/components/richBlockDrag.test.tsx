@@ -1,10 +1,10 @@
 import { addComposerChild$, headingsPlugin, MDXEditor, type MDXEditorMethods, listsPlugin, quotePlugin, realmPlugin } from '@mdxeditor/editor';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { $getRoot, $isElementNode, type LexicalEditor, type LexicalNode } from 'lexical';
+import { $getRoot, $getSelection, $isRangeSelection, $isElementNode, type LexicalEditor, type LexicalNode } from 'lexical';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createRef, useEffect } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { moveRichBlock, richBlockDragPlugin } from './richBlockDrag';
+import { getSelectedBlockKeys, moveRichBlock, richBlockDragPlugin } from './richBlockDrag';
 
 let lexicalEditor: LexicalEditor;
 function CaptureEditor() {
@@ -64,6 +64,64 @@ async function openBlockMenu(element: Element) {
 }
 
 describe('rich block movement', () => {
+  function selectBlocks(first: string, last: string) {
+    const start = findNode(first)!;
+    const end = findNode(last)!;
+    lexicalEditor.update(() => {
+      if (!$isElementNode(start) || !$isElementNode(end)) throw new Error('Expected blocks');
+      const selection = start.selectStart();
+      const text = end.getLastDescendant()!;
+      selection.focus.set(text.getKey(), text.getTextContentSize(), 'text');
+    }, { discrete: true });
+    return [start, end];
+  }
+
+  it('moves a multi-paragraph selection together in both keyboard directions', async () => {
+    const { container, editorRef } = renderEditor('First\n\nSecond\n\nThird\n\nFourth');
+    selectBlocks('Second', 'Third');
+    const root = container.querySelector('[contenteditable="true"]')!;
+    fireEvent.keyDown(root, { ctrlKey: true, altKey: true, key: 'ArrowUp' });
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe('Second\n\nThird\n\nFirst\n\nFourth'));
+    lexicalEditor.getEditorState().read(() => expect($isRangeSelection($getSelection()) && !$getSelection()!.isCollapsed()).toBe(true));
+    fireEvent.keyDown(root, { ctrlKey: true, altKey: true, key: 'ArrowDown' });
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe('First\n\nSecond\n\nThird\n\nFourth'));
+  });
+
+  it('moves a selected group from any selected handle, preserving order after a target', async () => {
+    const { editorRef } = renderEditor('First\n\nSecond\n\nThird\n\nFourth');
+    const [, third] = selectBlocks('Second', 'Third');
+    const keys = getSelectedBlockKeys(lexicalEditor, third.getKey());
+    expect(keys).toHaveLength(2);
+    moveRichBlock(lexicalEditor, third.getKey(), findNode('Fourth')!.getKey(), 'after', keys);
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe('First\n\nFourth\n\nSecond\n\nThird'));
+  });
+
+  it('moves checklist selections with their state and nested subtree', async () => {
+    const { container, editorRef } = renderEditor('- [x] First\n- [ ] Second\n  - Child\n- [x] Third\n- [ ] Fourth');
+    selectBlocks('Second', 'Third');
+    fireEvent.keyDown(container.querySelector('[contenteditable="true"]')!, { ctrlKey: true, altKey: true, key: 'ArrowUp' });
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toMatch(/\[ \] Second[\s\S]*Child[\s\S]*\[x\] Third[\s\S]*\[x\] First/));
+  });
+
+  it('rejects dropping onto the selection and rejects stale group members atomically', async () => {
+    const { editorRef } = renderEditor('First\n\nSecond\n\nThird');
+    const [first, second] = selectBlocks('First', 'Second');
+    moveRichBlock(lexicalEditor, first.getKey(), second.getKey(), 'after');
+    moveRichBlock(lexicalEditor, first.getKey(), findNode('Third')!.getKey(), 'after', [first.getKey(), 'stale']);
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe('First\n\nSecond\n\nThird'));
+  });
+
+  it('does not include the next paragraph when the selection ends at its start', () => {
+    renderEditor('First\n\nSecond\n\nThird');
+    const [first, second] = selectBlocks('First', 'Second');
+    lexicalEditor.update(() => {
+      const selection = $getSelection();
+      if ($isRangeSelection(selection) && $isElementNode(second)) {
+        selection.focus.set(second.getFirstDescendant()!.getKey(), 0, 'text');
+      }
+    }, { discrete: true });
+    expect(getSelectedBlockKeys(lexicalEditor, first.getKey())).toEqual([first.getKey()]);
+  });
   it('moves the block at the caret with Ctrl+Alt+Arrow and keeps its selection', async () => {
     const { container, editorRef } = renderEditor('First\n\nSecond\n\nThird');
     const second = findNode('Second')!;

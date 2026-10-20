@@ -1,6 +1,8 @@
-import { MDXEditor, type MDXEditorMethods, listsPlugin } from '@mdxeditor/editor';
+import { MDXEditor, type MDXEditorMethods, listsPlugin, realmPlugin, addComposerChild$ } from '@mdxeditor/editor';
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
+import { $getRoot, $isElementNode, type LexicalEditor } from 'lexical';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { createRef } from 'react';
+import { createRef, useEffect } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -21,6 +23,14 @@ vi.mock('@atlaskit/pragmatic-drag-and-drop-auto-scroll/element', () => ({
 }));
 
 import { richBlockDragPlugin } from './richBlockDrag';
+
+let editor: LexicalEditor;
+function CaptureEditor() {
+  const [current] = useLexicalComposerContext();
+  useEffect(() => { editor = current; }, [current]);
+  return null;
+}
+const capturePlugin = realmPlugin({ init(realm) { realm.pub(addComposerChild$, CaptureEditor); } });
 
 type DragRegistration = {
   getInitialData: () => Record<string, unknown>;
@@ -47,6 +57,33 @@ afterEach(() => {
 });
 
 describe('rich block gutter dragging', () => {
+  it('captures and moves the selected blocks together through the drag adapter', async () => {
+    const ref = createRef<MDXEditorMethods>();
+    const { container } = render(<div className="rich-markdown-editor-shell">
+      <MDXEditor ref={ref} markdown={'First\n\nSecond\n\nThird\n\nFourth'} plugins={[richBlockDragPlugin({ disabled: false }), capturePlugin()]} />
+    </div>);
+    editor.update(() => {
+      const [, second, third] = $getRoot().getChildren();
+      if (!$isElementNode(second) || !$isElementNode(third)) throw new Error('Expected paragraphs');
+      const selection = second.selectStart();
+      const end = third.getLastDescendant()!;
+      selection.focus.set(end.getKey(), end.getTextContentSize(), 'text');
+    }, { discrete: true });
+    fireEvent.pointerMove(container.querySelectorAll('p')[1]);
+    await screen.findByRole('button', { name: 'Move block' });
+    const drags = mocks.draggable.mock.calls as unknown as Array<[DragRegistration]>;
+    const drag = drags.at(-1)![0];
+    const source = { data: drag.getInitialData() };
+    expect(source.data.keys).toHaveLength(2);
+    const fourth = container.querySelectorAll('p')[3];
+    vi.spyOn(fourth, 'getBoundingClientRect').mockReturnValue(blockRect(300, 400));
+    const drops = mocks.dropTarget.mock.calls as unknown as Array<[DropRegistration]>;
+    const target = drops[3][0].getData({ input: { clientY: 395 }, source });
+    const monitors = mocks.monitor.mock.calls as unknown as Array<[MonitorRegistration]>;
+    const monitor = monitors[0][0];
+    act(() => monitor.onDrop({ source, location: { current: { dropTargets: [{ data: target }] } } }));
+    await waitFor(() => expect(ref.current?.getMarkdown()).toBe('First\n\nFourth\n\nSecond\n\nThird'));
+  });
   it('adds a continuous drop rail beside the blocks for vertical-only dragging', async () => {
     const { container } = render(
       <div className="rich-markdown-editor-shell">

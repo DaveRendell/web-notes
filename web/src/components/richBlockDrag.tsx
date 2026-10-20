@@ -53,7 +53,9 @@ export const richBlockDragPlugin = realmPlugin<{ disabled: boolean }>({
           const selection = $getSelection();
           if (!$isRangeSelection(selection)) return false;
           const node = $findMatchingParent(selection.anchor.getNode(), (candidate) =>
-            $isListItemNode(candidate) || $isRootNode(candidate.getParent()));
+            $isListItemNode(candidate) && !isListWrapper(candidate)
+            || !$isListNode(candidate) && $isRootNode(candidate.getParent()))
+            ?? $movableBlocks().find((block) => selection.getNodes().some((selected) => selected.is(block) || isAncestor(block, selected)));
           if (!node) return false;
           event.preventDefault();
           runMenuAction(editor, node.getKey(), event.key === 'ArrowUp' ? 'up' : 'down');
@@ -98,6 +100,7 @@ function RichBlockDrag() {
   const handleContainerRef = useRef<HTMLDivElement>(null);
   const outdentTargetRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<number | null>(null);
+  const draggedKeysRef = useRef<NodeKey[]>([]);
 
   useEffect(() => editor.registerRootListener((nextRoot) => {
     setRootElement(nextRoot);
@@ -213,14 +216,18 @@ function RichBlockDrag() {
     return draggable({
       element: handle,
       dragHandle: handle,
-      getInitialData: () => ({ type: RICH_BLOCK_DRAG_TYPE, key: hovered.key }),
+      getInitialData: () => {
+        const keys = getSelectedBlockKeys(editor, hovered.key);
+        draggedKeysRef.current = keys;
+        return { type: RICH_BLOCK_DRAG_TYPE, key: hovered.key, keys };
+      },
       onDragStart: () => {
         setIsDragging(true);
         setIsMenuOpen(false);
       },
-      onDrop: () => setIsDragging(false),
+      onDrop: () => { setIsDragging(false); draggedKeysRef.current = []; },
     });
-  }, [disabled, hovered]);
+  }, [disabled, editor, hovered]);
 
   useEffect(() => {
     const cleanups = candidates.map((candidate) => dropTargetForElements({
@@ -240,7 +247,7 @@ function RichBlockDrag() {
       const destination = getDropState(location.current.dropTargets[0]?.data);
       setDropState(null);
       setIsDragging(false);
-      if (sourceKey && destination) moveRichBlock(editor, sourceKey, destination.key, destination.placement);
+      if (sourceKey && destination) moveRichBlock(editor, sourceKey, destination.key, destination.placement, getDragKeys(source.data));
     },
   }), [editor]);
 
@@ -267,7 +274,7 @@ function RichBlockDrag() {
 
   useEffect(() => {
     for (const candidate of candidates) {
-      candidate.element.classList.toggle('rich-block-dragging', isDragging && candidate.key === hoveredKey);
+      candidate.element.classList.toggle('rich-block-dragging', isDragging && draggedKeysRef.current.includes(candidate.key));
       const placement = dropState?.key === candidate.key ? dropState.placement : null;
       candidate.element.classList.toggle('rich-block-drop-before', placement === 'before');
       candidate.element.classList.toggle('rich-block-drop-after', placement === 'after');
@@ -308,6 +315,7 @@ function RichBlockDrag() {
           aria-label="Move block"
           className="rich-block-handle"
           disabled={disabled}
+          onMouseDown={(event) => event.preventDefault()}
           onClick={() => setIsMenuOpen((open) => !open)}
           ref={handleRef}
           title={disabled ? 'Block movement is unavailable while this note is read-only' : 'Drag or choose how to move block'}
@@ -406,7 +414,7 @@ function RichBlockGutterRail({ candidates, editor, rootElement }: {
       element,
       canDrop: ({ source }) => {
         const sourceKey = getDragKey(source.data);
-        return Boolean(sourceKey && candidates.some((candidate) => canMove(editor, sourceKey, candidate.key)));
+        return Boolean(sourceKey && candidates.some((candidate) => canMove(editor, sourceKey, candidate.key, undefined, getDragKeys(source.data))));
       },
       getData: ({ input, source }) => {
         const candidate = findCandidateAtY(candidates, input.clientY);
@@ -540,7 +548,7 @@ function getFirstLineHeight(element: HTMLElement, blockHeight: number) {
 
 function canDropOnCandidate(editor: LexicalEditor, candidate: Candidate, data: Record<string, unknown>) {
   const sourceKey = getDragKey(data);
-  return Boolean(sourceKey && sourceKey !== candidate.key && canMove(editor, sourceKey, candidate.key));
+  return Boolean(sourceKey && sourceKey !== candidate.key && canMove(editor, sourceKey, candidate.key, undefined, getDragKeys(data)));
 }
 
 function getCandidateDropData(
@@ -552,13 +560,55 @@ function getCandidateDropData(
 ) {
   const sourceKey = getDragKey(data);
   const placement = getPlacement(candidate, pointerY, allowNesting);
-  return sourceKey && canMove(editor, sourceKey, candidate.key, placement)
+  return sourceKey && canMove(editor, sourceKey, candidate.key, placement, getDragKeys(data))
     ? { type: RICH_BLOCK_DRAG_TYPE, key: candidate.key, placement }
     : { type: 'invalid-rich-block-target' };
 }
 
 function getDragKey(data: Record<string, unknown>): NodeKey | null {
   return data.type === RICH_BLOCK_DRAG_TYPE && typeof data.key === 'string' ? data.key : null;
+}
+
+function getDragKeys(data: Record<string, unknown>): NodeKey[] | undefined {
+  return Array.isArray(data.keys) && data.keys.every((key) => typeof key === 'string') ? data.keys : undefined;
+}
+
+function $movableBlocks(): LexicalNode[] {
+  const blocks: LexicalNode[] = [];
+  function walk(node: LexicalNode) {
+    if ($isListItemNode(node) && !isListWrapper(node)
+      || !$isListNode(node) && $isRootNode(node.getParent())) blocks.push(node);
+    if ($isElementNode(node)) node.getChildren().forEach(walk);
+  }
+  $getRoot().getChildren().forEach(walk);
+  return blocks;
+}
+
+function $selectedBlockKeys(sourceKey: NodeKey): NodeKey[] {
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection) || selection.isCollapsed()) return [sourceKey];
+  const selectedNodes = selection.getNodes();
+  const end = selection.isBackward() ? selection.anchor : selection.focus;
+  function endsAtStart(block: LexicalNode) {
+    if (end.offset !== 0) return false;
+    let node: LexicalNode | null = end.getNode();
+    while (node && !node.is(block)) {
+      if (node.getPreviousSibling()) return false;
+      node = node.getParent();
+    }
+    return Boolean(node);
+  }
+  const selected = $movableBlocks().filter((block) => !endsAtStart(block) && selectedNodes.some((node) =>
+    node.is(block) || isAncestor(block, node)));
+  // A list item owns its descendants, including Lexical's sibling wrappers.
+  const roots = selected.filter((block) => !selected.some((other) => !other.is(block) && isLogicalAncestor(other, block)));
+  const source = $getNodeByKey(sourceKey);
+  return roots.some((block) => block.getKey() === sourceKey || source && isLogicalAncestor(block, source))
+    ? roots.map((block) => block.getKey()) : [sourceKey];
+}
+
+export function getSelectedBlockKeys(editor: LexicalEditor, sourceKey: NodeKey) {
+  return editor.getEditorState().read(() => $selectedBlockKeys(sourceKey));
 }
 
 function getDropState(data: Record<string, unknown> | undefined): DropState {
@@ -569,11 +619,11 @@ function getDropState(data: Record<string, unknown> | undefined): DropState {
     : null;
 }
 
-export function canMove(editor: LexicalEditor, sourceKey: NodeKey, targetKey: NodeKey, placement?: Placement) {
+export function canMove(editor: LexicalEditor, sourceKey: NodeKey, targetKey: NodeKey, placement?: Placement, sourceKeys?: NodeKey[]) {
   return editor.getEditorState().read(() => {
-    const source = $getNodeByKey(sourceKey);
+    const sources = (sourceKeys ?? $selectedBlockKeys(sourceKey)).map((key) => $getNodeByKey(key));
     const target = $getNodeByKey(targetKey);
-    if (!source || !target || source.is(target) || isLogicalAncestor(source, target)) return false;
+    if (!sources.length || !target || sources.some((source) => !source || source.is(target) || isLogicalAncestor(source, target))) return false;
     if (placement === 'nest') return $isListItemNode(target);
     return true;
   });
@@ -594,16 +644,35 @@ function isLogicalAncestor(possibleParent: LexicalNode, node: LexicalNode) {
     && getNestedWrappers(possibleParent).some((wrapper) => wrapper.is(node) || isAncestor(wrapper, node));
 }
 
-export function moveRichBlock(editor: LexicalEditor, sourceKey: NodeKey, targetKey: NodeKey, placement: Placement) {
+export function moveRichBlock(editor: LexicalEditor, sourceKey: NodeKey, targetKey: NodeKey, placement: Placement, sourceKeys?: NodeKey[]) {
   editor.update(() => {
-    const source = $getNodeByKey(sourceKey);
+    $moveRichBlocks(editor, sourceKeys ?? $selectedBlockKeys(sourceKey), targetKey, placement);
+  }, { tag: 'rich-block-move' });
+}
+
+function $moveRichBlocks(editor: LexicalEditor, keys: NodeKey[], targetKey: NodeKey, placement: Placement) {
+  if (!keys.length || new Set(keys).size !== keys.length) return;
+  const sources = keys.map((key) => $getNodeByKey(key));
+  if (sources.some((node) => !node || !node.isAttached())) return;
+  const blocks = sources as LexicalNode[];
+  let target = $getNodeByKey(targetKey);
+  const initialTarget = target;
+  if (placement !== 'outdent' && (!initialTarget || blocks.some((source) => source.is(initialTarget) || isLogicalAncestor(source, initialTarget)))) return;
+  if (placement === 'outdent' && blocks.some((source) => !$isListItemNode(source))) return;
+  if ((placement === 'before' || placement === 'after') && $isListItemNode(target)
+    && blocks.some((source) => !$isListItemNode(source))) target = getTopLevelList(target);
+  // Inserting repeatedly after a fixed target requires reverse traversal.
+  const ordered = placement === 'after' || placement === 'outdent' ? [...blocks].reverse() : blocks;
+  for (const source of ordered) $moveSingleRichBlock(editor, source, target, placement);
+}
+
+function $moveSingleRichBlock(editor: LexicalEditor, source: LexicalNode, target: LexicalNode | null, placement: Placement) {
     if (placement === 'outdent') {
       if (!$isListItemNode(source)) return;
       source.selectStart();
       editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined);
       return;
     }
-    const target = $getNodeByKey(targetKey);
     if (!source || !target || source.is(target) || isLogicalAncestor(source, target)) return;
 
     if (placement === 'nest') {
@@ -640,7 +709,6 @@ export function moveRichBlock(editor: LexicalEditor, sourceKey: NodeKey, targetK
       }
     } else if (placement === 'before') destination.insertBefore(source);
     else destination.insertAfter(source);
-  }, { tag: 'rich-block-move' });
 }
 
 function detachListItemFragment(source: ListItemNode, sourceList: ListNode) {
@@ -791,15 +859,13 @@ function runMenuAction(editor: LexicalEditor, key: NodeKey, action: 'up' | 'down
       return;
     }
 
-    const siblings = $isListItemNode(node)
-      ? node.getParent() ? getVisibleListItems(node.getParent()!) : []
-      : $getRoot().getChildren();
-    const index = siblings.findIndex((sibling) => sibling.is(node));
-    const target = action === 'up' ? siblings[index - 1] : siblings[index + 1];
+    const keys = $selectedBlockKeys(key);
+    const selected = keys.map((selectedKey) => $getNodeByKey(selectedKey)).filter((block): block is LexicalNode => Boolean(block));
+    const siblings = $movableBlocks().filter((block) => !selected.some((source) => !source.is(block) && isLogicalAncestor(source, block)));
+    const indexes = selected.map((block) => siblings.findIndex((sibling) => sibling.is(block)));
+    const target = action === 'up' ? siblings[Math.min(...indexes) - 1] : siblings[Math.max(...indexes) + 1];
     if (!target) return;
-    if ($isListItemNode(node) && $isListItemNode(target)) moveListItemWithSubtree(node, target, action === 'up' ? 'before' : 'after');
-    else if (action === 'up') target.insertBefore(node);
-    else target.insertAfter(node);
+    $moveRichBlocks(editor, keys, target.getKey(), action === 'up' ? 'before' : 'after');
   }, { tag: 'rich-block-menu' });
 }
 
