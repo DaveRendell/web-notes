@@ -52,6 +52,44 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+for (const multiple of [false, true]) {
+  test(`native grabber dragging moves ${multiple ? 'selected blocks' : 'one block'} and shows drop indicators`, async ({ page }) => {
+    await page.route('https://www.googleapis.com/drive/v3/files/welcome?*', route => route.fulfill({
+      contentType: 'text/plain', body: 'First\n\nSecond\n\nThird',
+    }));
+    await page.goto('/#/note/Welcome.md');
+    const paragraphs = page.locator('.rich-markdown-content p');
+    await expect(paragraphs).toHaveCount(3);
+    if (multiple) {
+      await paragraphs.first().click();
+      await expect(page.locator('.rich-markdown-toolbar')).toBeVisible();
+      await paragraphs.first().evaluate(first => {
+        const second = first.nextElementSibling!;
+        const range = document.createRange();
+        range.setStart(first.querySelector('[data-lexical-text]')!.firstChild!, 0);
+        const end = second.querySelector('[data-lexical-text]')!.firstChild!;
+        range.setEnd(end, end.textContent!.length);
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+        document.dispatchEvent(new Event('selectionchange'));
+      });
+    }
+    await paragraphs.first().hover();
+    const handle = page.getByRole('button', { name: 'Move block', exact: true });
+    await expect(handle).toBeVisible();
+    const grip = (await handle.boundingBox())!;
+    const destination = (await paragraphs.nth(2).boundingBox())!;
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height + 10, { steps: 5 });
+    await page.mouse.move(destination.x + 5, destination.y + destination.height - 2, { steps: 15 });
+    await expect(paragraphs.nth(2)).toHaveClass(/rich-block-drop-after/);
+    await page.mouse.up();
+    await expect(paragraphs).toHaveText(multiple ? ['Third', 'First', 'Second'] : ['Second', 'Third', 'First']);
+  });
+}
+
 test('note tabs have equal widths, cap their width, and shrink together', async ({ page }) => {
   const names = ['Welcome.md', 'A.md', 'A considerably longer note title.md', 'Other.md', 'Last.md'];
   await page.route('https://www.googleapis.com/drive/v3/files?*', route => {

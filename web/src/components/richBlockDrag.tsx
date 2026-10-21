@@ -101,6 +101,7 @@ function RichBlockDrag() {
   const outdentTargetRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<number | null>(null);
   const draggedKeysRef = useRef<NodeKey[]>([]);
+  const pendingDragRef = useRef<{ key: NodeKey; keys: NodeKey[] } | null>(null);
 
   useEffect(() => editor.registerRootListener((nextRoot) => {
     setRootElement(nextRoot);
@@ -217,7 +218,9 @@ function RichBlockDrag() {
       element: handle,
       dragHandle: handle,
       getInitialData: () => {
-        const keys = getSelectedBlockKeys(editor, hovered.key);
+        const pending = pendingDragRef.current;
+        const keys = pending?.key === hovered.key ? pending.keys : getSelectedBlockKeys(editor, hovered.key);
+        pendingDragRef.current = null;
         draggedKeysRef.current = keys;
         return { type: RICH_BLOCK_DRAG_TYPE, key: hovered.key, keys };
       },
@@ -315,7 +318,12 @@ function RichBlockDrag() {
           aria-label="Move block"
           className="rich-block-handle"
           disabled={disabled}
-          onMouseDown={(event) => event.preventDefault()}
+          onMouseDown={() => {
+            // Snapshot before button focus changes the editor selection, but
+            // allow the default action: cancelling mousedown prevents native
+            // HTML drag initiation in browsers.
+            pendingDragRef.current = { key: hovered.key, keys: getSelectedBlockKeys(editor, hovered.key) };
+          }}
           onClick={() => setIsMenuOpen((open) => !open)}
           ref={handleRef}
           title={disabled ? 'Block movement is unavailable while this note is read-only' : 'Drag or choose how to move block'}

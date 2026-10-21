@@ -70,7 +70,13 @@ describe('rich block gutter dragging', () => {
       selection.focus.set(end.getKey(), end.getTextContentSize(), 'text');
     }, { discrete: true });
     fireEvent.pointerMove(container.querySelectorAll('p')[1]);
-    await screen.findByRole('button', { name: 'Move block' });
+    const handle = await screen.findByRole('button', { name: 'Move block' });
+    const mouseDown = new MouseEvent('mousedown', { button: 0, bubbles: true, cancelable: true });
+    fireEvent(handle, mouseDown);
+    expect(mouseDown.defaultPrevented).toBe(false);
+    // Browser focus may collapse the Lexical selection after mousedown. The
+    // pending native drag must still carry the original selected blocks.
+    act(() => editor.update(() => $getRoot().selectEnd(), { discrete: true }));
     const drags = mocks.draggable.mock.calls as unknown as Array<[DragRegistration]>;
     const drag = drags.at(-1)![0];
     const source = { data: drag.getInitialData() };
