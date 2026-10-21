@@ -72,7 +72,7 @@ type VaultContextValue = {
   openFiles: VaultNode[];
   activateFileTab: (fileId: string) => void;
   closeFileTab: (fileId: string) => void;
-  openWeeklyNote: (date?: Date) => Promise<VaultNode>;
+  openWeeklyNote: (date?: Date, newTab?: boolean) => Promise<VaultNode>;
   noteIcons: Record<string, string | null>;
   notes: VaultNode[];
   recentNotes: VaultNode[];
@@ -357,7 +357,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [accessToken, ensureAccessToken, isOnline, selectedVault, setTree],
   );
 
-  const openWeeklyNote = useCallback(async (date = new Date()) => {
+  const openWeeklyNote = useCallback(async (date = new Date(), newTab = false) => {
     if (!accessToken || !selectedVault) {
       throw new Error('Sign in and choose a vault before opening a weekly note.');
     }
@@ -366,7 +366,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const existingNote = findVaultNodeByPath(tree, details.path);
     if (existingNote) {
       if (existingNote.type !== 'markdown') throw new Error(`A non-note file already exists at ${details.path}.`);
-      selectFile(existingNote);
+      if (newTab) openFileInTab(existingNote);
+      else selectFile(existingNote);
       return existingNote;
     }
     if (!isOnline) throw new Error('Reconnect to the internet before creating this week’s note.');
@@ -440,9 +441,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       });
     }
     cacheNoteIcon(note.id, content);
-    selectFile(note);
+    if (newTab) openFileInTab(note);
+    else selectFile(note);
     return note;
-  }, [accessToken, accountId, cacheNoteIcon, ensureAccessToken, invalidateAccessToken, isOnline, selectFile, selectedVault, setTree, tree]);
+  }, [accessToken, accountId, cacheNoteIcon, ensureAccessToken, invalidateAccessToken, isOnline, openFileInTab, selectFile, selectedVault, setTree, tree]);
 
   const renameNote = useCallback(
     async (note: VaultNode, name: string) => {

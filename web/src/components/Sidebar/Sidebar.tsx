@@ -32,6 +32,15 @@ export function Sidebar({ controls }: { controls?: ReactNode }) {
     ? noteIcons[weeklyNote.id]
     : weeklyTemplate ? noteIcons[weeklyTemplate.id] : null;
 
+  function handleOpenWeeklyNote(newTab = false) {
+    setIsOpeningWeeklyNote(true);
+    void openWeeklyNote(undefined, newTab)
+      .catch((requestError) => window.alert(
+        requestError instanceof Error ? requestError.message : 'Failed to open this week’s note.',
+      ))
+      .finally(() => setIsOpeningWeeklyNote(false));
+  }
+
   async function handleCreateRootNote() {
     const name = window.prompt('New note name');
     if (!name?.trim()) return;
@@ -63,13 +72,11 @@ export function Sidebar({ controls }: { controls?: ReactNode }) {
           <button
             className={selectedFile?.id === weeklyNote?.id ? 'favorite-note selected' : 'favorite-note'}
             type="button"
-            onClick={() => {
-              setIsOpeningWeeklyNote(true);
-              void openWeeklyNote()
-                .catch((requestError) => window.alert(
-                  requestError instanceof Error ? requestError.message : 'Failed to open this week’s note.',
-                ))
-                .finally(() => setIsOpeningWeeklyNote(false));
+            onClick={() => handleOpenWeeklyNote()}
+            onAuxClick={(event) => {
+              if (event.button !== 1) return;
+              event.preventDefault();
+              handleOpenWeeklyNote(true);
             }}
             disabled={isOpeningWeeklyNote || (!weeklyNote && !isOnline)}
             aria-label={`Open this week's note: ${weeklyDetails.filename.replace(/\.md$/i, '')}`}

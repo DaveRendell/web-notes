@@ -346,6 +346,28 @@ describe('VaultContext cache mutations', () => {
     expect(mocks.createDriveTextFile).not.toHaveBeenCalled();
   });
 
+  it('creates and reopens weekly notes in a background tab without replacing the active note', async () => {
+    mocks.createDriveFolder.mockReset();
+    mocks.createDriveFolder
+      .mockResolvedValueOnce(folder('weeks', 'Weeks'))
+      .mockResolvedValueOnce(folder('year', '2026', 'weeks'));
+    mocks.createDriveTextFile.mockResolvedValue({
+      ...file('weekly-note', 'Week 38 2026.md', 'weekly-version'), parents: ['year'],
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => <VaultProvider>{children}</VaultProvider>;
+    const { result } = renderHook(() => useVault(), { wrapper });
+    await act(async () => { await result.current.createNote(null, 'Note'); });
+    await act(async () => { await result.current.openWeeklyNote(new Date('2026-09-14T12:00:00'), true); });
+    expect(result.current.selectedFile?.id).toBe('note');
+    expect(result.current.openFiles.map((note) => note.id)).toEqual(['note', 'weekly-note']);
+    expect(window.location.hash).not.toContain('Week%2038');
+    mocks.createDriveTextFile.mockClear();
+    await act(async () => { await result.current.openWeeklyNote(new Date('2026-09-14T12:00:00'), true); });
+    expect(result.current.selectedFile?.id).toBe('note');
+    expect(result.current.openFiles).toHaveLength(2);
+    expect(mocks.createDriveTextFile).not.toHaveBeenCalled();
+  });
+
   it('creates an empty weekly note when the template does not exist', async () => {
     mocks.createDriveFolder.mockReset();
     mocks.createDriveFolder

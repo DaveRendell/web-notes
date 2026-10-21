@@ -40,6 +40,14 @@ afterEach(() => {
 });
 
 describe('Sidebar files section', () => {
+  it('opens the weekly note in a new tab on middle click only', () => {
+    render(<Sidebar />);
+    const button = screen.getByRole('button', { name: /Open this week's note/ });
+    fireEvent(button, new MouseEvent('auxclick', { button: 2, bubbles: true }));
+    expect(mocks.openWeeklyNote).not.toHaveBeenCalled();
+    fireEvent(button, new MouseEvent('auxclick', { button: 1, bubbles: true }));
+    expect(mocks.openWeeklyNote).toHaveBeenCalledWith(undefined, true);
+  });
   it("shows this week's prospective note as a note row above favourites", () => {
     render(<Sidebar />);
 
