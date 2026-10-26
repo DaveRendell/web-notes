@@ -52,6 +52,27 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test('block delete shortcuts remove the intended block and restore editor focus', async ({ page }) => {
+  await page.route('https://www.googleapis.com/drive/v3/files/welcome?*', route => route.fulfill({
+    contentType: 'text/plain', body: 'First\n\nSecond\n\nThird',
+  }));
+  await page.route('https://www.googleapis.com/upload/drive/v3/files/welcome?*', route => route.fulfill({
+    json: { id: 'welcome', name: 'Welcome.md', mimeType: 'text/markdown', parents: ['vault'], modifiedTime: '2026-01-02T00:00:00Z' },
+  }));
+  await page.goto('/#/note/Welcome.md');
+  const paragraphs = page.locator('.rich-markdown-content p');
+  await paragraphs.first().click();
+  await page.keyboard.press('Shift+Delete');
+  await expect(paragraphs).toHaveText(['Second', 'Third']);
+  await paragraphs.nth(1).hover();
+  await page.getByRole('button', { name: 'Move block', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Delete block' })).toBeVisible();
+  await page.keyboard.press('Delete');
+  await expect(paragraphs).toHaveText(['Second']);
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(page.locator('.rich-markdown-content')).toBeFocused();
+});
+
 for (const multiple of [false, true]) {
   test(`native grabber dragging moves ${multiple ? 'selected blocks' : 'one block'} and shows drop indicators`, async ({ page }) => {
     await page.route('https://www.googleapis.com/drive/v3/files/welcome?*', route => route.fulfill({

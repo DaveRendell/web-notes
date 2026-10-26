@@ -21,14 +21,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderEditor(markdown: string) {
+function renderEditor(markdown: string, disabled = false) {
   const editorRef = createRef<MDXEditorMethods>();
   const result = render(
     <div className="rich-markdown-editor-shell">
       <MDXEditor
         ref={editorRef}
         markdown={markdown}
-        plugins={[headingsPlugin(), quotePlugin(), listsPlugin(), richBlockDragPlugin({ disabled: false }), captureEditorPlugin()]}
+        plugins={[headingsPlugin(), quotePlugin(), listsPlugin(), richBlockDragPlugin({ disabled }), captureEditorPlugin()]}
       />
     </div>,
   );
@@ -64,6 +64,73 @@ async function openBlockMenu(element: Element) {
 }
 
 describe('rich block movement', () => {
+  it.each([
+    ['First\n\nSecond', 'First', 'Second'],
+    ['# Heading\n\nParagraph', 'Heading', 'Paragraph'],
+    ['- [x] Parent\n  - Child\n- [ ] Sibling', 'Parent', '* [ ] Sibling'],
+    ['Only block', 'Only block', ''],
+  ])('deletes the current block and its subtree with Shift+Delete (%s)', async (markdown, text, remaining) => {
+    const { container, editorRef } = renderEditor(markdown);
+    const node = findNode(text)!;
+    lexicalEditor.update(() => { if ($isElementNode(node)) node.selectStart(); }, { discrete: true });
+    const event = new KeyboardEvent('keydown', { key: 'Delete', shiftKey: true, bubbles: true, cancelable: true });
+    fireEvent(container.querySelector('[contenteditable="true"]')!, event);
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe(remaining));
+  });
+
+  it('does not repeatedly delete blocks when Shift+Delete is held', async () => {
+    const { container, editorRef } = renderEditor('First\n\nSecond');
+    lexicalEditor.update(() => $getRoot().selectStart(), { discrete: true });
+    const root = container.querySelector('[contenteditable="true"]')!;
+    fireEvent.keyDown(root, { key: 'Delete', shiftKey: true });
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe('Second'));
+    fireEvent.keyDown(root, { key: 'Delete', shiftKey: true, repeat: true });
+    expect(editorRef.current?.getMarkdown()).toBe('Second');
+  });
+
+  it('deletes the menu block with Delete even when the caret is in a different block', async () => {
+    const { container, editorRef } = renderEditor('First\n\nSecond');
+    lexicalEditor.update(() => $getRoot().selectEnd(), { discrete: true });
+    await openBlockMenu(container.querySelectorAll('p')[0]);
+    fireEvent.keyDown(container.querySelector('[contenteditable="true"]')!, { key: 'Delete' });
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe('Second'));
+    expect(screen.queryByRole('menu')).toBeNull();
+    await waitFor(() => expect(container.querySelector('[contenteditable="true"]')).toBe(document.activeElement));
+  });
+
+  it('handles Delete when focus is on a menu action', async () => {
+    const { container, editorRef } = renderEditor('First\n\nSecond');
+    await openBlockMenu(container.querySelector('p')!);
+    const action = screen.getByRole('menuitem', { name: 'Delete block' });
+    action.focus();
+    expect(action.getAttribute('aria-keyshortcuts')).toBe('Delete');
+    fireEvent.keyDown(action, { key: 'Delete' });
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe('Second'));
+  });
+
+  it('leaves ordinary Delete behaviour alone when the grabber menu is closed', () => {
+    const { container } = renderEditor('First\n\nSecond');
+    lexicalEditor.update(() => $getRoot().selectStart(), { discrete: true });
+    fireEvent.keyDown(container.querySelector('[contenteditable="true"]')!, { key: 'Delete' });
+    expect(container.querySelectorAll('p')).toHaveLength(2);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('does not delete blocks while movement is disabled', () => {
+    const { container, editorRef } = renderEditor('First\n\nSecond', true);
+    lexicalEditor.update(() => $getRoot().selectStart(), { discrete: true });
+    fireEvent.keyDown(container.querySelector('[contenteditable="true"]')!, { key: 'Delete', shiftKey: true });
+    expect(editorRef.current?.getMarkdown()).toBe('First\n\nSecond');
+  });
+
+  it('does not keep intercepting Delete after the menu closes', async () => {
+    const { container, editorRef } = renderEditor('First\n\nSecond');
+    await openBlockMenu(container.querySelector('p')!);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.keyDown(document, { key: 'Delete' });
+    expect(editorRef.current?.getMarkdown()).toBe('First\n\nSecond');
+  });
   function selectBlocks(first: string, last: string) {
     const start = findNode(first)!;
     const end = findNode(last)!;

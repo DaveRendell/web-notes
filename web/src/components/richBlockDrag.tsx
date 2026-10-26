@@ -48,8 +48,12 @@ export const richBlockDragPlugin = realmPlugin<{ disabled: boolean }>({
       [createRootEditorSubscription$]: (editor: LexicalEditor) => editor.registerCommand(
         KEY_DOWN_COMMAND,
         (event: KeyboardEvent) => {
-          if (realm.getValue(disabled$) || !event.altKey || !(event.ctrlKey || event.metaKey)
-            || event.shiftKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return false;
+          if (realm.getValue(disabled$) || event.isComposing) return false;
+          const deleteBlock = event.key === 'Delete' && event.shiftKey
+            && !event.ctrlKey && !event.metaKey && !event.altKey;
+          const moveBlock = event.altKey && (event.ctrlKey || event.metaKey)
+            && !event.shiftKey && ['ArrowUp', 'ArrowDown'].includes(event.key);
+          if (!deleteBlock && !moveBlock) return false;
           const selection = $getSelection();
           if (!$isRangeSelection(selection)) return false;
           const node = $findMatchingParent(selection.anchor.getNode(), (candidate) =>
@@ -58,7 +62,9 @@ export const richBlockDragPlugin = realmPlugin<{ disabled: boolean }>({
             ?? $movableBlocks().find((block) => selection.getNodes().some((selected) => selected.is(block) || isAncestor(block, selected)));
           if (!node) return false;
           event.preventDefault();
-          runMenuAction(editor, node.getKey(), event.key === 'ArrowUp' ? 'up' : 'down');
+          if (!deleteBlock || !event.repeat) {
+            runMenuAction(editor, node.getKey(), deleteBlock ? 'delete' : event.key === 'ArrowUp' ? 'up' : 'down');
+          }
           return true;
         },
         COMMAND_PRIORITY_HIGH,
@@ -102,6 +108,14 @@ function RichBlockDrag() {
   const hideTimerRef = useRef<number | null>(null);
   const draggedKeysRef = useRef<NodeKey[]>([]);
   const pendingDragRef = useRef<{ key: NodeKey; keys: NodeKey[] } | null>(null);
+
+  const deleteMenuBlock = useCallback(() => {
+    if (disabled || !hoveredKey) return;
+    setIsMenuOpen(false);
+    setHoveredKey(null);
+    runMenuAction(editor, hoveredKey, 'delete');
+    window.requestAnimationFrame(() => editor.focus());
+  }, [disabled, editor, hoveredKey]);
 
   useEffect(() => editor.registerRootListener((nextRoot) => {
     setRootElement(nextRoot);
@@ -171,9 +185,23 @@ function RichBlockDrag() {
       if (!handleContainerRef.current?.contains(event.target as Node)) setIsMenuOpen(false);
     }
 
+    function handleKeyDown(event: KeyboardEvent) {
+      if (disabled || event.defaultPrevented || event.isComposing || event.key !== 'Delete'
+        || event.ctrlKey || event.metaKey || event.altKey) return;
+      // Capture before Lexical so Delete targets the menu's block, not text at
+      // a caret which may still be in another block.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!event.repeat) deleteMenuBlock();
+    }
+
     document.addEventListener('pointerdown', handlePointerDown);
-    return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [isMenuOpen]);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [deleteMenuBlock, disabled, isMenuOpen]);
 
   useLayoutEffect(() => {
     const container = handleContainerRef.current;
@@ -297,6 +325,10 @@ function RichBlockDrag() {
 
   function runAction(action: 'up' | 'down' | 'indent' | 'outdent' | 'delete') {
     if (!hoveredKey) return;
+    if (action === 'delete') {
+      deleteMenuBlock();
+      return;
+    }
     setIsMenuOpen(false);
     runMenuAction(editor, hoveredKey, action);
     window.requestAnimationFrame(() => handleRef.current?.focus());
@@ -336,7 +368,7 @@ function RichBlockDrag() {
           <MenuButton disabled={!actions.down} icon={<ArrowDown size={15} />} label="Move down" onClick={() => runAction('down')} />
           <MenuButton disabled={!actions.indent} icon={<ArrowRight size={15} />} label="Indent" onClick={() => runAction('indent')} />
           <MenuButton disabled={!actions.outdent} icon={<ArrowLeft size={15} />} label="Outdent" onClick={() => runAction('outdent')} />
-          <MenuButton className="danger" disabled={disabled} icon={<Trash2 size={15} />} label="Delete block" onClick={() => runAction('delete')} />
+          <MenuButton className="danger" disabled={disabled} icon={<Trash2 size={15} />} label="Delete block" onClick={() => runAction('delete')} shortcut="Delete" />
           <div className="block-background-label">Background colour</div>
           <div className="block-background-options">
             {[null, ...BLOCK_BACKGROUNDS].map((color) => (
@@ -851,8 +883,7 @@ function runMenuAction(editor: LexicalEditor, key: NodeKey, action: 'up' | 'down
     const node = $getNodeByKey(key);
     if (!node) return;
     if (action === 'delete') {
-      const nestedWrapper = $isListItemNode(node) ? node.getNextSibling() : null;
-      if (nestedWrapper && isListWrapper(nestedWrapper)) nestedWrapper.remove();
+      if ($isListItemNode(node)) getNestedWrappers(node).forEach((wrapper) => wrapper.remove());
       node.remove();
       return;
     }
@@ -886,15 +917,16 @@ function findScrollElement(root: HTMLElement) {
   return null;
 }
 
-function MenuButton({ className = '', disabled, icon, label, onClick }: {
+function MenuButton({ className = '', disabled, icon, label, onClick, shortcut }: {
   className?: string;
   disabled: boolean;
   icon: ReactNode;
   label: string;
   onClick: () => void;
+  shortcut?: string;
 }) {
   return (
-    <button className={className} disabled={disabled} onClick={onClick} role="menuitem" type="button">
+    <button className={className} disabled={disabled} onClick={onClick} role="menuitem" type="button" aria-keyshortcuts={shortcut} title={shortcut ? `${label} (${shortcut})` : undefined}>
       {icon}
       <span>{label}</span>
     </button>
