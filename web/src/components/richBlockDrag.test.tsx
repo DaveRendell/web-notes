@@ -1,10 +1,11 @@
 import { addComposerChild$, headingsPlugin, MDXEditor, type MDXEditorMethods, listsPlugin, quotePlugin, realmPlugin } from '@mdxeditor/editor';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { $getRoot, $getSelection, $isRangeSelection, $isElementNode, type LexicalEditor, type LexicalNode } from 'lexical';
+import { $getRoot, $getState, $getSelection, $isRangeSelection, $isElementNode, type LexicalEditor, type LexicalNode } from 'lexical';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createRef, useEffect } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSelectedBlockKeys, moveRichBlock, richBlockDragPlugin } from './richBlockDrag';
+import { blockBackgroundState } from './richBlockBackground';
 
 let lexicalEditor: LexicalEditor;
 function CaptureEditor() {
@@ -14,6 +15,12 @@ function CaptureEditor() {
 }
 const captureEditorPlugin = realmPlugin({
   init(realm) { realm.pub(addComposerChild$, CaptureEditor); },
+});
+
+beforeEach(() => {
+  Object.defineProperty(Range.prototype, 'getBoundingClientRect', {
+    configurable: true, value: () => new DOMRect(0, 0, 1, 18),
+  });
 });
 
 afterEach(() => {
@@ -142,6 +149,41 @@ describe('rich block movement', () => {
     }, { discrete: true });
     return [start, end];
   }
+
+  it.each(['Delete block', 'Move down', 'Indent', 'Outdent'])('applies %s to the captured menu selection', async (action) => {
+    const markdown = action === 'Indent' ? '- First\n- Second\n- Third\n- Fourth'
+      : action === 'Outdent' ? '- First\n  - Second\n  - Third\n- Fourth'
+      : 'First\n\nSecond\n\nThird\n\nFourth';
+    const { container, editorRef } = renderEditor(markdown);
+    selectBlocks('Second', 'Third');
+    const second = [...container.querySelectorAll('p, li')].find((element) => element.textContent === 'Second')!;
+    fireEvent.pointerMove(second);
+    const handle = await screen.findByRole('button', { name: 'Move block' });
+    fireEvent.mouseDown(handle);
+    // Model focus taking the live selection away before the menu opens.
+    lexicalEditor.update(() => $getRoot().selectEnd(), { discrete: true });
+    fireEvent.click(handle);
+    fireEvent.click(screen.getByRole('menuitem', { name: action }));
+    await waitFor(() => {
+      const result = editorRef.current!.getMarkdown();
+      if (action === 'Delete block') expect(result).toBe('First\n\nFourth');
+      if (action === 'Move down') expect(result).toBe('First\n\nFourth\n\nSecond\n\nThird');
+      if (action === 'Indent') expect(result).toMatch(/First\n\s+\* Second\n\s+\* Third\n\* Fourth/);
+      if (action === 'Outdent') expect(result).toBe('* First\n* Second\n* Third\n* Fourth');
+    });
+  });
+
+  it('colours all selected blocks and leaves other blocks alone', async () => {
+    const { container } = renderEditor('First\n\nSecond\n\nThird\n\nFourth');
+    const [second, third] = selectBlocks('Second', 'Third');
+    await openBlockMenu(container.querySelectorAll('p')[1]);
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'green background' }));
+    await waitFor(() => lexicalEditor.getEditorState().read(() => {
+      expect($getState(second, blockBackgroundState)).toBe('green');
+      expect($getState(third, blockBackgroundState)).toBe('green');
+      expect($getState(findNode('First')!, blockBackgroundState)).toBeNull();
+    }));
+  });
 
   it('moves a multi-paragraph selection together in both keyboard directions', async () => {
     const { container, editorRef } = renderEditor('First\n\nSecond\n\nThird\n\nFourth');

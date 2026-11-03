@@ -108,12 +108,13 @@ function RichBlockDrag() {
   const hideTimerRef = useRef<number | null>(null);
   const draggedKeysRef = useRef<NodeKey[]>([]);
   const pendingDragRef = useRef<{ key: NodeKey; keys: NodeKey[] } | null>(null);
+  const menuKeysRef = useRef<NodeKey[]>([]);
 
   const deleteMenuBlock = useCallback(() => {
     if (disabled || !hoveredKey) return;
     setIsMenuOpen(false);
     setHoveredKey(null);
-    runMenuAction(editor, hoveredKey, 'delete');
+    runMenuAction(editor, hoveredKey, 'delete', menuKeysRef.current);
     window.requestAnimationFrame(() => editor.focus());
   }, [disabled, editor, hoveredKey]);
 
@@ -319,7 +320,7 @@ function RichBlockDrag() {
     ));
   }, [candidates, dropState, hoveredKey, isDragging]);
 
-  const actions = hoveredKey ? getActions(editor, hoveredKey) : EMPTY_ACTIONS;
+  const actions = hoveredKey ? getActions(editor, hoveredKey, isMenuOpen ? menuKeysRef.current : undefined) : EMPTY_ACTIONS;
   const portalHost = rootElement?.closest('.rich-markdown-editor-shell');
   if (!hovered || !portalHost || !rootElement) return null;
 
@@ -330,7 +331,7 @@ function RichBlockDrag() {
       return;
     }
     setIsMenuOpen(false);
-    runMenuAction(editor, hoveredKey, action);
+    runMenuAction(editor, hoveredKey, action, menuKeysRef.current);
     window.requestAnimationFrame(() => handleRef.current?.focus());
   }
 
@@ -356,7 +357,14 @@ function RichBlockDrag() {
             // HTML drag initiation in browsers.
             pendingDragRef.current = { key: hovered.key, keys: getSelectedBlockKeys(editor, hovered.key) };
           }}
-          onClick={() => setIsMenuOpen((open) => !open)}
+          onClick={() => {
+            if (!isMenuOpen) {
+              const pending = pendingDragRef.current;
+              menuKeysRef.current = pending?.key === hovered.key ? pending.keys : getSelectedBlockKeys(editor, hovered.key);
+              pendingDragRef.current = null;
+            }
+            setIsMenuOpen((open) => !open);
+          }}
           ref={handleRef}
           title={disabled ? 'Block movement is unavailable while this note is read-only' : 'Drag or choose how to move block'}
           type="button"
@@ -386,8 +394,10 @@ function RichBlockDrag() {
                 disabled={disabled}
                 onClick={() => {
                   editor.update(() => {
-                    const node = $getNodeByKey(hovered.key);
-                    if (node) $setState(node, blockBackgroundState, color);
+                    for (const key of menuKeysRef.current) {
+                      const node = $getNodeByKey(key);
+                      if (node?.isAttached()) $setState(node, blockBackgroundState, color);
+                    }
                   });
                   setIsMenuOpen(false);
                   window.requestAnimationFrame(() => handleRef.current?.focus());
@@ -856,8 +866,14 @@ function getTopLevelList(node: ListItemNode): LexicalNode | null {
   return current;
 }
 
-function getActions(editor: LexicalEditor, key: NodeKey) {
+function getActions(editor: LexicalEditor, key: NodeKey, sourceKeys?: NodeKey[]): typeof EMPTY_ACTIONS {
   return editor.getEditorState().read(() => {
+    const keys = sourceKeys ?? $selectedBlockKeys(key);
+    if (keys.length > 1) {
+      const all = keys.map((selectedKey) => getActions(editor, selectedKey, [selectedKey]));
+      return { up: all[0].up, down: all.at(-1)!.down,
+        indent: all.every((actions) => actions.indent), outdent: all.every((actions) => actions.outdent) };
+    }
     const node = $getNodeByKey(key);
     if (!node) return EMPTY_ACTIONS;
     if ($isListItemNode(node)) {
@@ -878,30 +894,33 @@ function getActions(editor: LexicalEditor, key: NodeKey) {
   });
 }
 
-function runMenuAction(editor: LexicalEditor, key: NodeKey, action: 'up' | 'down' | 'indent' | 'outdent' | 'delete') {
+function runMenuAction(editor: LexicalEditor, key: NodeKey, action: 'up' | 'down' | 'indent' | 'outdent' | 'delete', sourceKeys?: NodeKey[]) {
   editor.update(() => {
     const node = $getNodeByKey(key);
     if (!node) return;
+    const keys = sourceKeys ?? $selectedBlockKeys(key);
+    const selected = keys.map((selectedKey) => $getNodeByKey(selectedKey));
+    if (!selected.length || selected.some((block) => !block?.isAttached())) return;
     if (action === 'delete') {
-      if ($isListItemNode(node)) getNestedWrappers(node).forEach((wrapper) => wrapper.remove());
-      node.remove();
+      for (const block of selected as LexicalNode[]) {
+        if ($isListItemNode(block)) getNestedWrappers(block).forEach((wrapper) => wrapper.remove());
+        block.remove();
+      }
       return;
     }
-    if (action === 'indent' && $isListItemNode(node)) {
-      node.selectStart();
-      editor.dispatchCommand(INDENT_CONTENT_COMMAND, undefined);
-      return;
-    }
-    if (action === 'outdent' && $isListItemNode(node)) {
-      node.selectStart();
-      editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined);
+    if (action === 'indent' || action === 'outdent') {
+      const blocks = action === 'outdent' ? [...selected].reverse() : selected;
+      for (const block of blocks) {
+        if (!$isListItemNode(block)) continue;
+        block.selectStart();
+        editor.dispatchCommand(action === 'indent' ? INDENT_CONTENT_COMMAND : OUTDENT_CONTENT_COMMAND, undefined);
+      }
       return;
     }
 
-    const keys = $selectedBlockKeys(key);
-    const selected = keys.map((selectedKey) => $getNodeByKey(selectedKey)).filter((block): block is LexicalNode => Boolean(block));
-    const siblings = $movableBlocks().filter((block) => !selected.some((source) => !source.is(block) && isLogicalAncestor(source, block)));
-    const indexes = selected.map((block) => siblings.findIndex((sibling) => sibling.is(block)));
+    const blocks = selected as LexicalNode[];
+    const siblings = $movableBlocks().filter((block) => !blocks.some((source) => !source.is(block) && isLogicalAncestor(source, block)));
+    const indexes = blocks.map((block) => siblings.findIndex((sibling) => sibling.is(block)));
     const target = action === 'up' ? siblings[Math.min(...indexes) - 1] : siblings[Math.max(...indexes) + 1];
     if (!target) return;
     $moveRichBlocks(editor, keys, target.getKey(), action === 'up' ? 'before' : 'after');
