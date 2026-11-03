@@ -2,11 +2,18 @@ import { describe, expect, it } from 'vitest';
 import {
   areMarkdownBodiesSemanticallyEquivalent,
   checkRichMarkdownCompatibility,
+  describeMarkdownNormalizationChange,
   joinMarkdownEnvelope,
   splitMarkdownEnvelope,
 } from './markdownEnvelope';
 
 describe('Markdown rich-editor envelope', () => {
+  it('locates semantic changes in the original source including frontmatter lines', () => {
+    expect(describeMarkdownNormalizationChange('# Heading\n\n**bold**', '# Heading\n\nplain', 3))
+      .toContain('line 6 (strong): “**bold**”');
+    expect(describeMarkdownNormalizationChange('Before\n\n- [x] task', 'Before\n\n- task'))
+      .toContain('line 3 (listItem)');
+  });
   it('preserves frontmatter, CRLF, and the final newline when joining rich content', () => {
     const source = '---\r\ntitle: Test\r\n---\r\nOld body\r\n';
     const envelope = splitMarkdownEnvelope(source);

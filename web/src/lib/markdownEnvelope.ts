@@ -1,4 +1,4 @@
-import type { Root } from 'mdast';
+import type { Root, Nodes } from 'mdast';
 import remarkGfm from 'remark-gfm';
 import remarkParse from 'remark-parse';
 import { unified } from 'unified';
@@ -109,6 +109,33 @@ export function areMarkdownBodiesSemanticallyEquivalent(left: string, right: str
       === JSON.stringify(normalizeEmptyListRuns(stripParserMetadata(rightTree)));
   } catch {
     return false;
+  }
+}
+
+// Report the nearest original source node, rather than a line in the editor's
+// rewritten Markdown. Formatting-only changes are intentionally ignored.
+export function describeMarkdownNormalizationChange(original: string, normalized: string, lineOffset = 0): string {
+  try {
+    const left = parser.runSync(parser.parse(original)) as Root;
+    const right = parser.runSync(parser.parse(normalized)) as Root;
+    const comparable = (node: Nodes) => JSON.stringify(normalizeEmptyListRuns(stripParserMetadata(node)));
+    function firstDifference(a: Nodes, b: Nodes): Nodes {
+      if (a.type === b.type && 'children' in a && 'children' in b) {
+        for (let i = 0; i < a.children.length; i++) {
+          const child = a.children[i];
+          const other = b.children[i];
+          if (!other) return child;
+          if (comparable(child) !== comparable(other)) return firstDifference(child, other);
+        }
+      }
+      return a;
+    }
+    const node = firstDifference(left, right);
+    const line = (node.position?.start.line ?? 1) + lineOffset;
+    const excerpt = original.split(/\r?\n/)[line - lineOffset - 1]?.trim().slice(0, 100);
+    return `near line ${line} (${node.type})${excerpt ? `: “${excerpt}”` : ''}`;
+  } catch {
+    return 'at an unknown source position';
   }
 }
 

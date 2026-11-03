@@ -2,6 +2,7 @@ import { Component, lazy, Suspense, type ErrorInfo, type ReactNode, useCallback,
 import {
   areMarkdownBodiesSemanticallyEquivalent,
   checkRichMarkdownCompatibility,
+  describeMarkdownNormalizationChange,
   joinMarkdownEnvelope,
 } from '../lib/markdownEnvelope';
 import type { VaultNode } from '../types/vault';
@@ -89,7 +90,11 @@ export function NoteEditorShell(props: NoteEditorShellProps) {
                     normalizedBody,
                     originalBody: compatibility.envelope.bodySource,
                   });
-                  setRuntimeError('Rich text normalization changed this note, so Markdown mode is being used.');
+                  const location = describeMarkdownNormalizationChange(
+                    compatibility.envelope.bodySource, normalizedBody,
+                    compatibility.envelope.frontmatterSource.split('\n').length - 1,
+                  );
+                  setRuntimeError(`Rich text normalization changed this note ${location}. Markdown mode is being used.`);
                 }
               }}
               onOpenWikilink={props.onOpenWikilink}
