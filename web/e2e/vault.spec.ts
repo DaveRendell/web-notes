@@ -73,6 +73,28 @@ test('block delete shortcuts remove the intended block and restore editor focus'
   await expect(page.locator('.rich-markdown-content')).toBeFocused();
 });
 
+for (const query of [':smile', '/heading', '[[Second']) {
+  test(`completion remains opaque while typing ${query}`, async ({ page }) => {
+    await page.goto('/#/note/Welcome.md');
+    const editable = page.locator('.rich-markdown-content');
+    await editable.click();
+    await page.keyboard.press('Control+End');
+    await page.keyboard.press('Enter');
+    for (const character of query) {
+      await page.keyboard.type(character);
+      const popup = page.locator('.rich-completion-menu');
+      if (await popup.count()) {
+        // Reattaching Lexical's anchor must not restart an opacity animation.
+        expect(await popup.evaluate(element => getComputedStyle(element).animationName)).toBe('none');
+        await expect(popup).toHaveCSS('opacity', '1');
+      }
+    }
+    await expect(page.locator('.rich-completion-menu')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.rich-completion-menu')).toHaveCount(0);
+  });
+}
+
 for (const multiple of [false, true]) {
   test(`native grabber dragging moves ${multiple ? 'selected blocks' : 'one block'} and shows drop indicators`, async ({ page }) => {
     await page.route('https://www.googleapis.com/drive/v3/files/welcome?*', route => route.fulfill({
