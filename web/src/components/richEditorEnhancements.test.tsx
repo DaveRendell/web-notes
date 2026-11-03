@@ -22,6 +22,22 @@ import {
 
 afterEach(cleanup);
 
+it('preserves task and ordinary items when Markdown groups them into one list', async () => {
+  const editorRef = createRef<MDXEditorMethods>();
+  const { container } = render(<MDXEditor ref={editorRef}
+    markdown={'* [ ] test1\n* [ ] test2\n\n\n\n* test3\n* test4'}
+    plugins={[listsPlugin(), richEditorEnhancementsPlugin({ notes: [], recentNotes: [] })]} />);
+  await waitFor(() => expect(container.querySelectorAll('li')).toHaveLength(4));
+  expect([...container.querySelectorAll('li')].map((item) => item.getAttribute('role'))).toEqual(['checkbox', 'checkbox', null, null]);
+  expect(editorRef.current?.getMarkdown()).toMatchInlineSnapshot(`
+    "* [ ] test1
+    * [ ] test2
+
+    - test3
+    - test4"
+  `);
+});
+
 let lexicalEditor: LexicalEditor;
 function CaptureEditor() {
   const [editor] = useLexicalComposerContext();

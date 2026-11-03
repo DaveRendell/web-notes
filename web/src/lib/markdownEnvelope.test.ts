@@ -59,4 +59,13 @@ describe('Markdown rich-editor envelope', () => {
     expect(areMarkdownBodiesSemanticallyEquivalent('- one\n\n* two', '* one\n* two')).toBe(false);
     expect(areMarkdownBodiesSemanticallyEquivalent('-\n\n*', '*')).toBe(false);
   });
+
+  it('compares mixed task/bullet lists with separate runs without masking changed checkbox states', () => {
+    const source = '* [ ] test1\n* [ ] test2\n\n\n\n* test3\n* test4';
+    const normalized = '* [ ] test1\n* [ ] test2\n\n- test3\n- test4';
+    expect(areMarkdownBodiesSemanticallyEquivalent(source, normalized)).toBe(true);
+    expect(areMarkdownBodiesSemanticallyEquivalent(source, normalized.replace('- test3', '- [ ] test3'))).toBe(false);
+    expect(areMarkdownBodiesSemanticallyEquivalent(source, normalized.replace('[ ] test1', '[x] test1'))).toBe(false);
+    expect(areMarkdownBodiesSemanticallyEquivalent(source, normalized.replace('- test4', ''))).toBe(false);
+  });
 });

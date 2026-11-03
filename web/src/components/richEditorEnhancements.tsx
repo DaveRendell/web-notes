@@ -126,7 +126,7 @@ export const richEditorEnhancementsPlugin = realmPlugin<RichEditorEnhancementsPa
       [slashCommandIds$]: params?.slashCommandIds ?? null,
       [addMdastExtension$]: wikiLinkFromMarkdownExtension,
       [addLexicalNode$]: [RichEmojiNode, RichImageNode],
-      [addImportVisitor$]: [MdastWikiLinkVisitor, MdastEmojiVisitor, MdastImageVisitor, MdastNumberedListVisitor],
+      [addImportVisitor$]: [MdastWikiLinkVisitor, MdastEmojiVisitor, MdastImageVisitor, MdastTypedListVisitor],
       [addExportVisitor$]: [LexicalWikiLinkVisitor, LexicalEmojiVisitor, LexicalImageVisitor, LexicalNumberedListVisitor],
       [addToMarkdownExtension$]: wikiLinkToMarkdownExtension,
       [addComposerChild$]: RichEditorCompletions,
@@ -177,21 +177,28 @@ const MdastWikiLinkVisitor: MdastImportVisitor<WikiLinkMdastNode> = {
   },
 };
 
-// The stock list visitors omit the starting number on import and export.
-const MdastNumberedListVisitor: MdastImportVisitor<List> = {
+// Markdown allows task and ordinary items in one list. Lexical stores a type
+// on the list itself, so split consecutive item types before visiting them.
+// Also retain starting numbers, which the stock visitors omit.
+const MdastTypedListVisitor: MdastImportVisitor<List> = {
   priority: 100,
-  testNode: (node) => node.type === 'list' && Boolean(node.ordered)
-    && !node.children.some((item) => typeof item.checked === 'boolean'),
+  testNode: 'list',
   visitNode({ mdastNode, lexicalParent, actions }) {
-    const list = $createListNode('number', mdastNode.start ?? 1);
-    if ($isListItemNode(lexicalParent)) {
-      const wrapper = $createListItemNode();
-      wrapper.append(list);
-      lexicalParent.insertAfter(wrapper);
-    } else if ($isElementNode(lexicalParent)) {
-      lexicalParent.append(list);
+    let nestedAnchor = lexicalParent;
+    for (let index = 0; index < mdastNode.children.length;) {
+      const first = index;
+      const isTask = typeof mdastNode.children[index].checked === 'boolean';
+      while (index < mdastNode.children.length && (typeof mdastNode.children[index].checked === 'boolean') === isTask) index++;
+      const list = $createListNode(isTask ? 'check' : mdastNode.ordered ? 'number' : 'bullet', (mdastNode.start ?? 1) + first);
+      if ($isListItemNode(lexicalParent)) {
+        const wrapper = $createListItemNode().append(list);
+        nestedAnchor.insertAfter(wrapper);
+        nestedAnchor = wrapper;
+      } else if ($isElementNode(lexicalParent)) {
+        lexicalParent.append(list);
+      }
+      actions.visitChildren({ ...mdastNode, children: mdastNode.children.slice(first, index) }, list);
     }
-    actions.visitChildren(mdastNode, list);
   },
 };
 

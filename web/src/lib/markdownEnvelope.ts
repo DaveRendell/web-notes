@@ -1,4 +1,4 @@
-import type { Root, Nodes } from 'mdast';
+import type { Root, Nodes, List } from 'mdast';
 import remarkGfm from 'remark-gfm';
 import remarkParse from 'remark-parse';
 import { unified } from 'unified';
@@ -105,11 +105,34 @@ export function areMarkdownBodiesSemanticallyEquivalent(left: string, right: str
   try {
     const leftTree = parser.runSync(parser.parse(left)) as Root;
     const rightTree = parser.runSync(parser.parse(right)) as Root;
-    return JSON.stringify(normalizeEmptyListRuns(stripParserMetadata(leftTree)))
-      === JSON.stringify(normalizeEmptyListRuns(stripParserMetadata(rightTree)));
+    return JSON.stringify(normalizeEmptyListRuns(stripParserMetadata(splitMixedTaskLists(leftTree))))
+      === JSON.stringify(normalizeEmptyListRuns(stripParserMetadata(splitMixedTaskLists(rightTree))));
   } catch {
     return false;
   }
+}
+
+// Lexical needs separate check/bullet lists; CommonMark can represent the
+// same items in one list. Compare those representations without overlooking
+// checked states, item content, ordering, or loose spacing within a run.
+function splitMixedTaskLists<T extends Nodes>(node: T): T {
+  if (!('children' in node)) return node;
+  const children = node.children.flatMap((child) => {
+    const normalized = splitMixedTaskLists(child);
+    if (normalized.type !== 'list' || normalized.ordered) return [normalized];
+    const runs: List[] = [];
+    for (const item of normalized.children) {
+      const previous = runs.at(-1);
+      const isTask = typeof item.checked === 'boolean';
+      if (previous && (typeof previous.children[0].checked === 'boolean') === isTask) previous.children.push(item);
+      else runs.push({ ...normalized, children: [item] });
+    }
+    if (runs.length < 2) return [normalized];
+    return runs.map((run) => ({ ...run, spread: run.children.some((item, index) => item.spread
+      || index > 0 && item.position && run.children[index - 1].position
+        && item.position.start.line - run.children[index - 1].position!.end.line > 1) }));
+  });
+  return { ...node, children } as T;
 }
 
 // Report the nearest original source node, rather than a line in the editor's

@@ -2,6 +2,10 @@
 // Keep real vault content and credentials out of reusable fixtures.
 export const richMarkdownCorpus = [
   {
+    name: 'checklist followed by ordinary bullets',
+    markdown: '* [ ] test1\n* [ ] test2\n\n\n\n* test3\n* test4',
+  },
+  {
     name: 'frontmatter, CRLF, and emoji',
     markdown: '---\r\ntitle: Sample\r\ntags: [mobile]\r\n---\r\n# 🎮 Sample\r\n\r\nA **bold** line with 🎮.\r\n',
   },
