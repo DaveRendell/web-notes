@@ -19,10 +19,17 @@ let session: Session | null = null;
 const trees = new Map<string, LocalVaultItem[]>();
 const treeCompleteness = new Map<string, boolean>();
 const versions = new Map<string, number>();
-const listeners = new Set<(status: string | null) => void>();
+const listeners = new Set<(status: string | null, errors: Readonly<Record<string, string>>) => void>();
+let noteErrors: Record<string, string> = {};
 let lastStatus: string | null = null;
-function status(message: string | null) { lastStatus = message; listeners.forEach((listener) => listener(message)); }
-export function subscribeDriveStatus(listener: (message: string | null) => void) { listeners.add(listener); listener(lastStatus); return () => { listeners.delete(listener); }; }
+function status(message: string | null) { lastStatus = message; listeners.forEach((listener) => listener(message, noteErrors)); }
+export function subscribeDriveStatus(listener: (message: string | null, errors: Readonly<Record<string, string>>) => void) { listeners.add(listener); listener(lastStatus, noteErrors); return () => { listeners.delete(listener); }; }
+function setNoteError(uri: string, cause?: unknown) {
+  noteErrors = { ...noteErrors };
+  if (cause) noteErrors[uri] = cause instanceof Error ? cause.message : String(cause);
+  else delete noteErrors[uri];
+  status(lastStatus);
+}
 let serial: Promise<unknown> = Promise.resolve();
 function exclusively<T>(operation: () => Promise<T>): Promise<T> {
   const next = serial.catch(() => {}).then(operation);
@@ -213,9 +220,11 @@ export async function saveNote(uri: string, expectedOriginal: string, content: s
       await confirmWrite(queue.find((write) => write.uri === uri)!);
       const remaining = queue.filter((write) => write.uri !== uri);
       await mobileCache.putRequired(`writes:${root}`, remaining);
+      setNoteError(uri);
       status(remaining.length ? 'Changes saved locally; waiting to sync' : null);
     } catch (cause) {
-      status(isNetworkFailure(cause) ? 'Changes saved locally; waiting to sync' : String(cause));
+      if (!isNetworkFailure(cause)) setNoteError(uri, cause);
+      status('Changes saved locally; waiting to sync');
       if (!isNetworkFailure(cause)) throw cause;
     }
   });
@@ -234,6 +243,7 @@ export async function overwritePendingNote(uri: string, localContent?: string): 
     await mobileCache.putRequired(`writes:${root}`, queue.map((item) => item.uri === uri ? revised : item));
     await confirmWrite(revised);
     await mobileCache.putRequired(`writes:${root}`, queue.filter((item) => item.uri !== uri));
+    setNoteError(uri);
     status(queue.length > 1 ? 'Changes saved locally; waiting to sync' : null);
   });
 }
@@ -248,8 +258,10 @@ export async function syncPendingWrites(root: string): Promise<void> {
         await confirmWrite(write);
         queue = (await queueFor(root)).filter((item) => item.uri !== write.uri);
         await mobileCache.putRequired(`writes:${root}`, queue);
+        setNoteError(write.uri);
       } catch (cause) {
-        status(String(cause));
+        if (!isNetworkFailure(cause)) setNoteError(write.uri, cause);
+        status('Changes saved locally; waiting to sync');
         if (isNetworkFailure(cause)) return;
         // Keep the conflict durable but allow unrelated notes to sync.
       }
@@ -329,7 +341,7 @@ export async function createImage(parent: string, path: string, name: string, mi
   return image;
 }
 export async function openLocalWeeklyNote(root: string, date = new Date()) {
-  return openLocalWeeklyNoteCore(root, { listFolder: (parent, path) => listVaultFolder(root, parent, path), createFolder, createNote, readText: readNote, writeText: (uri, text) => saveNote(uri, '', text) }, date);
+  return openLocalWeeklyNoteCore(root, { listFolder: (parent, path) => listVaultFolder(root, parent, path), createFolder, createNote, readText: readNote, writeText: async (uri, text) => saveNote(uri, await readNote(uri), text) }, date);
 }
 export async function readLocalWeeklyTemplate(root: string) {
   return readLocalWeeklyTemplateCore(root, { listFolder: (parent, path) => listVaultFolder(root, parent, path), readText: readNote });

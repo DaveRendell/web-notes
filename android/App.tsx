@@ -69,6 +69,7 @@ export default function App() {
   const [busy, setBusy] = useState(true);
   const [pickerPending, setPickerPending] = useState(false);
   const [drivePickerVisible, setDrivePickerVisible] = useState(false);
+  const [noteSyncErrors, setNoteSyncErrors] = useState<Readonly<Record<string, string>>>({});
   const [driveStatus, setDriveStatus] = useState<string | null>(null);
   const [loadingFolders, setLoadingFolders] = useState<Set<string>>(() => new Set());
   const [indexComplete, setIndexComplete] = useState(false);
@@ -110,7 +111,10 @@ export default function App() {
   const openRequestRef = useRef(0);
   itemsRef.current = items;
 
-  useEffect(() => subscribeDriveStatus(setDriveStatus), []);
+  useEffect(() => subscribeDriveStatus((message, errors) => {
+    setDriveStatus(message);
+    setNoteSyncErrors(errors);
+  }), []);
 
   useEffect(() => {
     void restoreCalendarConnection().then(setCalendarConnected).catch((cause) => console.warn('Could not restore Google Calendar connection:', cause));
@@ -677,8 +681,7 @@ export default function App() {
     <SafeAreaView style={styles.page}>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} backgroundColor={palette.statusBar} />
       {drivePickerVisible && <DriveVaultPicker dark={darkMode} onCancel={() => setDrivePickerVisible(false)} onSelect={(uri) => { void activateVault(uri); }} />}
-      {driveStatus && driveStatus !== 'Syncing…' && driveStatus !== 'Changes saved locally; waiting to sync'
-        && <Text accessibilityRole="alert" style={{ color: palette.error, paddingHorizontal: 16, paddingVertical: 4 }}>{driveStatus}</Text>}
+
       {active || activeImage ? (
         <>
           <View style={styles.header}>
@@ -699,7 +702,8 @@ export default function App() {
               </>}
             </View>
           </View>
-          {error && <Text style={styles.error}>{error}</Text>}
+          {active && noteSyncErrors[active.entry.uri] && <Text accessibilityRole="alert" style={styles.error}>{noteSyncErrors[active.entry.uri]}{noteSyncErrors[active.entry.uri].includes('changed on Google Drive') ? ' Open note actions → Resolve conflict: use local version to keep your edits.' : ''}</Text>}
+          {error && error !== `Error: ${active ? noteSyncErrors[active.entry.uri] : ''}` && <Text style={styles.error}>{error}</Text>}
         </>
       ) : (
         <>
@@ -908,7 +912,7 @@ export default function App() {
         <Pressable style={styles.modalBackdrop} onPress={() => setNoteMenuVisible(false)}>
           <Pressable style={styles.settingsPanel} onPress={(event) => event.stopPropagation()}>
             <Pressable style={styles.menuItem} onPress={() => { void reconnectDrive(); }}><RefreshCw size={19} color={palette.textStrong} /><Text style={styles.menuItemText}>Reconnect Google Drive</Text></Pressable>
-            {driveStatus?.includes('changed on Google Drive') && active && <Pressable style={styles.menuItem} onPress={() => {
+            {active && noteSyncErrors[active.entry.uri]?.includes('changed on Google Drive') && <Pressable style={styles.menuItem} onPress={() => {
               setNoteMenuVisible(false);
               const uri = active.entry.uri;
               Alert.alert('Overwrite Google Drive?', 'Replace the Drive version with your local version? This cannot be undone.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Overwrite', style: 'destructive', onPress: () => {

@@ -29,7 +29,7 @@ vi.mock('../../web/src/lib/googleDrive', async (original) => ({
   findDriveChildByName: mocks.find,
 }));
 
-import { createFolder, createNote, listVault, overwritePendingNote, readNote, readVaultFavourites, readVaultListCache, restoreVault, saveNote, selectDriveVault, syncPendingWrites, writeVaultListCache } from '../driveVault';
+import { createFolder, createNote, listVault, openLocalWeeklyNote, overwritePendingNote, readNote, readVaultFavourites, readVaultListCache, restoreVault, saveNote, selectDriveVault, subscribeDriveStatus, syncPendingWrites, writeVaultListCache } from '../driveVault';
 import { bodyMatches, driveItem, driveUri, parseDriveUri, queueWrite } from '../driveVaultCore';
 
 const account = { accountId: 'account', googleUserId: 'google-user' };
@@ -49,6 +49,41 @@ beforeEach(async () => {
 });
 
 describe('Drive vault native cache and sync', () => {
+  it('attributes conflicts to their note and clears them after resolution', async () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeDriveStatus(listener);
+    try {
+      mocks.text.mockResolvedValue('remote change');
+      await expect(saveNote(uri, 'original', 'local edit')).rejects.toThrow('changed on Google Drive');
+      expect(listener).toHaveBeenLastCalledWith('Changes saved locally; waiting to sync', expect.objectContaining({
+        [uri]: expect.stringContaining('changed on Google Drive'),
+      }));
+      const other = 'drive:account:vault:other';
+      mocks.text.mockResolvedValue('original');
+      await saveNote(other, 'original', 'other edit');
+      // Saving another note cannot erase or misattribute the unresolved error.
+      expect(listener.mock.lastCall?.[1][uri]).toContain('changed on Google Drive');
+      expect(listener.mock.lastCall?.[1][other]).toBeUndefined();
+      await overwritePendingNote(uri);
+      expect(listener.mock.lastCall?.[1][uri]).toBeUndefined();
+    } finally { unsubscribe(); }
+  });
+
+  it('uses the created title as the baseline when applying a weekly template', async () => {
+    const folder = (id: string, name: string) => ({ id, name, mimeType: 'application/vnd.google-apps.folder' });
+    mocks.children.mockImplementation(async ({ folderId }: { folderId: string }) => {
+      if (folderId === 'vault') return [folder('weeks', 'Weeks'), folder('templates', 'Templates')];
+      if (folderId === 'weeks') return [folder('year', '2026')];
+      if (folderId === 'templates') return [{ ...file, id: 'template', name: 'Week.md' }];
+      return [];
+    });
+    mocks.createNote.mockImplementation(async (_token, _parent, name) => ({ ...file, name }));
+    mocks.text.mockImplementation(async (_token, id) => id === 'template' ? '# Week $week' : '# Week 45 2026\n');
+    const note = await openLocalWeeklyNote(root, new Date(2026, 10, 3));
+    expect(note.name).toBe('Week 45 2026.md');
+    expect(mocks.update).toHaveBeenCalledWith('token', 'note', '# Week 45');
+    expect(mocks.storage.get(`writes:${root}`)).toEqual([]);
+  });
   it('recognizes an earlier upload after a lost response and further offline editing', async () => {
     mocks.update.mockRejectedValueOnce(new TypeError('Network request failed'));
     await saveNote(uri, 'original', 'first edit');
