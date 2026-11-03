@@ -247,6 +247,27 @@ export async function overwritePendingNote(uri: string, localContent?: string): 
     status(queue.length > 1 ? 'Changes saved locally; waiting to sync' : null);
   });
 }
+/** Explicitly discard this note's pending writes in favour of a fresh Drive read. */
+export async function useCloudNote(uri: string): Promise<string> {
+  return exclusively(async () => {
+    await assertAccount(uri);
+    const root = rootFor(uri);
+    const queue = await queueFor(root);
+    versions.set(uri, (versions.get(uri) ?? 0) + 1);
+    // Download first: offline/auth failures must leave the local draft recoverable.
+    const remote = await downloadNote(uri);
+    await mobileCache.putRequired(`body:${uri}`, remote);
+    await mobileCache.putRequired(`writes:${root}`, queue.filter((write) => write.uri !== uri));
+    versions.set(uri, (versions.get(uri) ?? 0) + 1);
+    const tree = trees.get(root);
+    if (tree) await writeVaultListCache(root, tree.map((item) => item.uri === uri
+      ? { ...item, modifiedTime: remote.modifiedTime } : item), treeCompleteness.get(root) ?? false);
+    setNoteError(uri);
+    status(queue.some((write) => write.uri !== uri) ? 'Changes saved locally; waiting to sync' : null);
+    return remote.content;
+  });
+}
+
 export async function syncPendingWrites(root: string): Promise<void> {
   return exclusively(async () => {
     await assertAccount(root);

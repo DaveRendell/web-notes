@@ -29,7 +29,7 @@ vi.mock('../../web/src/lib/googleDrive', async (original) => ({
   findDriveChildByName: mocks.find,
 }));
 
-import { createFolder, createNote, listVault, openLocalWeeklyNote, overwritePendingNote, readNote, readVaultFavourites, readVaultListCache, restoreVault, saveNote, selectDriveVault, subscribeDriveStatus, syncPendingWrites, writeVaultListCache } from '../driveVault';
+import { createFolder, createNote, listVault, openLocalWeeklyNote, overwritePendingNote, readNote, readVaultFavourites, readVaultListCache, restoreVault, saveNote, selectDriveVault, subscribeDriveStatus, syncPendingWrites, useCloudNote, writeVaultListCache } from '../driveVault';
 import { bodyMatches, driveItem, driveUri, parseDriveUri, queueWrite } from '../driveVaultCore';
 
 const account = { accountId: 'account', googleUserId: 'google-user' };
@@ -49,6 +49,52 @@ beforeEach(async () => {
 });
 
 describe('Drive vault native cache and sync', () => {
+  it('replaces a stale local copy with Drive and removes only its queued write', async () => {
+    const other = 'drive:account:vault:other';
+    mocks.storage.set(`writes:${root}`, [
+      { uri, original: 'old', content: 'stale local' },
+      { uri: other, original: 'original', content: 'other draft' },
+    ]);
+    mocks.storage.set(`body:${uri}`, { content: 'stale local' });
+    mocks.text.mockResolvedValue('current cloud version');
+    const listener = vi.fn();
+    const unsubscribe = subscribeDriveStatus(listener);
+    try {
+      await syncPendingWrites(root);
+      expect(listener.mock.lastCall?.[1][uri]).toContain('changed on Google Drive');
+      expect(await useCloudNote(uri)).toBe('current cloud version');
+      expect(await readNote(uri)).toBe('current cloud version');
+      expect(mocks.storage.get(`body:${uri}`)).toEqual({ content: 'current cloud version', modifiedTime: 'v1' });
+      expect(mocks.storage.get(`writes:${root}`)).toEqual([
+        { uri: other, original: 'original', content: 'other draft' },
+      ]);
+      expect(listener.mock.lastCall?.[1][uri]).toBeUndefined();
+      expect(listener.mock.lastCall?.[1][other]).toContain('changed on Google Drive');
+      expect(mocks.update).not.toHaveBeenCalled();
+      await saveNote(uri, 'current cloud version', 'new edit');
+      expect(mocks.update).toHaveBeenLastCalledWith('token', 'note', 'new edit');
+    } finally { unsubscribe(); }
+  });
+
+  it('retains the local draft and queue when loading the cloud version fails', async () => {
+    const pending = [{ uri, original: 'old', content: 'local draft' }];
+    mocks.storage.set(`writes:${root}`, pending);
+    mocks.storage.set(`body:${uri}`, { content: 'local draft' });
+    mocks.text.mockRejectedValue(new TypeError('Network request failed'));
+    await expect(useCloudNote(uri)).rejects.toThrow('Network request failed');
+    expect(mocks.storage.get(`writes:${root}`)).toEqual(pending);
+    expect(mocks.storage.get(`body:${uri}`)).toEqual({ content: 'local draft' });
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('can explicitly refresh an old local copy even if no queued write remains', async () => {
+    mocks.storage.set(`body:${uri}`, { content: 'stale', modifiedTime: 'v1' });
+    mocks.text.mockResolvedValue('cloud');
+    expect(await useCloudNote(uri)).toBe('cloud');
+    expect(await readNote(uri)).toBe('cloud');
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
   it('attributes conflicts to their note and clears them after resolution', async () => {
     const listener = vi.fn();
     const unsubscribe = subscribeDriveStatus(listener);

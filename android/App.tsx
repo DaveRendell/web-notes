@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, Appearance, AppState, BackHandler, FlatList, 
 import { ChevronDown, ChevronLeft, ChevronRight, EllipsisVertical, FileCode2, FilePlus2, FileText, Folder, FolderOpen, FolderPlus, Image as ImageIcon, MoreHorizontal, RefreshCw, Save, Search, Settings, X } from 'lucide-react-native';
 import { SvgUri } from 'react-native-svg';
 import EditorSurface from './EditorSurface';
-import { createFolder, createImage, createNote, listVault, listVaultFolder, openLocalWeeklyNote, overwritePendingNote, readImageData, readLocalWeeklyTemplate, readNote, readNoteIconCache, readThemePreference, readVaultFavourites, readVaultListCache, reconnectCurrentVault, restoreVault, saveNote, splitFrontmatter, subscribeDriveStatus, syncPendingWrites, writeNoteIconCache, writeThemePreference, writeVaultListCache, type LocalFolder, type LocalImage, type LocalNote, type LocalVaultItem, type ThemePreference } from './driveVault';
+import { createFolder, createImage, createNote, listVault, listVaultFolder, openLocalWeeklyNote, overwritePendingNote, readImageData, readLocalWeeklyTemplate, readNote, readNoteIconCache, readThemePreference, readVaultFavourites, readVaultListCache, reconnectCurrentVault, restoreVault, saveNote, splitFrontmatter, subscribeDriveStatus, syncPendingWrites, useCloudNote, writeNoteIconCache, writeThemePreference, writeVaultListCache, type LocalFolder, type LocalImage, type LocalNote, type LocalVaultItem, type ThemePreference } from './driveVault';
 import DriveVaultPicker from './DriveVaultPicker';
 import * as Network from 'expo-network';
 import { createVaultReconnectCoordinator } from './vaultReconnect';
@@ -69,6 +69,8 @@ export default function App() {
   const [busy, setBusy] = useState(true);
   const [pickerPending, setPickerPending] = useState(false);
   const [drivePickerVisible, setDrivePickerVisible] = useState(false);
+  const [resolvingCloud, setResolvingCloud] = useState(false);
+  const resolvingCloudRef = useRef(false);
   const [noteSyncErrors, setNoteSyncErrors] = useState<Readonly<Record<string, string>>>({});
   const [driveStatus, setDriveStatus] = useState<string | null>(null);
   const [loadingFolders, setLoadingFolders] = useState<Set<string>>(() => new Set());
@@ -323,6 +325,51 @@ export default function App() {
     })();
     savePromiseRef.current = task;
     return task;
+  }, []);
+
+  const resolveWithCloud = useCallback(() => {
+    const note = activeRef.current;
+    if (!note || savePromiseRef.current) return;
+    const noteSession = activeSessionRef.current;
+    resolvingCloudRef.current = true;
+    setResolvingCloud(true);
+    savingRef.current = true;
+    setSaving(true);
+    Keyboard.dismiss();
+    const task = (async () => {
+      try {
+        const content = await useCloudNote(note.entry.uri);
+        if (activeSessionRef.current !== noteSession || activeRef.current !== note) return true;
+        const next = { ...note, ...splitFrontmatter(content) };
+        originalRef.current = content;
+        draftRef.current = content;
+        draftRevisionRef.current = 0;
+        setDraftRevision(0);
+        activeRef.current = next;
+        setActive(next);
+        setEditorNote(next);
+        activeSessionRef.current += 1;
+        setSession(activeSessionRef.current);
+        setDirty(false);
+        setError(null);
+        setAutosaveBlockedRevision(null);
+        setNoteIcons((previous) => ({ ...previous, [note.entry.path]: noteIconFromMarkdown(content) }));
+        return true;
+      } catch (cause) {
+        if (activeSessionRef.current === noteSession) {
+          setError(`Could not load the Google Drive version: ${String(cause)}`);
+          setAutosaveBlockedRevision(draftRevisionRef.current);
+        }
+        return false;
+      } finally {
+        resolvingCloudRef.current = false;
+        setResolvingCloud(false);
+        savingRef.current = false;
+        setSaving(false);
+        savePromiseRef.current = null;
+      }
+    })();
+    savePromiseRef.current = task;
   }, []);
 
   const saveLatestDraft = useCallback(async (): Promise<boolean> => {
@@ -702,7 +749,7 @@ export default function App() {
               </>}
             </View>
           </View>
-          {active && noteSyncErrors[active.entry.uri] && <Text accessibilityRole="alert" style={styles.error}>{noteSyncErrors[active.entry.uri]}{noteSyncErrors[active.entry.uri].includes('changed on Google Drive') ? ' Open note actions → Resolve conflict: use local version to keep your edits.' : ''}</Text>}
+          {active && noteSyncErrors[active.entry.uri] && <Text accessibilityRole="alert" style={styles.error}>{noteSyncErrors[active.entry.uri]}{noteSyncErrors[active.entry.uri].includes('changed on Google Drive') ? ' Open note actions to choose the local or Google Drive version.' : ''}</Text>}
           {error && error !== `Error: ${active ? noteSyncErrors[active.entry.uri] : ''}` && <Text style={styles.error}>{error}</Text>}
         </>
       ) : (
@@ -912,11 +959,11 @@ export default function App() {
         <Pressable style={styles.modalBackdrop} onPress={() => setNoteMenuVisible(false)}>
           <Pressable style={styles.settingsPanel} onPress={(event) => event.stopPropagation()}>
             <Pressable style={styles.menuItem} onPress={() => { void reconnectDrive(); }}><RefreshCw size={19} color={palette.textStrong} /><Text style={styles.menuItemText}>Reconnect Google Drive</Text></Pressable>
-            {active && noteSyncErrors[active.entry.uri]?.includes('changed on Google Drive') && <Pressable style={styles.menuItem} onPress={() => {
+            {active && noteSyncErrors[active.entry.uri]?.includes('changed on Google Drive') && <Pressable style={styles.menuItem} disabled={saving} onPress={() => {
               setNoteMenuVisible(false);
               const uri = active.entry.uri;
               Alert.alert('Overwrite Google Drive?', 'Replace the Drive version with your local version? This cannot be undone.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Overwrite', style: 'destructive', onPress: () => {
-                if (activeRef.current?.entry.uri !== uri) return;
+                if (activeRef.current?.entry.uri !== uri || savePromiseRef.current) return;
                 const snapshot = draftRef.current;
                 void overwritePendingNote(uri, snapshot).then(() => {
                   if (activeRef.current?.entry.uri !== uri) return;
@@ -925,6 +972,14 @@ export default function App() {
                 }).catch((cause) => setError(String(cause)));
               } }]);
             }}><Save size={19} color={palette.error} /><Text style={styles.menuItemText}>Resolve conflict: use local version</Text></Pressable>}
+            {active && noteSyncErrors[active.entry.uri]?.includes('changed on Google Drive') && <Pressable style={styles.menuItem} disabled={saving} onPress={() => {
+              setNoteMenuVisible(false);
+              const uri = active.entry.uri;
+              Alert.alert('Use Google Drive version?', 'Replace this device’s local copy and any queued edits with the current Google Drive version?', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Use Google Drive', onPress: () => { if (activeRef.current?.entry.uri === uri) resolveWithCloud(); } },
+              ]);
+            }}><RefreshCw size={19} color={saving ? palette.disabled : palette.textStrong} /><Text style={[styles.menuItemText, saving && styles.disabled]}>Resolve conflict: use Google Drive version</Text></Pressable>}
             {sequenceNavigation && (sequenceNavigation.previous || sequenceNavigation.next) && (
               <View style={styles.sequenceNavigation} accessibilityRole="toolbar" accessibilityLabel="Sequential notes">
                 <Pressable accessibilityRole="button" accessibilityLabel={`Previous note: ${sequenceNavigation.previousNumber}`} disabled={!sequenceNavigation.previous} onPress={() => { void openSequenceNote(sequenceNavigation.previous); }} style={styles.sequenceButton}>
@@ -953,7 +1008,7 @@ export default function App() {
       </Modal>
       {editorNote && (
         <View style={active ? styles.editor : styles.hiddenEditor}>
-          <View style={[styles.editor, !editorVisible && styles.editorAwaitingReady]} pointerEvents={editorVisible ? 'auto' : 'none'}>
+          <View style={[styles.editor, !editorVisible && styles.editorAwaitingReady]} pointerEvents={editorVisible && !resolvingCloud ? 'auto' : 'none'}>
           <EditorSurface
             fixtureName={editorNote.entry.path}
             markdown={editorNote.body}
@@ -978,7 +1033,7 @@ export default function App() {
             onWriteAttempt={noop}
             onEditorFocusChange={async (event) => { if (activeRef.current && event.session === session) setEditorFocused(event.focused); }}
             onDraftChange={async ({ markdown: body, mode, session: draftSession }) => {
-              if (draftSession !== activeSessionRef.current || activeRef.current?.entry.uri !== editorNote.entry.uri) return;
+              if (resolvingCloudRef.current || draftSession !== activeSessionRef.current || activeRef.current?.entry.uri !== editorNote.entry.uri) return;
               const full = editorNote.frontmatter + body;
               draftRef.current = full;
               draftModeRef.current = mode;
@@ -989,7 +1044,7 @@ export default function App() {
             }}
           />
           </View>
-          {active && !editorVisible && <View style={styles.editorLoadingOverlay} accessibilityLabel="Loading note"><ActivityIndicator color={palette.accent} /></View>}
+          {active && (!editorVisible || resolvingCloud) && <View style={styles.editorLoadingOverlay} accessibilityLabel="Loading note"><ActivityIndicator color={palette.accent} /></View>}
         </View>
       )}
       {activeImage && <View style={styles.imageViewer}><NativeImage accessibilityLabel={activeImage.name} source={{ uri: activeImage.uri }} resizeMode="contain" style={styles.imageViewerImage} /></View>}
