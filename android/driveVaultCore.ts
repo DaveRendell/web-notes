@@ -27,11 +27,19 @@ export function validBody(value: unknown): value is CachedBody {
 export function bodyMatches(body: CachedBody, modifiedTime?: string): boolean {
   return !!modifiedTime && body.modifiedTime === modifiedTime;
 }
-export type PendingWrite = { uri: string; original: string; content: string; originalModifiedTime?: string };
+export type PendingWrite = {
+  uri: string;
+  original: string;
+  content: string;
+  originalModifiedTime?: string;
+  // Durable until acknowledgement: any of these uploads may have succeeded
+  // even if the network response was lost. Scope is this file's pending write.
+  attemptedContents?: string[];
+};
 export function validQueue(value: unknown): value is PendingWrite[] {
-  return Array.isArray(value) && value.every((item) => item && typeof item.uri === 'string' && typeof item.original === 'string' && typeof item.content === 'string' && (item.originalModifiedTime === undefined || typeof item.originalModifiedTime === 'string'));
+  return Array.isArray(value) && value.every((item) => item && typeof item.uri === 'string' && typeof item.original === 'string' && typeof item.content === 'string' && (item.originalModifiedTime === undefined || typeof item.originalModifiedTime === 'string') && (item.attemptedContents === undefined || Array.isArray(item.attemptedContents) && item.attemptedContents.every((content: unknown) => typeof content === 'string')));
 }
 export function queueWrite(queue: PendingWrite[], write: PendingWrite): PendingWrite[] {
   const existing = queue.find((item) => item.uri === write.uri);
-  return [...queue.filter((item) => item.uri !== write.uri), { ...write, original: existing?.original ?? write.original, ...(existing ? { originalModifiedTime: existing.originalModifiedTime } : {}) }];
+  return [...queue.filter((item) => item.uri !== write.uri), { ...write, original: existing?.original ?? write.original, ...(existing ? { originalModifiedTime: existing.originalModifiedTime, ...(existing.attemptedContents ? { attemptedContents: existing.attemptedContents } : {}) } : {}) }];
 }

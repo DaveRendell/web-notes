@@ -184,7 +184,14 @@ async function confirmWrite(write: PendingWrite) {
   const remote = write.originalModifiedTime && checked.modifiedTime === write.originalModifiedTime
     ? { content: write.original }
     : await downloadNote(write.uri);
-  if (remote.content !== write.content && remote.content !== write.original) throw new Error('This note changed on Google Drive. Your local version is preserved; resolve the conflict before syncing.');
+  if (remote.content !== write.content && remote.content !== write.original && !write.attemptedContents?.includes(remote.content)) throw new Error('This note changed on Google Drive. Your local version is preserved; resolve the conflict before syncing.');
+  // Journal the exact outgoing body before sending it. A timeout can mean the
+  // server committed the upload; subsequent edits must still recognize it.
+  if (remote.content !== write.content) {
+    write.attemptedContents = [...new Set([...(write.attemptedContents ?? []), write.content])];
+    const queue = await queueFor(root);
+    await mobileCache.putRequired(`writes:${root}`, queue.map((item) => item.uri === write.uri ? write : item));
+  }
   const file = remote.content === write.content ? await metadata(write.uri) : await withVaultToken(write.uri, (token) => updateDriveFileText(token, parseDriveUri(write.uri).fileId, write.content));
   await mobileCache.put(`body:${write.uri}`, { content: write.content, modifiedTime: file.modifiedTime });
   const tree = trees.get(root);
@@ -239,7 +246,7 @@ export async function syncPendingWrites(root: string): Promise<void> {
     for (const write of [...queue]) {
       try {
         await confirmWrite(write);
-        queue = queue.filter((item) => item.uri !== write.uri);
+        queue = (await queueFor(root)).filter((item) => item.uri !== write.uri);
         await mobileCache.putRequired(`writes:${root}`, queue);
       } catch (cause) {
         status(String(cause));

@@ -47,7 +47,7 @@ The app keeps an account-scoped cache in the browser's IndexedDB storage:
 - Note bodies are cached lazily when opened. Drive is only asked for the body again when its `modifiedTime` has changed or either timestamp is unavailable.
 - Vault images are cached lazily in IndexedDB, isolated by account and vault and validated against Drive's `modifiedTime`. Matching cached images work offline, and concurrent requests share one download. The image cache is limited to 100 MB per browser, evicting the oldest downloads first. Cache failures are non-fatal; externally hosted images use normal browser caching. Disconnect also clears the account's cached images.
 - A failed refresh leaves cached files and note content available read-only. The vault listing is retried when the browser comes back online.
-- Successful Drive mutations update the tree and body cache immediately. A remote update discovered while editing never replaces the local draft; the editor warns before the next save overwrites Drive.
+- Successful Drive mutations update the tree and body cache immediately. Note refreshes wait for active saves, and stale listings cannot invalidate a newer confirmed body. Attempted uploads are recognised during the editing session even when their network response is lost. A remote update discovered while editing never replaces the local draft; the editor warns before the next save overwrites Drive.
 - **Sign out** retains cached data for the next session. **Disconnect Google Drive** removes all cached vaults and notes for that Drive account.
 
 Cached Markdown is not encrypted by the app and relies on the security of the browser profile. Offline edits and queued writes are not supported.

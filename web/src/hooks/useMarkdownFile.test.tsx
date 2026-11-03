@@ -25,6 +25,28 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('useMarkdownFile', () => {
+  it('does not fetch an older listing version over a confirmed saved cache', async () => {
+    mocks.getNoteContent.mockResolvedValue(cachedContent('saved body', '2026-11-03T12:01:00Z'));
+    const { result } = renderHook(() => useMarkdownFile('token', 'account', 'vault', note('2026-11-03T12:00:00Z')));
+    await waitFor(() => expect(result.current.content).toBe('saved body'));
+    expect(mocks.getDriveFileText).not.toHaveBeenCalled();
+  });
+
+  it('pauses loaded-note refreshes during saving and revalidates after confirmation', async () => {
+    mocks.getNoteContent.mockResolvedValue(cachedContent('baseline', 'old'));
+    const { result, rerender } = renderHook(({ saving, version, token }) =>
+      useMarkdownFile(token, 'account', 'vault', note(version), saving),
+    { initialProps: { saving: false, version: 'old', token: 'old token' } });
+    await waitFor(() => expect(result.current.content).toBe('baseline'));
+    rerender({ saving: true, version: 'new', token: 'renewed token' });
+    expect(mocks.getDriveFileText).not.toHaveBeenCalled();
+    mocks.getNoteContent.mockResolvedValue(cachedContent('saved body', 'new'));
+    act(() => result.current.setContent('saved body'));
+    rerender({ saving: false, version: 'new', token: 'renewed token' });
+    await waitFor(() => expect(mocks.getNoteContent).toHaveBeenCalledTimes(2));
+    expect(result.current.content).toBe('saved body');
+    expect(mocks.getDriveFileText).not.toHaveBeenCalled();
+  });
   it('retains the loaded document throughout token expiry and renewal', async () => {
     mocks.getNoteContent.mockResolvedValue(cachedContent('cached body', 'same'));
     const { result, rerender } = renderHook(({ token }: { token: string | null }) =>

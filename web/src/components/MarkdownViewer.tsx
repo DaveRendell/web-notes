@@ -37,11 +37,13 @@ export function MarkdownViewer({ onOpenSidebar }: { onOpenSidebar?: () => void }
     toggleFavorite,
   } = useVault();
   const selectedVaultId = selectedVault?.id ?? null;
+  const [isSaving, setIsSaving] = useState(false);
   const { cacheContent, content, error, isLoading, isRefreshing, refreshError, setContent } = useMarkdownFile(
     accessToken,
     accountId,
     selectedVaultId,
     selectedFile,
+    isSaving,
   );
   const noteContentRef = useRef<HTMLDivElement>(null);
   const noteMenuRef = useRef<HTMLDivElement>(null);
@@ -66,7 +68,6 @@ export function MarkdownViewer({ onOpenSidebar }: { onOpenSidebar?: () => void }
   const [needsAuthReconnect, setNeedsAuthReconnect] = useState(false);
   const [hasFailedSave, setHasFailedSave] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
   const [isNoteMenuOpen, setIsNoteMenuOpen] = useState(false);
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
   const parsedMarkdown = useMemo(() => parseMarkdownWithFrontmatter(draft), [draft]);
@@ -113,15 +114,22 @@ export function MarkdownViewer({ onOpenSidebar }: { onOpenSidebar?: () => void }
     void (async () => {
       try {
         const validAccessToken = await ensureAccessToken();
-        const updatedFile = await updateDriveFileText(validAccessToken, save.note.id, save.content);
         const versions = ownSavedVersionsRef.current;
         versions.set(save.note.id, [...(versions.get(save.note.id) ?? []), save.content].slice(-4));
         if (versions.size > 32) versions.delete(versions.keys().next().value!);
+        // Remember attempted uploads too: a failed response may still have
+        // committed this exact body on Drive.
+        const updatedFile = await updateDriveFileText(validAccessToken, save.note.id, save.content);
         const newerSave = queuedSavesRef.current.get(save.note.id);
+        if (accountId && selectedVaultId && !newerSave) {
+          // Finish caching before publishing metadata that triggers a refresh.
+          await putNoteContent({ accountId, vaultId: selectedVaultId, fileId: save.note.id,
+            content: save.content, modifiedTime: updatedFile.modifiedTime, cachedAt: Date.now() });
+        }
 
         // Always advance the Drive metadata, but never let an older response replace a
         // newer local draft in IndexedDB.
-        storeSavedNote(save.note, updatedFile, newerSave ? undefined : save.content);
+        storeSavedNote(save.note, updatedFile);
         if (selectedFileRef.current?.id === save.note.id && !newerSave && draftRef.current === save.content) {
           acceptedContentUpdateRef.current = { content: save.content, fileId: save.note.id };
           setContent(save.content);

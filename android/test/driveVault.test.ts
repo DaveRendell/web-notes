@@ -49,6 +49,54 @@ beforeEach(async () => {
 });
 
 describe('Drive vault native cache and sync', () => {
+  it('recognizes an earlier upload after a lost response and further offline editing', async () => {
+    mocks.update.mockRejectedValueOnce(new TypeError('Network request failed'));
+    await saveNote(uri, 'original', 'first edit');
+    expect(mocks.storage.get(`writes:${root}`)).toEqual([
+      { uri, original: 'original', content: 'first edit', attemptedContents: ['first edit'] },
+    ]);
+    // Drive committed the upload, but the app never received its confirmation.
+    mocks.text.mockResolvedValue('first edit');
+    await saveNote(uri, 'first edit', 'second edit');
+    expect(mocks.update).toHaveBeenLastCalledWith('token', 'note', 'second edit');
+    expect(mocks.storage.get(`writes:${root}`)).toEqual([]);
+    expect(await readNote(uri)).toBe('second edit');
+  });
+
+  it('retains attempted uploads across queue coalescing and still rejects unknown remote edits', async () => {
+    mocks.update.mockRejectedValueOnce(new TypeError('Network request failed'));
+    await saveNote(uri, 'original', 'first edit');
+    mocks.text.mockRejectedValueOnce(new TypeError('Network request failed'));
+    await saveNote(uri, 'first edit', 'second edit');
+    mocks.text.mockResolvedValue('someone else edited');
+    await syncPendingWrites(root);
+    expect(mocks.update).toHaveBeenCalledTimes(1);
+    expect(mocks.storage.get(`writes:${root}`)).toEqual([
+      { uri, original: 'original', content: 'second edit', attemptedContents: ['first edit'] },
+    ]);
+    mocks.text.mockResolvedValue('first edit');
+    await syncPendingWrites(root);
+    expect(mocks.update).toHaveBeenLastCalledWith('token', 'note', 'second edit');
+    expect(mocks.storage.get(`writes:${root}`)).toEqual([]);
+  });
+
+  it('does not discard an uncertain upload journal when another note finishes syncing', async () => {
+    const other = 'drive:account:vault:other';
+    mocks.storage.set(`writes:${root}`, [
+      { uri, original: 'original', content: 'first edit' },
+      { uri: other, original: 'original', content: 'other edit' },
+    ]);
+    // A non-network server failure keeps syncing unrelated notes.
+    mocks.update.mockRejectedValueOnce(new Error('Response interrupted'));
+    await syncPendingWrites(root);
+    expect(mocks.storage.get(`writes:${root}`)).toEqual([
+      { uri, original: 'original', content: 'first edit', attemptedContents: ['first edit'] },
+    ]);
+    mocks.text.mockResolvedValue('first edit');
+    await saveNote(uri, 'first edit', 'latest edit');
+    expect(mocks.update).toHaveBeenLastCalledWith('token', 'note', 'latest edit');
+    expect(mocks.storage.get(`writes:${root}`)).toEqual([]);
+  });
   it('restores only the signed-in account and rejects cross-account reads', async () => {
     expect(await restoreVault()).toBe(root);
     mocks.user = 'other-user';

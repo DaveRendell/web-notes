@@ -8,6 +8,7 @@ export function useMarkdownFile(
   accountId: string | null,
   vaultId: string | null,
   file: VaultNode | null,
+  pauseRefresh = false,
 ) {
   const revision = useRef(0);
   const loadedScope = useRef<string | null>(null);
@@ -49,7 +50,10 @@ export function useMarkdownFile(
       return;
     }
     // Keep the existing document mounted while reconnecting to Drive.
-    if (!accessToken) return;
+    if (!accessToken || (pauseRefresh && loadedScope.current === JSON.stringify([accountId, vaultId, fileId]))) {
+      setIsRefreshing(false);
+      return;
+    }
 
     const controller = new AbortController();
     const currentAccessToken = accessToken;
@@ -75,10 +79,13 @@ export function useMarkdownFile(
       }
 
       const currentModifiedTime = modifiedTime;
+      // A listing started before our upload can arrive after its confirmation.
+      // Do not fetch an older version over the body just acknowledged by Drive.
       const cacheIsCurrent = Boolean(
         cachedContent?.modifiedTime &&
           currentModifiedTime &&
-          cachedContent.modifiedTime === currentModifiedTime,
+          (cachedContent.modifiedTime === currentModifiedTime ||
+            Date.parse(cachedContent.modifiedTime) > Date.parse(currentModifiedTime)),
       );
 
       if (cacheIsCurrent) {
@@ -133,7 +140,7 @@ export function useMarkdownFile(
 
     void loadContent();
     return () => controller.abort();
-  }, [accessToken, accountId, fileId, modifiedTime, vaultId]);
+  }, [accessToken, accountId, fileId, modifiedTime, pauseRefresh, vaultId]);
 
   const isSwitchingFile = Boolean(file && loadedFileId !== file.id);
 

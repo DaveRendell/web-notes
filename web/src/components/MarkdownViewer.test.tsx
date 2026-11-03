@@ -127,6 +127,19 @@ afterEach(() => {
 });
 
 describe('MarkdownViewer rich editing', () => {
+  it('recognizes its own upload even when the response was lost', async () => {
+    mocks.updateDriveFileText.mockRejectedValueOnce(new TypeError('Network request failed'));
+    const { rerender } = render(<MarkdownViewer />);
+    const editor = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: 'uploaded edit' } });
+    fireEvent.blur(editor);
+    await screen.findByText('Network request failed');
+    fireEvent.change(editor, { target: { value: 'continued typing' } });
+    mocks.content = 'uploaded edit';
+    rerender(<MarkdownViewer />);
+    expect(editor.value).toBe('continued typing');
+    expect(screen.queryByText(/changed in Google Drive/)).toBeNull();
+  });
   it('does not flag an earlier successful save as a remote conflict while typing continues', async () => {
     const { rerender } = render(<MarkdownViewer />);
     const editor = screen.getByRole('textbox') as HTMLTextAreaElement;
@@ -255,12 +268,13 @@ describe('MarkdownViewer rich editing', () => {
     await waitFor(() => expect(mocks.storeSavedNote).toHaveBeenLastCalledWith(
       selectedFile,
       expect.objectContaining({ modifiedTime: 'newest' }),
-      '- [x] first\n\nMoved block',
     ));
+    expect(mocks.putNoteContent).toHaveBeenCalledWith(expect.objectContaining({
+      content: '- [x] first\n\nMoved block', modifiedTime: 'newest',
+    }));
     expect(mocks.storeSavedNote).toHaveBeenCalledWith(
       selectedFile,
       expect.objectContaining({ modifiedTime: 'first-save' }),
-      undefined,
     );
     expect(screen.queryByText(/changed in Google Drive/)).toBeNull();
   });
