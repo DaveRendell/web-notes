@@ -61,6 +61,15 @@ describe('slash commands', () => {
     expect(result?.options.map(({ label }) => label)).toEqual(['Heading 1', 'To-do list']);
   });
 
+  it('deletes a complete Markdown block, including nested list children', () => {
+    const doc = 'Before\n\n- Parent /delete\n  - Child\n- Keep\n';
+    const view = new EditorView({ state: EditorState.create({ doc }) });
+    const from = doc.indexOf('/delete');
+    applyMarkdownSlashCommand(view, SLASH_COMMANDS.find(({ id }) => id === 'delete')!, from, from + 7, vi.fn());
+    expect(view.state.doc.toString()).toBe('Before\n\n- Keep\n');
+    view.destroy();
+  });
+
   it('applies block, background, and image commands in Markdown mode', () => {
     const parent = document.createElement('div');
     document.body.append(parent);

@@ -18,7 +18,7 @@ import { InsertCalendarButton } from '../web/src/components/InsertCalendarButton
 import { compareMarkdown, type EditorEvent, type EditorFocusEvent, type WriteAttempt } from './diagnostics';
 import { dismissEditorCaret } from './editorFocus';
 import { createSlashCommandCompletionSource, requestCalendarDialog, requestImageDialog } from '../web/src/lib/slashCommands';
-import { MOBILE_BLOCK_BACKGROUND_CSS, MOBILE_SLASH_COMMAND_IDS } from './mobileSlashCommands';
+import { MOBILE_BLOCK_BACKGROUND_CSS, MOBILE_BLOCK_BACKGROUND_COLORS, MOBILE_BLOCK_BACKGROUND_DARK_COLORS, MOBILE_SLASH_COMMAND_IDS } from './mobileSlashCommands';
 import type { MobileEditorMode } from './autosave';
 import { MobileImageProvider, type MobileImage, type MobileImageServices } from './shims/ImageContext';
 import { MobileCalendarProvider, type MobileCalendarServices } from './shims/CalendarContext';
@@ -355,6 +355,23 @@ export default function EditorSurface({ fixtureName, markdown, onEvent, onEditor
         .rich-touch-drag-active, .rich-touch-drag-active * {
           user-select: none !important; -webkit-user-select: none !important;
           -webkit-touch-callout: none; }
+        .rich-touch-menu-backdrop { position: fixed; inset: 0; z-index: 100; background: #0005;
+          display: flex; align-items: center; justify-content: center; padding: 16px; }
+        .rich-touch-menu { width: min(300px, 100%); max-height: calc(100dvh - 32px); overflow: auto;
+          padding: 8px; border-radius: 12px; background: ${darkMode ? '#222b35' : '#ffffff'};
+          color: inherit; box-shadow: 0 8px 30px #0003; }
+        .rich-touch-menu > button { display: flex; align-items: center; gap: 10px; width: 100%;
+          min-height: 44px; padding: 8px 12px; border: 0; border-radius: 6px; background: transparent;
+          color: inherit; font: inherit; }
+        .rich-touch-menu button:disabled { opacity: .4; }
+        .rich-touch-menu button:focus-visible, .rich-touch-menu button:hover { background: ${darkMode ? '#344353' : '#edf1f5'}; }
+        .rich-touch-menu .danger { color: ${darkMode ? '#ff9999' : '#b42318'}; }
+        ${Object.entries(darkMode ? MOBILE_BLOCK_BACKGROUND_DARK_COLORS : MOBILE_BLOCK_BACKGROUND_COLORS).map(([color, value]) => `.rich-touch-menu button[data-block-background="${color}"] { background: ${value}; }`).join('\n')}
+        .rich-touch-menu .block-background-label { padding: 10px 12px 4px; font-size: 13px; }
+        .rich-touch-menu .block-background-options { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 8px; }
+        .rich-touch-menu .block-background-options button { min-height: 40px; border: 1px solid #8885;
+          border-radius: 6px; color: inherit; font: inherit; }
+        .rich-touch-menu .block-background-options button[aria-checked="true"] { outline: 2px solid #6999c9; }
         .rich-touch-drag-source { opacity: 0.45; }
         .rich-markdown-content > *, .rich-markdown-content li { position: relative; }
         .rich-touch-drop-before::before, .rich-touch-drop-after::after { position: absolute;

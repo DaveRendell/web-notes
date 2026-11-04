@@ -4,7 +4,7 @@ import { getSlashCommandSuggestions, type SlashCommandId } from '../web/src/lib/
 export const MOBILE_SLASH_COMMAND_IDS: ReadonlySet<SlashCommandId> = new Set<SlashCommandId>([
   'paragraph', 'heading', 'heading2', 'heading3', 'quote',
   'todo', 'bullet', 'numbered', ...BLOCK_BACKGROUNDS, 'clearBackground',
-  'image', 'calendar',
+  'image', 'calendar', 'delete',
 ]);
 
 export const MOBILE_BLOCK_BACKGROUND_COLORS: Record<BlockBackground, string> = {

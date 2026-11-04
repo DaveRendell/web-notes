@@ -372,39 +372,11 @@ function RichBlockDrag() {
           <GripVertical size={16} />
         </button>
         <AnimatedPopover className="markdown-block-menu rich-block-menu" isOpen={isMenuOpen} onEscape={() => setIsMenuOpen(false)} placementGap={2} role="menu">
-          <MenuButton disabled={!actions.up} icon={<ArrowUp size={15} />} label="Move up" onClick={() => runAction('up')} />
-          <MenuButton disabled={!actions.down} icon={<ArrowDown size={15} />} label="Move down" onClick={() => runAction('down')} />
-          <MenuButton disabled={!actions.indent} icon={<ArrowRight size={15} />} label="Indent" onClick={() => runAction('indent')} />
-          <MenuButton disabled={!actions.outdent} icon={<ArrowLeft size={15} />} label="Outdent" onClick={() => runAction('outdent')} />
-          <MenuButton className="danger" disabled={disabled} icon={<Trash2 size={15} />} label="Delete block" onClick={() => runAction('delete')} shortcut="Delete" />
-          <div className="block-background-label">Background colour</div>
-          <div className="block-background-options">
-            {[null, ...BLOCK_BACKGROUNDS].map((color) => (
-              <button
-                key={color ?? 'default'}
-                type="button"
-                role="menuitemradio"
-                aria-label={color ? `${color} background` : 'Default background'}
-                aria-checked={editor.getEditorState().read(() => {
-                  const node = $getNodeByKey(hovered.key);
-                  return Boolean(node && $getState(node, blockBackgroundState) === color);
-                })}
-                title={color ?? 'Default'}
-                data-block-background={color ?? undefined}
-                disabled={disabled}
-                onClick={() => {
-                  editor.update(() => {
-                    for (const key of menuKeysRef.current) {
-                      const node = $getNodeByKey(key);
-                      if (node?.isAttached()) $setState(node, blockBackgroundState, color);
-                    }
-                  });
-                  setIsMenuOpen(false);
-                  window.requestAnimationFrame(() => handleRef.current?.focus());
-                }}
-              >{color ? '' : '×'}</button>
-            ))}
-          </div>
+          <RichBlockMenuContents editor={editor} blockKey={hovered.key} sourceKeys={menuKeysRef.current}
+            disabled={disabled} onAction={runAction} onClose={() => {
+              setIsMenuOpen(false);
+              window.requestAnimationFrame(() => handleRef.current?.focus());
+            }} />
         </AnimatedPopover>
       </div>
       {isDragging && actions.outdent && (
@@ -894,7 +866,7 @@ function getActions(editor: LexicalEditor, key: NodeKey, sourceKeys?: NodeKey[])
   });
 }
 
-function runMenuAction(editor: LexicalEditor, key: NodeKey, action: 'up' | 'down' | 'indent' | 'outdent' | 'delete', sourceKeys?: NodeKey[]) {
+export function runMenuAction(editor: LexicalEditor, key: NodeKey, action: 'up' | 'down' | 'indent' | 'outdent' | 'delete', sourceKeys?: NodeKey[]) {
   editor.update(() => {
     const node = $getNodeByKey(key);
     if (!node) return;
@@ -950,4 +922,46 @@ function MenuButton({ className = '', disabled, icon, label, onClick, shortcut }
       <span>{label}</span>
     </button>
   );
+}
+
+export function RichBlockMenuContents({ editor, blockKey, sourceKeys, disabled = false, onAction, onClose }: {
+  editor: LexicalEditor; blockKey: NodeKey; sourceKeys: NodeKey[]; disabled?: boolean;
+  onAction: (action: 'up' | 'down' | 'indent' | 'outdent' | 'delete') => void;
+  onClose: () => void;
+}) {
+  const actions = disabled ? EMPTY_ACTIONS : getActions(editor, blockKey, sourceKeys);
+  return <>
+          <MenuButton disabled={!actions.up} icon={<ArrowUp size={15} />} label="Move up" onClick={() => onAction('up')} />
+          <MenuButton disabled={!actions.down} icon={<ArrowDown size={15} />} label="Move down" onClick={() => onAction('down')} />
+          <MenuButton disabled={!actions.indent} icon={<ArrowRight size={15} />} label="Indent" onClick={() => onAction('indent')} />
+          <MenuButton disabled={!actions.outdent} icon={<ArrowLeft size={15} />} label="Outdent" onClick={() => onAction('outdent')} />
+          <MenuButton className="danger" disabled={disabled} icon={<Trash2 size={15} />} label="Delete block" onClick={() => onAction('delete')} shortcut="Delete" />
+          <div className="block-background-label">Background colour</div>
+          <div className="block-background-options">
+            {[null, ...BLOCK_BACKGROUNDS].map((color) => (
+              <button
+                key={color ?? 'default'}
+                type="button"
+                role="menuitemradio"
+                aria-label={color ? `${color} background` : 'Default background'}
+                aria-checked={editor.getEditorState().read(() => {
+                  const node = $getNodeByKey(blockKey);
+                  return Boolean(node && $getState(node, blockBackgroundState) === color);
+                })}
+                title={color ?? 'Default'}
+                data-block-background={color ?? undefined}
+                disabled={disabled}
+                onClick={() => {
+                  editor.update(() => {
+                    for (const key of sourceKeys) {
+                      const node = $getNodeByKey(key);
+                      if (node?.isAttached()) $setState(node, blockBackgroundState, color);
+                    }
+                  });
+                  onClose();
+                }}
+              >{color ? '' : '×'}</button>
+            ))}
+          </div>
+  </>;
 }

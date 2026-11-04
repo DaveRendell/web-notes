@@ -1,3 +1,4 @@
+import { runMenuAction } from './richBlockDrag';
 import {
   Cell,
   IS_BOLD,
@@ -467,6 +468,11 @@ function applyRichSlashCommand(editor: LexicalEditor, queryNode: TextNode, comma
   queryNode.setTextContent('');
   queryNode.selectStart();
 
+  if (command.id === 'delete') {
+    const target = $findMatchingParent(queryNode, $isListItemNode) ?? queryNode.getTopLevelElement();
+    if (target) runMenuAction(editor, target.getKey(), 'delete', [target.getKey()]);
+    return;
+  }
   if (command.id === 'image') {
     window.requestAnimationFrame(() => requestImageDialog(editor.getRootElement()));
     return;

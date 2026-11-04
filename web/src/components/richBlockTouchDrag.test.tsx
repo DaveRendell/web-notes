@@ -31,6 +31,38 @@ async function renderEditor(disabled = false) {
 }
 
 describe('Android touch block gesture', () => {
+  it('opens the shared block menu on a stationary hold and deletes the held block', async () => {
+    const { first, editorRef, getByRole, queryByRole } = await renderEditor();
+    vi.useFakeTimers();
+    fireEvent.touchStart(first, { touches: [{ clientX: 40, clientY: 110 }] });
+    act(() => vi.advanceTimersByTime(460));
+    fireEvent.touchEnd(first, { touches: [], changedTouches: [{ clientX: 40, clientY: 110 }] });
+    vi.useRealTimers();
+    expect(getByRole('dialog', { name: 'Block options' })).toBeTruthy();
+    expect(getByRole('menuitem', { name: 'Move up' }).hasAttribute('disabled')).toBe(true);
+    expect(getByRole('menuitemradio', { name: 'green background' })).toBeTruthy();
+    fireEvent.click(getByRole('menuitem', { name: 'Delete block' }));
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe('Second paragraph.'));
+    expect(queryByRole('dialog')).toBeNull();
+  });
+
+  it('dismisses the held-block menu with Escape or an outside click', async () => {
+    const { first, queryByRole, getByRole } = await renderEditor();
+    const hold = () => {
+      vi.useFakeTimers();
+      fireEvent.touchStart(first, { touches: [{ clientX: 40, clientY: 110 }] });
+      act(() => vi.advanceTimersByTime(460));
+      fireEvent.touchEnd(first, { touches: [] });
+      vi.useRealTimers();
+    };
+    hold();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(queryByRole('dialog')).toBeNull();
+    hold();
+    fireEvent.click(getByRole('dialog').parentElement!);
+    expect(queryByRole('dialog')).toBeNull();
+  });
+
   it('moves blocks while Lexical is read-only, without enabling native text selection', async () => {
     const editorRef = createRef<MDXEditorMethods>();
     const onChange = vi.fn();
@@ -158,5 +190,6 @@ describe('Android touch block gesture', () => {
     vi.useRealTimers();
     await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe('Second paragraph.\n\nFirst paragraph.'));
     expect(second.classList.contains('rich-touch-drop-after')).toBe(false);
+    expect(document.querySelector('[role=dialog]')).toBeNull();
   });
 });

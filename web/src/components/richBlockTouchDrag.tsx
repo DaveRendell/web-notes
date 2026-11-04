@@ -1,7 +1,10 @@
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { addComposerChild$, Cell, realmPlugin, useCellValue } from '@mdxeditor/editor';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
+  RichBlockMenuContents,
+  runMenuAction,
   canMove,
   findCandidateAtY,
   findCandidateForTarget,
@@ -37,6 +40,25 @@ function RichBlockTouchDrag() {
   const disabled = useCellValue(disabled$);
   const [root, setRoot] = useState<HTMLElement | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [menuKey, setMenuKey] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuKey) return;
+    if (disabled) { setMenuKey(null); return; }
+    menuRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') { event.preventDefault(); setMenuKey(null); }
+      if (event.key === 'Tab') {
+        const buttons = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
+        const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+        event.preventDefault();
+        buttons[(index + (event.shiftKey ? buttons.length - 1 : 1)) % buttons.length]?.focus();
+      }
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [menuKey, disabled]);
 
   useEffect(() => editor.registerRootListener((nextRoot) => setRoot(nextRoot)), [editor]);
 
@@ -45,6 +67,7 @@ function RichBlockTouchDrag() {
     let start: { x: number; y: number; key: string } | null = null;
     let pointer: { x: number; y: number } | null = null;
     let active = false;
+    let moved = false;
     let pressTimer: number | null = null;
     let scrollFrame: number | null = null;
     let sourceElement: HTMLElement | null = null;
@@ -80,7 +103,7 @@ function RichBlockTouchDrag() {
     function scrollWhileDragging() {
       if (!active || !pointer) return;
       const scrollElement = findScrollElement(root!);
-      if (scrollElement) {
+      if (scrollElement && moved) {
         const bounds = scrollElement.getBoundingClientRect();
         const previousScrollTop = scrollElement.scrollTop;
         if (pointer.y < bounds.top + SCROLL_EDGE_PX) scrollElement.scrollTop -= SCROLL_STEP_PX;
@@ -102,6 +125,7 @@ function RichBlockTouchDrag() {
       start = null;
       pointer = null;
       active = false;
+      moved = false;
       setDragging(false);
     }
 
@@ -153,7 +177,8 @@ function RichBlockTouchDrag() {
         return;
       }
       event.preventDefault();
-      updateDrop();
+      if (Math.hypot(pointer.x - start.x, pointer.y - start.y) > TAP_SLOP_PX) moved = true;
+      if (moved) updateDrop();
     }
 
     function onTouchEnd(event: TouchEvent) {
@@ -163,7 +188,9 @@ function RichBlockTouchDrag() {
         updateDrop();
         const sourceKey = start.key;
         const destination = drop;
+        const openMenu = !moved;
         reset();
+        if (openMenu) { setMenuKey(sourceKey); return; }
         if (destination && canMove(editor, sourceKey, destination.candidate.key, destination.placement)) {
           moveRichBlock(editor, sourceKey, destination.candidate.key, destination.placement);
         }
@@ -195,7 +222,22 @@ function RichBlockTouchDrag() {
     };
   }, [disabled, editor, root]);
 
-  return dragging ? <div aria-live="polite" className="rich-touch-drag-status">Drag to move · release to drop</div> : null;
+  return <>
+    {dragging && <div aria-live="polite" className="rich-touch-drag-status">Drag to move · release for options</div>}
+    {menuKey && !disabled && createPortal(
+      <div className="rich-touch-menu-backdrop" onClick={(event) => {
+        if (event.target === event.currentTarget) setMenuKey(null);
+      }}>
+        <div ref={menuRef} role="dialog" aria-modal="true" aria-label="Block options" className="rich-touch-menu">
+          <RichBlockMenuContents editor={editor} blockKey={menuKey} sourceKeys={[menuKey]}
+            onClose={() => setMenuKey(null)} onAction={(action) => {
+              runMenuAction(editor, menuKey, action, [menuKey]);
+              setMenuKey(null);
+            }} />
+          <button type="button" onClick={() => setMenuKey(null)}>Cancel</button>
+        </div>
+      </div>, document.body)}
+  </>;
 }
 
 function findScrollElement(root: HTMLElement) {

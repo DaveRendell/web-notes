@@ -1,6 +1,7 @@
 import type { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import type { EditorView } from '@codemirror/view';
 import { backgroundComment, BLOCK_BACKGROUNDS, type BlockBackground } from './blockBackground';
+import { parseMarkdownBlocks, deleteMarkdownBlock } from './markdownBlocks';
 import { isProseCompletionContext } from './markdownCompletion';
 
 export const OPEN_IMAGE_DIALOG_EVENT = 'web-notes:open-image-dialog';
@@ -11,7 +12,7 @@ const MAX_RECENT_COMMANDS = 8;
 export type SlashCommandId =
   | 'paragraph' | 'heading' | 'heading2' | 'heading3' | 'quote'
   | 'todo' | 'bullet' | 'numbered' | 'image' | 'calendar'
-  | 'clearBackground'
+  | 'clearBackground' | 'delete'
   | BlockBackground;
 
 export type SlashCommand = {
@@ -19,10 +20,11 @@ export type SlashCommand = {
   label: string;
   detail: string;
   keywords: string[];
-  kind: 'block' | 'list' | 'background' | 'insert';
+  kind: 'block' | 'list' | 'background' | 'insert' | 'delete';
 };
 
 export const SLASH_COMMANDS: SlashCommand[] = [
+  { id: 'delete', label: 'Delete block', detail: 'Delete this block and its nested content', keywords: ['delete', 'remove', 'block'], kind: 'delete' },
   { id: 'paragraph', label: 'Text', detail: 'Turn into plain text', keywords: ['paragraph', 'text'], kind: 'block' },
   { id: 'heading', label: 'Heading 1', detail: 'Turn into a large heading', keywords: ['heading', 'h1', 'title'], kind: 'block' },
   { id: 'heading2', label: 'Heading 2', detail: 'Turn into a medium heading', keywords: ['heading2', 'h2', 'subtitle'], kind: 'block' },
@@ -117,6 +119,18 @@ export function createSlashCommandCompletionSource(
 
 export function applyMarkdownSlashCommand(view: EditorView, command: SlashCommand, from: number, to: number, openImage: () => void, openCalendar: () => void = () => undefined) {
   rememberSlashCommand(command.id);
+  if (command.id === 'delete') {
+    const document = parseMarkdownBlocks(view.state.doc.toString());
+    const block = document.blocks.filter((block) => block.startOffset <= from && block.endOffset >= to)
+      .sort((a, b) => b.startOffset - a.startOffset)[0];
+    if (block) {
+      const result = deleteMarkdownBlock(document, block.id);
+      if (result.changed) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: result.content },
+        selection: { anchor: Math.min(block.startOffset, result.content.length) } });
+    }
+    view.focus();
+    return;
+  }
   if (command.id === 'image') {
     view.dispatch({ changes: { from, to, insert: '' }, selection: { anchor: from } });
     openImage();

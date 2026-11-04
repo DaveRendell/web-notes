@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createRef, useEffect } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -207,6 +207,37 @@ describe('rich editor enhancements', () => {
 
     fireEvent.click(await screen.findByRole('option', { name: /Heading 1/i }));
     await waitFor(() => expect(editorRef.current?.getMarkdown()).toMatch(/^# Existing(?: |&#x20;)$/));
+  });
+
+  it('deletes a list item using the slash command', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+    Object.defineProperty(Range.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => new DOMRect(20, 20, 1, 18),
+    });
+    const editorRef = createRef<MDXEditorMethods>();
+    render(
+      <MDXEditor
+        ref={editorRef}
+        markdown={'Keep\n\n- Delete me /delete'}
+        plugins={[
+          headingsPlugin(),
+          listsPlugin(),
+          richEditorEnhancementsPlugin({ notes: [], recentNotes: [] }),
+          captureEditorPlugin(),
+        ]}
+      />,
+    );
+
+    await act(async () => lexicalEditor.update(() => {
+      $getRoot().getAllTextNodes().find((node) => node.getTextContent().includes('/delete'))!.selectEnd();
+    }));
+    fireEvent.click(await screen.findByRole('option', { name: /Delete block/i }));
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe('Keep'));
   });
 
   it('limits the rich slash menu to commands supported by the host', async () => {
